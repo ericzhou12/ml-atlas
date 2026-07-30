@@ -1,0 +1,252 @@
+/* ============================================================
+   Challenges — track 5, training & inference systems
+
+   One entry per lesson id: { title, prompt, starter, solution, hint?, explain? }
+   Starters carry their own PASS/FAIL check so the learner gets a verdict
+   without leaving the lab.
+
+   EDITOR NOTE: these are JS template literals, so an unescaped backtick
+   silently terminates the string. Escape inline code in prose.
+   ============================================================ */
+
+export default {
+
+'sys-gpu': {
+  title: 'Compute the roofline and the decode floor',
+  prompt: `Work out the arithmetic intensity of a matmul, a matvec, and an elementwise op, and classify each as
+compute- or memory-bound. Then derive the hard token/second ceiling for a 70B model at batch 1.`,
+  hint: 'Arithmetic intensity is FLOPs divided by bytes moved. The H100 ridge point is about 300.',
+  starter: `import numpy as np
+H100 = dict(flops=989e12, bw=3.35e12)
+ridge = H100["flops"] / H100["bw"]
+print(f"ridge point: {ridge:.0f} FLOPs/byte -- below this you are memory-bound\\n")
+
+def analyze(name, flops, bytes_moved):
+    # TODO: compute arithmetic intensity, time if compute-bound, time if memory-bound
+    ai, t_c, t_m = 0.0, 0.0, 0.0
+    bound = "COMPUTE" if t_c > t_m else "MEMORY"
+    return f"{name:32s} AI={ai:8.1f}  {bound:7s}  {max(t_c,t_m)*1e3:7.3f} ms"
+
+d = 4096
+print(analyze(f"matmul {d}^3", 2*d**3, 3*d*d*2))
+print(analyze(f"matvec {d}x{d}", 2*d*d, d*d*2))
+print(analyze("ReLU on 64M elements", 64e6, 64e6*2*2))
+
+print("\\nautoregressive decode floor (bf16, batch 1):")
+for name, params in [("7B", 7e9), ("70B", 70e9), ("405B", 405e9)]:
+    # TODO: bytes read per token = params * 2; time = bytes / bandwidth
+    print(f"  {name}")`,
+  solution: `import numpy as np
+H100 = dict(flops=989e12, bw=3.35e12)
+ridge = H100["flops"] / H100["bw"]
+print(f"ridge point: {ridge:.0f} FLOPs/byte\\n")
+
+def analyze(name, flops, bytes_moved):
+    ai = flops / bytes_moved
+    t_c = flops / H100["flops"]
+    t_m = bytes_moved / H100["bw"]
+    bound = "COMPUTE" if t_c > t_m else "MEMORY"
+    return f"{name:32s} AI={ai:8.1f}  {bound:7s}  {max(t_c,t_m)*1e3:7.3f} ms"
+
+d = 4096
+print(analyze(f"matmul {d}^3", 2*d**3, 3*d*d*2))
+print(analyze(f"matvec {d}x{d}", 2*d*d, d*d*2))
+print(analyze("ReLU on 64M elements", 64e6, 64e6*2*2))
+
+print("\\nautoregressive decode floor (bf16, batch 1):")
+for name, params in [("7B", 7e9), ("70B", 70e9), ("405B", 405e9)]:
+    read = params * 2
+    ms = read / H100["bw"] * 1e3
+    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s max")
+
+print("\\nbatching (70B): the weight read is shared across the batch")
+for B in [1, 8, 32, 128]:
+    weight_ms = 140e9 / H100["bw"] * 1e3
+    compute_ms = 2 * 70e9 * B / H100["flops"] * 1e3
+    step = max(weight_ms, compute_ms)
+    print(f"  batch {B:4d}: {step:6.1f} ms -> {B*1000/step:8.1f} tok/s total, "
+          f"{1000/step:5.1f} per user")`,
+  explain: 'A matvec has arithmetic intensity around 1 — three hundred times below the ridge point. That is why generation is bandwidth-bound and why batching is nearly free until you run out of KV cache.',
+},
+
+'sys-memory': {
+  title: 'Budget training memory, and shard it',
+  prompt: `Compute the memory for full fine-tuning versus ZeRO stages 1-3, and find the smallest GPU count that fits
+a 70B model. Then compute the pipeline bubble fraction.`,
+  hint: 'Adam needs 16 bytes/param: 2 bf16 weights, 2 gradients, 4 fp32 master, 4+4 moments.',
+  starter: `import numpy as np
+
+def train_memory(params_b, gpus=8, zero_stage=0, seq=4096, batch=4,
+                 layers=32, d=4096, checkpointing=True):
+    P = params_b * 1e9
+    weights, grads, optim = P*2, P*2, P*12
+    # TODO: apply ZeRO sharding -- stage 1 shards optim, 2 also grads, 3 also weights
+    act = batch*seq*d*layers*2 * (2 if checkpointing else 34)
+    return (weights + grads + optim + act) / 1e9
+
+print(f"{'config':40s} {'GB':>8}  fits 80GB?")
+for label, kw in [
+    ("7B full, no checkpointing", dict(params_b=7, checkpointing=False)),
+    ("7B full, checkpointing", dict(params_b=7)),
+    ("7B ZeRO-1 x8", dict(params_b=7, zero_stage=1)),
+    ("7B ZeRO-3 x8", dict(params_b=7, zero_stage=3)),
+    ("70B ZeRO-3 x8", dict(params_b=70, layers=80, d=8192, zero_stage=3)),
+    ("70B ZeRO-3 x64", dict(params_b=70, layers=80, d=8192, zero_stage=3, gpus=64)),
+]:
+    g = train_memory(**kw)
+    print(f"{label:40s} {g:8.1f}  {'yes' if g < 80 else 'NO'}")
+
+print("\\npipeline bubble = (P-1)/(m+P-1):")
+for P in [4, 8]:
+    print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))`,
+  solution: `import numpy as np
+
+def train_memory(params_b, gpus=8, zero_stage=0, seq=4096, batch=4,
+                 layers=32, d=4096, checkpointing=True):
+    P = params_b * 1e9
+    weights, grads, optim = P*2, P*2, P*12
+    if zero_stage >= 1: optim /= gpus
+    if zero_stage >= 2: grads /= gpus
+    if zero_stage >= 3: weights /= gpus
+    act = batch*seq*d*layers*2 * (2 if checkpointing else 34)
+    return (weights + grads + optim + act) / 1e9
+
+print(f"{'config':40s} {'GB':>8}  fits 80GB?")
+for label, kw in [
+    ("7B full, no checkpointing", dict(params_b=7, checkpointing=False)),
+    ("7B full, checkpointing", dict(params_b=7)),
+    ("7B ZeRO-1 x8", dict(params_b=7, zero_stage=1)),
+    ("7B ZeRO-3 x8", dict(params_b=7, zero_stage=3)),
+    ("70B ZeRO-3 x8", dict(params_b=70, layers=80, d=8192, zero_stage=3)),
+    ("70B ZeRO-3 x64", dict(params_b=70, layers=80, d=8192, zero_stage=3, gpus=64)),
+]:
+    g = train_memory(**kw)
+    print(f"{label:40s} {g:8.1f}  {'yes' if g < 80 else 'NO'}")
+
+print("\\npipeline bubble = (P-1)/(m+P-1):")
+for P in [4, 8]:
+    print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))`,
+},
+
+'sys-quantization': {
+  title: 'Break quantization with one outlier, then fix it with groups',
+  prompt: `Implement symmetric integer quantization with an optional group size. Add a few extreme outlier weights and
+show that per-tensor scaling collapses while per-group survives.`,
+  hint: 'The scale is max|w| / (2^(bits-1) - 1). One outlier stretches it for everything sharing that scale.',
+  starter: `import numpy as np
+rng = np.random.default_rng(0)
+
+def quantize(w, bits, group=None):
+    levels = 2**(bits-1) - 1
+    if group is None:
+        # TODO: one scale for the whole tensor
+        return w
+    out = np.empty_like(w)
+    # TODO: one scale per contiguous group of \`group\` weights
+    return out
+
+n = 4096
+w = rng.normal(0, 1, n)
+w_out = w.copy(); w_out[::512] *= 25          # a few extreme outliers
+
+err = lambda a, b: np.sqrt(((a-b)**2).mean()) / a.std()
+
+print(f"{'scheme':30s} {'clean':>9} {'with outliers':>15}")
+for bits in [8, 4, 3]:
+    for group in [None, 128, 64]:
+        g = "per-tensor" if group is None else f"group={group}"
+        print(f"  {bits}-bit {g:22s} {err(w, quantize(w,bits,group)):8.4f} "
+              f"{err(w_out, quantize(w_out,bits,group)):14.4f}")`,
+  solution: `import numpy as np
+rng = np.random.default_rng(0)
+
+def quantize(w, bits, group=None):
+    levels = 2**(bits-1) - 1
+    if group is None:
+        s = np.abs(w).max() / levels
+        return np.round(w/s) * s
+    out = np.empty_like(w)
+    for i in range(0, len(w), group):
+        chunk = w[i:i+group]
+        s = max(np.abs(chunk).max() / levels, 1e-12)
+        out[i:i+group] = np.round(chunk/s) * s
+    return out
+
+n = 4096
+w = rng.normal(0, 1, n)
+w_out = w.copy(); w_out[::512] *= 25
+err = lambda a, b: np.sqrt(((a-b)**2).mean()) / a.std()
+
+print(f"{'scheme':30s} {'clean':>9} {'with outliers':>15}")
+for bits in [8, 4, 3]:
+    for group in [None, 128, 64]:
+        g = "per-tensor" if group is None else f"group={group}"
+        print(f"  {bits}-bit {g:22s} {err(w, quantize(w,bits,group)):8.4f} "
+              f"{err(w_out, quantize(w_out,bits,group)):14.4f}")
+
+P = 7e9
+print("\\n7B model:")
+for name, bits, oh in [("bf16",16,0), ("int8",8,0.02), ("int4 g=128",4,0.04)]:
+    gb = P * bits/8 * (1+oh) / 1e9
+    print(f"  {name:12s} {gb:6.1f} GB   decode ceiling {3.35e12/(gb*1e9):6.1f} tok/s")`,
+},
+
+'sys-inference': {
+  title: 'Size a KV cache and find the optimal speculation length',
+  prompt: `Compute KV cache size with and without GQA, then derive the expected speedup from speculative decoding and
+find the k that maximizes it.`,
+  hint: 'Expected accepted tokens per round is (1 - a^(k+1))/(1 - a); cost is k*draft_cost + 1.',
+  starter: `import numpy as np
+
+def kv_bytes(layers, kv_heads, d_head, seq, batch, bits=16):
+    # TODO: 2 (K and V) * layers * heads * d_head * seq * batch * bytes
+    return 0
+
+print(f"{'model':24s} {'8k ctx':>10} {'128k ctx':>11} {'batch 32 @ 8k':>15}")
+for name, m in [
+  ("Llama-3-70B (GQA 8)", dict(layers=80, kv_heads=8,  d_head=128)),
+  ("70B if it used MHA",  dict(layers=80, kv_heads=64, d_head=128)),
+]:
+    a = kv_bytes(**m, seq=8192,   batch=1)/1e9
+    b = kv_bytes(**m, seq=131072, batch=1)/1e9
+    c = kv_bytes(**m, seq=8192,   batch=32)/1e9
+    print(f"{name:24s} {a:9.2f}G {b:10.1f}G {c:14.1f}G")
+
+def speedup(alpha, k, draft_cost):
+    # TODO
+    return 0.0
+
+print("\\nspeculative decoding speedup (draft costs 10% of target):")
+print(f"{'accept':>8}" + "".join(f"{'k='+str(k):>8}" for k in [1,2,4,6,8]))
+for a in [0.5, 0.7, 0.8, 0.9]:
+    print(f"{a:8.1f}" + "".join(f"{speedup(a,k,0.10):8.2f}" for k in [1,2,4,6,8]))`,
+  solution: `import numpy as np
+
+def kv_bytes(layers, kv_heads, d_head, seq, batch, bits=16):
+    return 2 * layers * kv_heads * d_head * seq * batch * bits/8
+
+print(f"{'model':24s} {'8k ctx':>10} {'128k ctx':>11} {'batch 32 @ 8k':>15}")
+for name, m in [
+  ("Llama-3-70B (GQA 8)", dict(layers=80, kv_heads=8,  d_head=128)),
+  ("70B if it used MHA",  dict(layers=80, kv_heads=64, d_head=128)),
+]:
+    a = kv_bytes(**m, seq=8192,   batch=1)/1e9
+    b = kv_bytes(**m, seq=131072, batch=1)/1e9
+    c = kv_bytes(**m, seq=8192,   batch=32)/1e9
+    print(f"{name:24s} {a:9.2f}G {b:10.1f}G {c:14.1f}G")
+
+def speedup(alpha, k, draft_cost):
+    accepted = (1 - alpha**(k+1)) / (1 - alpha)
+    return accepted / (k*draft_cost + 1)
+
+print("\\nspeculative decoding speedup (draft costs 10% of target):")
+print(f"{'accept':>8}" + "".join(f"{'k='+str(k):>8}" for k in [1,2,4,6,8]))
+for a in [0.5, 0.7, 0.8, 0.9]:
+    print(f"{a:8.1f}" + "".join(f"{speedup(a,k,0.10):8.2f}" for k in [1,2,4,6,8]))
+
+for a in [0.6, 0.8, 0.9]:
+    best = max(((speedup(a,k,0.10), k) for k in range(1,17)))
+    print(f"\\nalpha={a}: optimal k={best[1]} giving {best[0]:.2f}x")`,
+},
+
+};

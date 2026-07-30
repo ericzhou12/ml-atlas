@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ML Atlas — Machine Learning from Gradients to Frontier</title>
+<link rel="stylesheet" href="vendor/katex/katex.min.css">
+<link rel="stylesheet" href="styles/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🧠</text></svg>">
+</head>
+<body>
+<div id="app">
+
+  <header id="topbar">
+    <button id="nav-toggle" class="icon-btn" title="Toggle curriculum (⌘B)" aria-label="Toggle sidebar">☰</button>
+    <a class="brand" href="#/">
+      <span class="brand-mark">∇</span>
+      <span class="brand-text">ML&nbsp;Atlas</span>
+    </a>
+
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="Search 100+ lessons, concepts, papers…  (press /)" autocomplete="off" spellcheck="false">
+      <div id="search-results" class="search-results" hidden></div>
+    </div>
+
+    <div class="topbar-right">
+      <div id="progress-pill" class="pill" title="Lessons marked complete">
+        <svg width="16" height="16" viewBox="0 0 36 36" class="ring">
+          <circle cx="18" cy="18" r="15" class="ring-bg"></circle>
+          <circle cx="18" cy="18" r="15" class="ring-fg" id="ring-fg"></circle>
+        </svg>
+        <span id="progress-text">0 / 0</span>
+      </div>
+      <button id="theme-toggle" class="icon-btn" title="Toggle theme">◐</button>
+      <button id="ide-toggle" class="icon-btn" title="Toggle code lab (⌘J)">&lt;/&gt;</button>
+    </div>
+  </header>
+
+  <nav id="sidebar" aria-label="Curriculum">
+    <div class="sidebar-head">
+      <span class="sidebar-title">Curriculum</span>
+      <div class="sidebar-actions">
+        <button id="expand-all" class="mini-btn" title="Expand/collapse all">⇕</button>
+      </div>
+    </div>
+    <div id="toc" class="toc"></div>
+    <div class="sidebar-foot">
+      <a href="#/about" class="foot-link">About &amp; how to use</a>
+      <a href="#/library" class="foot-link">Reference library</a>
+      <a href="#/glossary" class="foot-link">Glossary</a>
+      <a href="#/paths" class="foot-link">Learning paths</a>
+    </div>
+  </nav>
+
+  <main id="main">
+    <div id="content" class="content"></div>
+  </main>
+
+  <aside id="ide" class="ide" hidden>
+    <div class="ide-head">
+      <div class="ide-tabs">
+        <button class="ide-tab active" data-mode="python">Python</button>
+        <button class="ide-tab" data-mode="js">JavaScript</button>
+      </div>
+      <div class="ide-head-right">
+        <button id="ide-run" class="run-btn" title="Run (⌘↵ / Ctrl+↵)">▶ Run</button>
+        <button id="ide-reset" class="mini-btn" title="Reset editor to lesson snippet">⟲</button>
+        <button id="ide-close" class="mini-btn" title="Close">✕</button>
+      </div>
+    </div>
+    <div id="ide-status" class="ide-status">Python sandbox not started — press ▶ Run to boot NumPy (~10&nbsp;s, first time only).</div>
+    <div class="ide-editor-wrap">
+      <div class="gutter" id="ide-gutter"></div>
+      <div class="ide-code-area">
+        <pre class="ide-highlight" id="ide-highlight" aria-hidden="true"><code></code></pre>
+        <textarea id="ide-editor" spellcheck="false" autocomplete="off" autocapitalize="off"
+                  autocorrect="off" wrap="off"></textarea>
+      </div>
+    </div>
+    <div class="ide-out-head">
+      <span>Output</span>
+      <button id="ide-clear" class="mini-btn">clear</button>
+    </div>
+    <pre id="ide-output" class="ide-output"></pre>
+    <div id="ide-snips" class="ide-snips"></div>
+  </aside>
+
+  <div id="ide-resizer" class="ide-resizer" hidden></div>
+</div>
+
+<script src="vendor/katex/katex.min.js"></script>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
