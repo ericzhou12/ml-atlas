@@ -2,7 +2,8 @@
    Track 1 — Mathematical foundations
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -14,37 +15,143 @@ export default [
   mins: 20, level: 'foundations',
   tags: ['linear algebra', 'geometry'],
   sections: [
+    tldr(`A **vector** is just a list of numbers — think \`float[]\`. The trick is that you can also think of
+that list as a *location* or a *direction* in space, which lets you ask geometric questions ("are these two
+things pointing the same way?") about data that has nothing to do with geometry.
+
+The one operation you need is the **dot product**: multiply the lists element by element, add up the results.
+It answers "how aligned are these two vectors?" Every recommendation engine, every semantic search box, and
+every layer of every neural network is built on it.`),
+
+    jargon([
+      ['scalar', 'A single number. `3.7` is a scalar. Used to distinguish "one number" from "a list of numbers".'],
+      ['vector', 'An ordered list of numbers. In code, a 1-D array. Written in **bold**: $\\mathbf{x}$.'],
+      ['dimension $d$', 'How many numbers are in the list. A vector with 768 entries is "768-dimensional". Nothing deeper than `len(x)`.'],
+      ['$\\mathbf{x} \\in \\mathbb{R}^d$', 'Read aloud: "x is a vector of $d$ real numbers." $\\mathbb{R}$ means "the real numbers", the superscript is the length. This is the most common line of notation in all of ML — it is a type signature, `x: float[d]`.'],
+      ['embedding', 'A vector that a model produces to represent something non-numeric — a word, an image, a user. The claim is that *similar things get similar vectors*.'],
+      ['norm', 'The length of a vector. Written $\\|\\mathbf{x}\\|$.'],
+      ['orthogonal', 'Perpendicular. For vectors it means "at 90°", which turns out to mean "carrying unrelated information".'],
+    ]),
+
     t(`## Why start here
 
-Open any ML paper and you will find $\\mathbf{x} \\in \\mathbb{R}^d$ in the first paragraph. An image is a vector of pixel
-intensities. A sentence, after embedding, is a sequence of vectors. A neural network's weights are vectors. Whatever
-you are doing — classifying, generating, retrieving — you are doing geometry in a high-dimensional space.
+Open any ML paper and you will find $\\mathbf{x} \\in \\mathbb{R}^d$ in the first paragraph. That line is doing the
+same job as a type annotation in code: it says *the thing I am about to talk about is a list of $d$ numbers.*
 
-A **vector** is an ordered list of numbers, $\\mathbf{x} = (x_1, x_2, \\ldots, x_d)$. You can read it two ways, and you
-need both:
+Almost everything in machine learning has been forced into that shape:
 
-- **As a point**: a location in $d$-dimensional space. "This image is *here*."
-- **As an arrow**: a direction and a magnitude from the origin. "Move *this way* by *this much*."
+| The thing | As a vector |
+|---|---|
+| A 28×28 greyscale image | 784 numbers, one pixel brightness each |
+| A word, after an embedding model | 768 numbers with no individual meaning |
+| A user on a streaming site | 64 numbers summarising what they watch |
+| One layer's weights in a network | a few million numbers |
 
-The point reading is right for data. The arrow reading is right for gradients and updates.`),
+Once everything is a list of numbers, everything lives in the same kind of space, and you can use one set of
+tools on all of it. That is the bargain the whole field is built on.`),
+
+    t(`## The two ways to read a vector
+
+A vector $\\mathbf{x} = (x_1, x_2, \\ldots, x_d)$ can be read two ways. You need both, and knowing which one is
+in play is most of the battle when reading a paper.`),
+
+    diagram('The same three numbers, read two ways',
+`<svg viewBox="0 0 640 220" role="img" aria-label="A vector drawn as a point and as an arrow">
+  <g style="stroke: var(--border); stroke-width: 1">
+    <line x1="40" y1="180" x2="270" y2="180"/><line x1="40" y1="180" x2="40" y2="30"/>
+    <line x1="370" y1="180" x2="600" y2="180"/><line x1="370" y1="180" x2="370" y2="30"/>
+  </g>
+  <circle cx="190" cy="80" r="6" style="fill: var(--s1)"/>
+  <line x1="190" y1="80" x2="190" y2="180" style="stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3"/>
+  <line x1="40" y1="80" x2="190" y2="80" style="stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3"/>
+  <text class="dmono" x="202" y="76" style="fill: var(--s1)">(3, 2)</text>
+  <text class="dtitle" x="40" y="205">as a POINT — "this photo is here"</text>
+  <text class="dlabel" x="40" y="20">right for: data, samples, embeddings</text>
+
+  <defs><marker id="ar1" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
+    <path d="M0,0 L9,4.5 L0,9 z" style="fill: var(--s2)"/></marker></defs>
+  <line x1="370" y1="180" x2="514" y2="82" style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#ar1)"/>
+  <text class="dmono" x="524" y="78" style="fill: var(--s2)">(3, 2)</text>
+  <text class="dtitle" x="370" y="205">as an ARROW — "move this way, this far"</text>
+  <text class="dlabel" x="370" y="20">right for: gradients, weight updates, directions</text>
+</svg>`,
+      `Identical numbers, different question. When you read "the embedding of *cat*", think **point**. When you
+read "the gradient step", think **arrow**. Papers switch between the two without warning.`),
 
     t(`## The two operations that matter
 
-**Addition** is componentwise, and geometrically it is "walk along the first arrow, then the second":
+**Addition** is componentwise — exactly what \`a + b\` does on two NumPy arrays:
 
 $$\\mathbf{a} + \\mathbf{b} = (a_1+b_1,\\ \\ldots,\\ a_d+b_d)$$
 
-**Scalar multiplication** stretches: $c\\mathbf{a} = (ca_1, \\ldots, ca_d)$. Negative $c$ flips the direction.
+Geometrically, in the arrow reading, it is "walk along the first arrow, then walk along the second from
+wherever you ended up."
 
-That's it. Those two operations, with their obvious algebraic properties, *define* a vector space. Anything obeying
-them — polynomials, functions, images — can be treated with the same machinery.`),
+**Scalar multiplication** stretches: $c\\mathbf{a} = (ca_1, \\ldots, ca_d)$. A $c$ bigger than 1 lengthens the
+arrow, a $c$ between 0 and 1 shortens it, and a negative $c$ flips it around to point the other way.
+
+That is genuinely all of it. Those two operations, plus their obvious algebraic properties (order doesn't
+matter when adding, stretching distributes over addition), are the *definition* of a vector space. The payoff
+is that anything obeying them — polynomials, functions, images, sound clips — gets the same machinery for free.`),
 
     t(`## The dot product is a similarity meter
 
-$$\\mathbf{a}\\cdot\\mathbf{b} = \\sum_{i=1}^{d} a_i b_i = \\|\\mathbf{a}\\|\\,\\|\\mathbf{b}\\|\\cos\\theta$$
+This is the operation everything else is built from. Multiply the two lists element by element, then add
+up the results:
 
-Those two expressions being equal is the single most useful fact in this track. The left side is trivially computable;
-the right side tells you what it *means*.`),
+$$\\mathbf{a}\\cdot\\mathbf{b} = a_1b_1 + a_2b_2 + \\cdots + a_db_d = \\sum_{i=1}^{d} a_i b_i$$
+
+The $\\sum$ symbol is just a for-loop: "for $i$ from 1 to $d$, accumulate $a_i b_i$." In NumPy it is \`a @ b\`.
+Four lines of code, no geometry in sight.
+
+Here is the remarkable part. That same number *also* equals:
+
+$$\\mathbf{a}\\cdot\\mathbf{b} = \\|\\mathbf{a}\\|\\,\\|\\mathbf{b}\\|\\cos\\theta$$
+
+where $\\|\\mathbf{a}\\|$ is the length of $\\mathbf{a}$, $\\|\\mathbf{b}\\|$ the length of $\\mathbf{b}$, and
+$\\theta$ the angle between them. Those two expressions being equal is the single most useful fact in this
+track. The first is trivially computable; the second tells you what the answer *means*.
+
+Because $\\cos\\theta$ is positive when the angle is under 90°, zero at exactly 90°, and negative beyond, the
+sign of a dot product is a direct read-out of alignment.`),
+
+    steps('Computing a dot product by hand, once', [
+      { h: 'Line the two lists up', md: `$\\mathbf{a} = (2,\\ 1,\\ -3)$ and $\\mathbf{b} = (4,\\ 0,\\ 1)$. Same length — required, or the operation is undefined.` },
+      { h: 'Multiply positionwise', md: `$2\\times4 = 8$, then $1\\times0 = 0$, then $-3\\times1 = -3$.` },
+      { h: 'Add them up', md: `$8 + 0 - 3 = 5$. That single number is $\\mathbf{a}\\cdot\\mathbf{b}$.` },
+      { h: 'Read the sign', md: `Positive, so the angle between them is less than 90° — these two vectors broadly agree. If you want the actual angle, divide by the two lengths and take $\\arccos$.` },
+    ]),
+
+    diagram('What the sign of a dot product tells you',
+`<svg viewBox="0 0 660 180" role="img" aria-label="Three cases: positive, zero and negative dot product">
+  <defs>
+    <marker id="ap" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--s1)"/></marker>
+    <marker id="aq" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--s2)"/></marker>
+  </defs>
+  <g>
+    <line x1="60" y1="120" x2="170" y2="120" style="stroke: var(--s1); stroke-width: 2.5" marker-end="url(#ap)"/>
+    <line x1="60" y1="120" x2="150" y2="55"  style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#aq)"/>
+    <path d="M100,120 A40,40 0 0,0 88,97" style="fill:none; stroke: var(--text-faint); stroke-width: 1"/>
+    <text class="dtitle" x="60" y="155" style="fill: var(--s3)">a · b &gt; 0</text>
+    <text class="dlabel" x="60" y="172">same broad direction</text>
+  </g>
+  <g transform="translate(215,0)">
+    <line x1="60" y1="120" x2="170" y2="120" style="stroke: var(--s1); stroke-width: 2.5" marker-end="url(#ap)"/>
+    <line x1="60" y1="120" x2="60"  y2="40"  style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#aq)"/>
+    <path d="M60,100 L80,100 L80,120" style="fill:none; stroke: var(--text-faint); stroke-width: 1"/>
+    <text class="dtitle" x="60" y="155" style="fill: var(--s5)">a · b = 0</text>
+    <text class="dlabel" x="60" y="172">orthogonal — unrelated</text>
+  </g>
+  <g transform="translate(430,0)">
+    <line x1="60" y1="120" x2="170" y2="120" style="stroke: var(--s1); stroke-width: 2.5" marker-end="url(#ap)"/>
+    <line x1="60" y1="120" x2="0"   y2="62"  style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#aq)"/>
+    <text class="dtitle" x="30" y="155" style="fill: var(--s6)">a · b &lt; 0</text>
+    <text class="dlabel" x="30" y="172">pointing against each other</text>
+  </g>
+</svg>`,
+      `The middle case is the one worth remembering. **Orthogonal** does not mean "unrelated" as a metaphor — in
+ML it is the working definition of "carries independent information". Two orthogonal features tell you
+genuinely different things about a data point.`),
 
     viz('vector-playground'),
 
@@ -52,13 +159,19 @@ the right side tells you what it *means*.`),
 - $\\mathbf{a}\\cdot\\mathbf{b} = 0$: they are **orthogonal** — perpendicular, uncorrelated, carrying independent information.
 - $\\mathbf{a}\\cdot\\mathbf{b} < 0$: they oppose.
 
-The **length** (or $L_2$ norm) is $\\|\\mathbf{a}\\| = \\sqrt{\\mathbf{a}\\cdot\\mathbf{a}}$, and **cosine similarity**
-is the dot product with lengths divided out:
-$\\cos\\theta = \\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|} \\in [-1, 1]$.`),
+The **length** (or $L_2$ norm) of a vector is its dot product with itself, square-rooted:
+$\\|\\mathbf{a}\\| = \\sqrt{\\mathbf{a}\\cdot\\mathbf{a}} = \\sqrt{a_1^2 + \\cdots + a_d^2}$ — Pythagoras, in $d$
+dimensions.
 
-    intuition(`Cosine similarity ignores magnitude and keeps only direction. That is exactly what you want for text
-embeddings — a long document and a short one about the same topic should count as similar, and their raw magnitudes
-mostly reflect length, not meaning. It is why every vector database defaults to cosine.`),
+**Cosine similarity** is the dot product with both lengths divided out, which leaves only the angle:
+$\\cos\\theta = \\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|} \\in [-1, 1]$.
+It is $1$ for identical directions, $0$ for orthogonal, $-1$ for opposite.`),
+
+    intuition(`Cosine similarity throws away magnitude and keeps only direction. That is exactly what you want for
+text embeddings. A 50-page report and a one-line tweet about the same topic should count as similar, but the
+report's embedding will typically have a much bigger norm — length and word frequency inflate magnitude without
+changing meaning. Dividing the lengths out removes that confound. It is why essentially every vector database
+defaults to cosine rather than raw dot product.`),
 
     deriv('Where $\\|a\\|\\|b\\|\\cos\\theta$ comes from', `Start with the law of cosines applied to the triangle with sides $\\mathbf{a}$, $\\mathbf{b}$, and $\\mathbf{a}-\\mathbf{b}$:
 
@@ -71,44 +184,98 @@ $$\\|\\mathbf{a}-\\mathbf{b}\\|^2 = (\\mathbf{a}-\\mathbf{b})\\cdot(\\mathbf{a}-
 Setting the two right-hand sides equal, the $\\|\\mathbf{a}\\|^2$ and $\\|\\mathbf{b}\\|^2$ cancel, leaving
 $-2\\,\\mathbf{a}\\cdot\\mathbf{b} = -2\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$. Divide by $-2$. ∎`),
 
-    t(`## Projection
+    t(`## Projection: splitting a vector into two parts
 
-How much of $\\mathbf{a}$ points along $\\mathbf{b}$? Project it:
+Here is a question that turns out to be everywhere: *how much of $\\mathbf{a}$ points along $\\mathbf{b}$?*
 
-$$\\text{proj}_{\\mathbf{b}}(\\mathbf{a}) = \\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\mathbf{b}\\cdot\\mathbf{b}}\\,\\mathbf{b}$$
+Picture shining a light straight down onto the line through $\\mathbf{b}$ and asking where $\\mathbf{a}$'s shadow
+falls. That shadow is the **projection**:
 
-The leftover, $\\mathbf{a} - \\text{proj}_{\\mathbf{b}}(\\mathbf{a})$, is orthogonal to $\\mathbf{b}$ — turn on
-"residual" in the figure above and check. **This decomposition into "explained by $\\mathbf b$" plus "orthogonal
-residual" is the skeleton of least squares, PCA, and Gram–Schmidt.** You will meet it repeatedly.`),
+$$\\text{proj}_{\\mathbf{b}}(\\mathbf{a}) = \\underbrace{\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\mathbf{b}\\cdot\\mathbf{b}}}_{\\text{a single number}}\\,\\mathbf{b}$$
 
-    t(`## Other norms
+Read the formula as: *take a scaled copy of $\\mathbf{b}$*, where the scale factor is "how aligned they are"
+divided by "how long $\\mathbf{b}$ is, squared". The result always lies on $\\mathbf{b}$'s line, because it is
+literally a multiple of $\\mathbf{b}$.
 
-The $L_2$ norm is not the only ruler:
+The leftover, $\\mathbf{a} - \\text{proj}_{\\mathbf{b}}(\\mathbf{a})$, is called the **residual**, and it is always
+orthogonal to $\\mathbf{b}$ — turn on "residual" in the figure above and check that the angle really is 90° no
+matter how you drag.`),
 
-| Norm | Formula | Unit ball | Where it shows up |
-|---|---|---|---|
-| $L_1$ | $\\sum_i \\|x_i\\|$ | diamond | Lasso, sparsity, robust losses |
-| $L_2$ | $\\sqrt{\\sum_i x_i^2}$ | circle | ridge, weight decay, distances |
-| $L_\\infty$ | $\\max_i \\|x_i\\|$ | square | adversarial robustness budgets |
-| $L_0$ | count of nonzeros | — | "how sparse" (not a real norm) |
+    key(`Every vector splits, uniquely, into **"the part explained by $\\mathbf{b}$" plus "the part orthogonal to
+$\\mathbf{b}$"**:
 
-The shape of that unit ball is *not* trivia. When you constrain $\\|w\\|_1 \\le t$ you are constraining $w$ to a diamond,
-and diamonds have corners on the axes — which is precisely why L1 produces exactly-zero coefficients and L2 does not.
-You will see that picture in the regularization lesson.`),
+$$\\mathbf{a} = \\underbrace{\\text{proj}_{\\mathbf{b}}(\\mathbf{a})}_{\\text{explained}} + \\underbrace{\\mathbf{r}}_{\\text{left over, } \\perp \\mathbf{b}}$$
 
-    t(`## High dimensions are strange
+This one decomposition is the skeleton of least squares (fit = projection onto what your features can explain,
+error = the residual), PCA (keep the directions that explain the most, discard the rest), and Gram–Schmidt.
+When you meet those later, they will feel like this picture again with more indices.`),
 
-Your 2-D and 3-D intuitions will mislead you. Some facts worth internalizing early:
+    t(`## Other rulers: $L_1$, $L_2$, $L_\\infty$
 
-- **Almost everything is orthogonal.** Two random unit vectors in $\\mathbb{R}^d$ have expected cosine similarity $0$ with
-  standard deviation $\\approx 1/\\sqrt{d}$. In 1000 dimensions, random directions are essentially always perpendicular.
-- **Volume flees to the shell.** Nearly all the volume of a high-dimensional ball sits in a thin skin near the surface.
-- **Distances concentrate.** The ratio of farthest to nearest neighbor distance approaches 1, which is what breaks
-  k-nearest-neighbours in high dimensions.
+"Length" is not a single idea. $\\|\\mathbf{x}\\| = \\sqrt{\\sum x_i^2}$ is the everyday one — straight-line
+distance — but there are others, and which you pick changes what your model does. Written $\\|\\mathbf{x}\\|_p$,
+the subscript naming the flavour.
 
-The first fact is oddly good news: it means a $d$-dimensional space can hold *far more than $d$* nearly-orthogonal
-directions, which is why models can pack many more features than they have neurons. That is the phenomenon called
-**superposition**, and there is a whole lesson on it later.`),
+| Norm | Formula | "Distance" it measures | Unit ball | Where it shows up |
+|---|---|---|---|---|
+| $L_1$ | $\\sum_i \\|x_i\\|$ | walking on a city grid | diamond | Lasso, sparsity, robust losses |
+| $L_2$ | $\\sqrt{\\sum_i x_i^2}$ | straight line, as the crow flies | circle | ridge, weight decay, distances |
+| $L_\\infty$ | $\\max_i \\|x_i\\|$ | the single biggest component | square | adversarial robustness budgets |
+| $L_0$ | count of nonzeros | how many entries are "on" | — | "how sparse" (not really a norm) |
+
+The **unit ball** column means: the set of all vectors whose norm is exactly 1. Under $L_2$ that set is a circle,
+which is what you would guess. Under $L_1$ it is a diamond standing on its corner.`),
+
+    diagram('Unit balls: the same "length 1" under three different rulers',
+`<svg viewBox="0 0 660 200" role="img" aria-label="Unit balls of the L1, L2 and Linfinity norms">
+  <g transform="translate(20,10)">
+    <line x1="90" y1="20" x2="90" y2="160" style="stroke: var(--border)"/><line x1="20" y1="90" x2="160" y2="90" style="stroke: var(--border)"/>
+    <polygon points="90,30 150,90 90,150 30,90" style="fill: color-mix(in srgb, var(--s2) 16%, transparent); stroke: var(--s2); stroke-width: 2"/>
+    <circle cx="90" cy="30" r="4" style="fill: var(--s2)"/><circle cx="150" cy="90" r="4" style="fill: var(--s2)"/>
+    <text class="dtitle" x="55" y="185" style="fill: var(--s2)">L1 — a diamond</text>
+  </g>
+  <g transform="translate(240,10)">
+    <line x1="90" y1="20" x2="90" y2="160" style="stroke: var(--border)"/><line x1="20" y1="90" x2="160" y2="90" style="stroke: var(--border)"/>
+    <circle cx="90" cy="90" r="60" style="fill: color-mix(in srgb, var(--s1) 16%, transparent); stroke: var(--s1); stroke-width: 2"/>
+    <text class="dtitle" x="60" y="185" style="fill: var(--s1)">L2 — a circle</text>
+  </g>
+  <g transform="translate(460,10)">
+    <line x1="90" y1="20" x2="90" y2="160" style="stroke: var(--border)"/><line x1="20" y1="90" x2="160" y2="90" style="stroke: var(--border)"/>
+    <rect x="30" y="30" width="120" height="120" style="fill: color-mix(in srgb, var(--s4) 16%, transparent); stroke: var(--s4); stroke-width: 2"/>
+    <text class="dtitle" x="50" y="185" style="fill: var(--s4)">L-infinity — a square</text>
+  </g>
+</svg>`,
+      `Look at where each shape touches the axes. The diamond meets them at sharp **corners**; the circle glides
+past smoothly. That geometric difference is the entire reason L1 regularization drives coefficients to exactly
+zero and L2 only shrinks them toward zero — an optimum pinned at a corner has a coordinate that is precisely 0.
+You will see this picture again, with the loss contours drawn on top, in
+[regularization](#/l/ml-regularization).`),
+
+    t(`## High dimensions are strange, and you must plan for it
+
+Everything so far has been drawn in 2-D. Real vectors have 768 or 4096 entries, and your 2-D and 3-D intuitions
+will actively mislead you there. Three facts worth internalizing early:
+
+**1. Almost everything is orthogonal.** Pick two random directions in $\\mathbb{R}^d$. Their expected cosine
+similarity is $0$, with a spread of only about $1/\\sqrt{d}$. In 2-D that spread is 0.7 — random vectors are
+often quite aligned. In 1000-D it is 0.03 — random directions are, for all practical purposes, always
+perpendicular.
+
+**2. Volume flees to the shell.** In a high-dimensional ball, nearly all the volume sits in a thin skin near
+the surface. If you sample points uniformly from a 100-D ball, essentially none of them land near the middle.
+The "typical" point is not the average point.
+
+**3. Distances concentrate.** As $d$ grows, the distance from a query to its *nearest* neighbour and to its
+*farthest* neighbour converge toward each other. Ratios approach 1. This is what quietly breaks
+k-nearest-neighbours and any method that relies on "close" being meaningfully different from "far".`),
+
+    intuition(`Fact 1 sounds like bad news and is secretly the best news in the subject. If random directions are
+essentially always perpendicular, then a $d$-dimensional space can hold **vastly more than $d$** directions that
+are *nearly* orthogonal — exponentially more. So a model with 4096 neurons per layer is not limited to
+representing 4096 features; it can pack in far more, as long as it tolerates a little interference between them.
+
+That phenomenon has a name — **superposition** — and it is why interpretability is hard: a single neuron does
+not correspond to a single concept. There is a [whole lesson on it](#/l/fr-interpretability) later.`),
 
     code('Vectors in NumPy', `import numpy as np
 
@@ -143,6 +310,15 @@ for d in [2, 10, 100, 1000]:
        'Nothing — cosine similarity is undefined for different norms'],
       0,
       'Cosine measures **direction only**. High cosine with different magnitudes is extremely common in embeddings: token frequency and sequence length inflate norms without changing semantics. This is exactly why retrieval systems normalize before comparing.'),
+
+    recap(`- Read $\\mathbf{x} \\in \\mathbb{R}^d$ out loud as "a list of $d$ numbers", and know whether the
+  context wants the *point* reading or the *arrow* reading.
+- Compute a dot product, and read its **sign** as alignment: positive agrees, zero is orthogonal, negative opposes.
+- Explain why retrieval uses **cosine** rather than raw dot product.
+- Split any vector into "the part along $\\mathbf{b}$" plus "an orthogonal residual", and name three algorithms
+  built on that split.
+- Say why $L_1$ produces exact zeros and $L_2$ does not, pointing at the corners of a diamond.
+- State why 1000-dimensional space can hold far more than 1000 usable directions.`),
   ],
   refs: [
     book('Mathematics for Machine Learning', 'Deisenroth, Faisal & Ong', 2020, 'https://mml-book.github.io/', 'Free PDF. Chapters 2–3 cover this material properly, with ML motivation throughout. The best single reference for this track.'),
@@ -162,55 +338,213 @@ for d in [2, 10, 100, 1000]:
   prereq: ['math-vectors'],
   tags: ['linear algebra', 'matrices'],
   sections: [
+    tldr(`A matrix is a grid of numbers, but that is the least useful way to think about it. A matrix is a
+**function that moves space** — feed it a vector, get a different vector back, with the guarantee that
+straight lines stay straight and the origin stays put.
+
+Three properties tell you almost everything about a given matrix: its **determinant** (how much it scales
+area), its **rank** (how many dimensions survive the trip), and whether it is **invertible** (can you undo
+it?). All three are the same question asked three ways.
+
+By the end you will be able to explain, from first principles, why fine-tuning a 16-million-parameter weight
+matrix with only 65 thousand trainable numbers works.`),
+
+    jargon([
+      ['matrix', 'A rectangular grid of numbers. $A \\in \\mathbb{R}^{m\\times n}$ means $m$ rows, $n$ columns. In code: a 2-D array.'],
+      ['linear function / linear map', 'A function that respects addition and scaling — see below. "Linear" is a *restriction*, and matrices are exactly the functions that obey it.'],
+      ['basis vector $\\mathbf{e}_i$', 'The vector with a 1 in slot $i$ and 0 everywhere else. $\\mathbf{e}_1 = (1,0)$, $\\mathbf{e}_2 = (0,1)$. Think of them as the unit steps along each axis.'],
+      ['span', 'All the vectors you can reach by adding scaled copies of a given set. The span of one vector is a line; of two independent vectors, a plane.'],
+      ['rank', 'How many **independent directions** come out the other side of the matrix. A 2×2 matrix whose outputs all land on one line has rank 1.'],
+      ['determinant', 'The factor by which the matrix scales area (2-D) or volume (n-D). $\\det A = 0$ means everything got flattened.'],
+      ['transpose $A^{\\mathsf T}$', 'Flip the grid across its diagonal: rows become columns. `A.T` in NumPy.'],
+      ['outer product $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$', 'A column vector times a row vector, giving a whole *matrix*. Always rank 1. This is the atom that low-rank structure is built from.'],
+      ['weight matrix', 'In a neural network, the numbers a layer multiplies its input by. Training means adjusting them. A big language model is mostly a pile of these.'],
+      ['fine-tuning', 'Taking an already-trained model and nudging its weights to specialise it on a new task, rather than training from scratch.'],
+    ]),
+
     t(`## The shift in perspective
 
-You were probably taught matrix multiplication as a procedure: row times column, sum, repeat. That is *how* to compute
-it, and it tells you nothing about *what it is*.
+You were probably taught matrix multiplication as a procedure: row times column, sum, repeat. That is *how* to
+compute it, and it tells you nothing about *what it is*.
 
-Here is what it is. A matrix $A \\in \\mathbb{R}^{m\\times n}$ is a **linear function** from $\\mathbb{R}^n$ to $\\mathbb{R}^m$.
-"Linear" means exactly two things:
+Here is what it is. A matrix $A \\in \\mathbb{R}^{m\\times n}$ is a **function**. You hand it a list of $n$ numbers,
+it hands you back a list of $m$ numbers. Same as any function \`f(x)\` in code, but restricted to a particular
+well-behaved family.
+
+The restriction is called **linearity**, and it means exactly two things:
 
 $$A(\\mathbf{x}+\\mathbf{y}) = A\\mathbf{x} + A\\mathbf{y}, \\qquad A(c\\mathbf{x}) = cA\\mathbf{x}$$
 
-Geometrically: gridlines stay straight, parallel, and evenly spaced, and the origin stays put.`),
+In words: *processing the sum gives the same answer as summing the processed parts*, and *doubling the input
+doubles the output*. Notice what this rules out — no squaring, no thresholds, no if-statements. Linear functions
+are boring on purpose, and the payoff is that they are completely described by a finite grid of numbers.
 
-    key(`**The columns of $A$ are the images of the basis vectors.** $A\\mathbf{e}_1$ is the first column, $A\\mathbf{e}_2$
-the second, and so on. Once you know where the basis vectors land, linearity determines everything else:
-$A\\mathbf{x} = x_1 (\\text{col}_1) + x_2(\\text{col}_2) + \\cdots$
+Geometrically, linearity means: gridlines stay straight, stay parallel, and stay evenly spaced, and the origin
+never moves. A matrix can rotate, stretch, shear, reflect, and flatten space. It cannot bend it.`),
 
-This is the single most useful way to read a matrix. Matrix-vector multiplication is a **weighted sum of the columns**.`),
+    key(`**The columns of $A$ are the images of the basis vectors** — they tell you where the unit steps along
+each axis end up.
+
+$A\\mathbf{e}_1$ is exactly the first column of $A$. $A\\mathbf{e}_2$ is the second. Check this against the
+definition if it seems too convenient; it falls straight out.
+
+And once you know where $\\mathbf{e}_1$ and $\\mathbf{e}_2$ land, linearity forces everything else, because any
+vector is just a combination of them: $\\mathbf{x} = x_1\\mathbf{e}_1 + x_2\\mathbf{e}_2$, so
+
+$$A\\mathbf{x} = x_1 (\\text{col}_1) + x_2(\\text{col}_2) + \\cdots$$
+
+**Matrix-vector multiplication is a weighted sum of the columns.** This is the single most useful way to read a
+matrix, and it is not how the row-times-column recipe makes it look.`),
 
     viz('matrix-transform'),
 
     t(`## Matrix multiplication is function composition
 
-$AB$ means "do $B$, then do $A$." That immediately explains two things students find arbitrary:
+If a matrix is a function, then multiplying two of them should mean *chaining* them — and it does. $AB$ means
+"do $B$ first, then do $A$", the same right-to-left order as $f(g(x))$.
 
-- **Why it is not commutative**: rotating then stretching ≠ stretching then rotating. Try it in the figure by setting
-  a rotation preset and then editing the entries.
-- **Why the dimensions must match**: the output space of $B$ must be the input space of $A$.
+That one sentence dissolves two things that otherwise look like arbitrary rules:
+
+- **Why it is not commutative** ($AB \\ne BA$). Rotating a book 90° then flipping it is not the same as flipping
+  it then rotating. Function composition never commuted in the first place; matrices inherit that.
+- **Why the dimensions have to line up.** The output of $B$ is fed into $A$, so $B$'s output size must equal
+  $A$'s input size. Everything else about shape rules follows.`),
+
+    diagram('The shape rule, and why it is the only one you need to remember',
+`<svg viewBox="0 0 620 210" role="img" aria-label="Shape matching in a matrix product">
+  <rect x="40" y="50" width="120" height="90" rx="3" style="fill: color-mix(in srgb, var(--s1) 12%, transparent); stroke: var(--s1); stroke-width: 1.6"/>
+  <text class="dmono" x="100" y="100" text-anchor="middle" style="fill: var(--s1)">A</text>
+  <text class="dlabel" x="100" y="164" text-anchor="middle">m x k</text>
+  <text x="185" y="100" text-anchor="middle" style="font-size:19px; fill: var(--text-dim)">·</text>
+  <rect x="210" y="50" width="150" height="90" rx="3" style="fill: color-mix(in srgb, var(--s2) 12%, transparent); stroke: var(--s2); stroke-width: 1.6"/>
+  <text class="dmono" x="285" y="100" text-anchor="middle" style="fill: var(--s2)">B</text>
+  <text class="dlabel" x="285" y="164" text-anchor="middle">k x n</text>
+  <text x="388" y="100" text-anchor="middle" style="font-size:19px; fill: var(--text-dim)">=</text>
+  <rect x="415" y="50" width="150" height="90" rx="3" style="fill: color-mix(in srgb, var(--s3) 12%, transparent); stroke: var(--s3); stroke-width: 1.6"/>
+  <text class="dmono" x="490" y="100" text-anchor="middle" style="fill: var(--s3)">AB</text>
+  <text class="dlabel" x="490" y="164" text-anchor="middle">m x n</text>
+  <path d="M148,32 C165,14 250,14 268,32" style="fill:none; stroke: var(--s5); stroke-width: 1.6; stroke-dasharray: 4 3"/>
+  <text class="dtitle" x="208" y="16" text-anchor="middle" style="fill: var(--s5)">these must match — they cancel</text>
+  <text class="dlabel" x="310" y="196" text-anchor="middle">the two k's vanish; the outer dimensions m and n survive</text>
+</svg>`,
+      `Every shape bug you will ever hit in PyTorch is this diagram being violated. Write the shapes down,
+check the inner pair matches, and read off the result from the outer pair.`),
+
+    t(`Only *now* is the arithmetic formula worth writing down:
 
 $$(AB)_{ij} = \\sum_k A_{ik}B_{kj}$$
 
-The formula falls out of composing the two linear maps; it is a consequence, not a definition.`),
+"To get the entry in row $i$, column $j$ of the answer, walk along row $i$ of $A$ and column $j$ of $B$ in
+lockstep, multiplying and adding." This is a *consequence* of composing two linear maps, not the definition of
+anything. The figure below walks it through one cell at a time — and then shows you a second, less common
+reading of the same product that makes the next section obvious.`),
 
-    t(`## Determinant, rank, and invertibility
+    viz('matmul-walkthrough'),
 
-The **determinant** $\\det A$ is the signed factor by which the transformation scales area (in 2-D) or volume
-(in $n$-D). Watch it in the figure:
+    t(`## Determinant: how much does space get scaled?
 
-- $\\det A = 2$: areas double.
-- $\\det A < 0$: space was flipped over.
-- $\\det A = 0$: space was **squashed onto a lower-dimensional subspace**. Information was destroyed, and there is no
-  way back — the matrix is not invertible.
+Take the unit square — the little square spanned by $\\mathbf{e}_1$ and $\\mathbf{e}_2$, area 1. Push it through
+$A$. It becomes a parallelogram. **The determinant is that parallelogram's area.**
 
-The **rank** of $A$ is the dimension of its output space (the span of its columns). Full rank means nothing collapsed.
-Rank deficiency is not a pathology to avoid; it is a resource. Low-rank structure is why:
+- $\\det A = 2$: every region doubles in area.
+- $\\det A = 0.5$: everything shrinks by half.
+- $\\det A < 0$: space got flipped over — like turning a page. The magnitude still gives the area factor; the
+  minus sign records the flip.
+- $\\det A = 0$: the square was flattened to a line segment. Area zero.
 
-- **PCA** works — data that looks $d$-dimensional often lives near a $k$-dimensional subspace.
-- **LoRA** works — you can fine-tune a huge weight matrix by adding a rank-8 update, because the *change* needed is
-  low-rank even when the weights are not.
-- **Recommender systems** work — a user–item matrix is approximately rank-50.`),
+That last case is the important one. If two different inputs get squashed onto the same output, you cannot
+recover the input from the output — information was genuinely destroyed. So:
+
+$$\\det A = 0 \\iff A \\text{ is not invertible} \\iff A \\text{ collapsed at least one dimension}$$`),
+
+    t(`## Rank: how many dimensions survive?
+
+Determinant gives a yes/no answer to "did anything collapse?". **Rank** gives the detailed answer: *how many
+independent directions come out the other side.*
+
+Formally, the rank of $A$ is the dimension of the span of its columns. Concretely, for a 2×2 matrix:
+
+- **rank 2** — the plane maps onto the plane. Nothing lost.
+- **rank 1** — the entire plane maps onto a single *line*. Two dimensions in, one dimension out.
+- **rank 0** — everything maps to the origin. Only true of the zero matrix.
+
+Drag $\\sigma_2$ to zero in the figure below and watch the second case happen. That collapse *is* rank
+deficiency; there is nothing more to it.`),
+
+    viz('rank-collapse'),
+
+    warn(`Rank is a count of *directions*, not a measure of size. A matrix full of enormous numbers can have
+rank 1, and a matrix of tiny numbers can have full rank. And rank as a strict definition is brittle: change one
+entry by $10^{-9}$ and a rank-1 matrix becomes rank 2 on paper while behaving identically in practice.
+
+This is why you will constantly read "approximately low rank" or "effective rank" rather than plain "rank". What
+people mean is: *the singular values after the first few are so small they might as well be zero.* The
+[SVD lesson](#/l/math-eigen-svd) makes that precise.`),
+
+    t(`## Why low rank is a resource, not a defect
+
+The first time you meet rank deficiency it looks like a failure mode — a matrix that lost information. Flip it
+around: if a matrix's output only spans $r$ directions, then you do not need all $mn$ of its numbers to describe
+it. You need far fewer. **Low rank means compressible.**
+
+The precise statement: a rank-$r$ matrix can always be written as a sum of $r$ **outer products** — a column
+times a row:
+
+$$A = \\mathbf{u}_1\\mathbf{v}_1^{\\mathsf T} + \\mathbf{u}_2\\mathbf{v}_2^{\\mathsf T} + \\cdots + \\mathbf{u}_r\\mathbf{v}_r^{\\mathsf T}$$
+
+Each term $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$ is an $m\\times n$ *matrix* built from just $m + n$ numbers, and it is
+always rank 1 (every one of its rows is a multiple of $\\mathbf{v}$). Set the figure above to "sum of layers"
+if that has not clicked — the layers you stepped through were exactly these outer products.
+
+Stack $r$ of them and the storage cost is $r(m+n)$ instead of $mn$. When $r$ is small and $m, n$ are large, that
+is an enormous saving.`),
+
+    viz('low-rank-approx'),
+
+    t(`### Three places this pays off
+
+**PCA.** Data that arrives as 1000 measurements often really varies along 10 underlying factors. The data
+matrix is approximately rank 10, and PCA finds those 10 directions. [Covered later](#/l/math-eigen-svd).
+
+**Recommender systems.** A user–item rating matrix might be 10⁶ users × 10⁵ films, but it is well approximated
+at rank ~50: there really are only about 50 independent "tastes" driving everyone's ratings. Netflix's
+recommender was, essentially, this observation.
+
+**LoRA — fine-tuning giant models cheaply.** This one is worth doing slowly, because it is the most-cited
+practical consequence of everything above.`),
+
+    steps('LoRA, derived from what you now know', [
+      { h: 'Start with the problem', md: `A pretrained language model contains weight matrices $W$ of size, say, $4096 \\times 4096$. That is $4096^2 = 16{,}777{,}216$ numbers — in **one** matrix, and a model has hundreds of them. To fine-tune the model on your task the obvious approach is to update every one of those numbers, which needs GPU memory for the weights, their gradients, and the optimizer's bookkeeping. Expensive.` },
+      { h: 'Notice you only need the change', md: `Fine-tuning does not replace $W$; it nudges it. Write the nudge explicitly:  $W_{\\text{new}} = W_{\\text{pretrained}} + \\Delta W$. The pretrained part is frozen — you never touch it. All you actually have to learn is $\\Delta W$.` },
+      { h: 'Make the bet', md: `Here is the hypothesis, and it is an empirical one: **$\\Delta W$ is approximately low rank.** Adapting a general model to legal documents or to a chat style is a *focused* change, moving weights along a handful of directions rather than all 4096. The pretrained weights themselves are full rank — the bet is only about the update.` },
+      { h: 'Store the change as two skinny matrices', md: `If $\\Delta W$ has rank $r$, factor it: $\\Delta W = BA$ with $B \\in \\mathbb{R}^{4096 \\times r}$ (tall and thin) and $A \\in \\mathbb{R}^{r \\times 4096}$ (short and wide). Train $A$ and $B$; leave $W$ alone.` },
+      { h: 'Count the parameters', md: `With $r = 8$: $B$ holds $4096 \\times 8 = 32{,}768$ numbers and $A$ holds another $32{,}768$, for **65,536** trainable parameters versus 16.8 million. That is **0.4%** — a 256× reduction, from the single observation that a rank-8 matrix does not need $4096^2$ numbers to write down.` },
+      { h: 'Note the free bonus', md: `Because $W$ is untouched, one base model can serve many tasks: keep a 65k-parameter $(A, B)$ pair per task and swap them at inference. And since $\\Delta W = BA$ is just a matrix, you can add it back into $W$ when you are done, so deployment costs nothing extra.` },
+    ]),
+
+    diagram('Full fine-tuning vs. LoRA, drawn to scale',
+`<svg viewBox="0 0 620 250" role="img" aria-label="A full weight matrix compared with two skinny LoRA factors">
+  <rect x="35" y="45" width="150" height="150" rx="3" style="fill: color-mix(in srgb, var(--s6) 16%, transparent); stroke: var(--s6); stroke-width: 1.8"/>
+  <text class="dmono" x="110" y="115" text-anchor="middle" style="fill: var(--s6)">delta W</text>
+  <text class="dlabel" x="110" y="136" text-anchor="middle">4096 x 4096</text>
+  <text class="dtitle" x="110" y="30" text-anchor="middle">full fine-tuning</text>
+  <text class="dlabel" x="110" y="220" text-anchor="middle" style="fill: var(--s6)">16,777,216 trained</text>
+
+  <text x="235" y="120" text-anchor="middle" style="font-size:17px; fill: var(--text-dim)">≈</text>
+
+  <rect x="285" y="45" width="22" height="150" rx="2" style="fill: color-mix(in srgb, var(--s1) 22%, transparent); stroke: var(--s1); stroke-width: 1.8"/>
+  <text class="dmono" x="296" y="120" text-anchor="middle" style="fill: var(--s1)">B</text>
+  <text class="dlabel" x="296" y="212" text-anchor="middle">4096 x 8</text>
+  <text x="325" y="120" text-anchor="middle" style="font-size:17px; fill: var(--text-dim)">·</text>
+  <rect x="345" y="109" width="150" height="22" rx="2" style="fill: color-mix(in srgb, var(--s3) 22%, transparent); stroke: var(--s3); stroke-width: 1.8"/>
+  <text class="dmono" x="420" y="121" text-anchor="middle" style="fill: var(--s3)">A</text>
+  <text class="dlabel" x="420" y="150" text-anchor="middle">8 x 4096</text>
+  <text class="dtitle" x="390" y="30" text-anchor="middle">LoRA, rank 8</text>
+  <text class="dlabel" x="390" y="220" text-anchor="middle" style="fill: var(--s3)">65,536 trained — 0.4%</text>
+</svg>`,
+      `The picture is the argument. The blue sliver and the green strip, multiplied together, produce something
+the same *shape* as the big square — but they are described by 256× fewer numbers. Whether that is *enough*
+description for your task is an empirical question, and for fine-tuning the answer is usually yes.`),
 
     t(`## Special matrices worth recognizing on sight
 
@@ -222,8 +556,18 @@ Rank deficiency is not a pathology to avoid; it is a resource. Low-rank structur
 | Diagonal | zero off-diagonal | Independent scaling per axis. Trivial to invert. |
 | Low-rank | $\\text{rank} \\ll \\min(m,n)$ | Compressible: $A \\approx UV^{\\mathsf T}$ with skinny $U, V$. |
 
-**The transpose** $A^{\\mathsf T}$ swaps rows and columns, and the identity $(\\mathbf{x}, A\\mathbf{y}) = (A^{\\mathsf T}\\mathbf{x}, \\mathbf{y})$
-is what makes backpropagation work: the backward pass through a linear layer multiplies by $W^{\\mathsf T}$.`),
+($I$ is the **identity matrix** — ones down the diagonal, zeros elsewhere. It is the do-nothing function:
+$I\\mathbf{x} = \\mathbf{x}$. The symbol $\\forall$ reads "for all". $\\ll$ means "much smaller than".)
+
+### The transpose, and why backprop is full of them
+
+$A^{\\mathsf T}$ just swaps rows and columns — \`A.T\` in NumPy, a $3\\times 5$ matrix becoming $5 \\times 3$. The
+reason it shows up everywhere is this identity:
+
+$$(\\mathbf{x},\\, A\\mathbf{y}) = (A^{\\mathsf T}\\mathbf{x},\\, \\mathbf{y})$$
+
+which says you can move a matrix from one side of a dot product to the other by transposing it. That is exactly
+the move backpropagation needs: the backward pass through a linear layer multiplies by $W^{\\mathsf T}$.`),
 
     intuition(`When you see $W^{\\mathsf T}\\delta$ in a backprop derivation, do not read it as "the transpose for algebraic
 reasons." Read it as: *the forward pass sent information from layer $\\ell$ to layer $\\ell+1$ through $W$; the backward
@@ -263,6 +607,23 @@ print("all outputs parallel to u?",
        'The same number; LoRA only changes the optimizer'],
       0,
       'LoRA writes $\\Delta W = BA$ with $B \\in \\mathbb{R}^{4096\\times 8}$ and $A \\in \\mathbb{R}^{8 \\times 4096}$, so $2 \\times 4096 \\times 8 = 65{,}536$ trainable parameters against $4096^2 = 16.8$M. The bet — empirically a good one — is that the *update* a task needs is low-rank even though the pretrained weights are not.'),
+
+    quiz('A 5×5 matrix has rank 2. Which of these is guaranteed?',
+      ['It can be written as the sum of exactly 2 outer products $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$, and its determinant is 0',
+       'All of its entries are small',
+       'It is invertible, but the inverse is hard to compute numerically',
+       'It has exactly 2 nonzero entries'],
+      0,
+      'Rank counts **surviving directions**, not magnitudes or nonzeros. Rank 2 in a 5-dimensional space means three dimensions were flattened, so volume is destroyed and $\\det = 0$ — no inverse exists. And rank $r$ is precisely the statement "expressible as $r$ outer products", which is what makes it a compression claim: $2(5+5) = 20$ numbers instead of 25. Scale that gap up to 4096×4096 and you have LoRA.'),
+
+    recap(`- Describe a matrix as a **function that moves space**, and say what linearity forbids (bending,
+  thresholds, moving the origin).
+- Read a matrix's columns as "where the basis vectors land", and matrix-vector products as **weighted sums of
+  columns**.
+- Explain $AB \\neq BA$ and the inner-dimension shape rule as facts about **function composition**.
+- Say what $\\det A = 0$ means physically (space got flattened, information destroyed, no inverse).
+- Define **rank** as the number of surviving directions, and connect it to outer products.
+- Derive LoRA's parameter count yourself, and state the empirical bet it rests on.`),
   ],
   refs: [
     video('Linear transformations and matrices', '3Blue1Brown', 2016, 'https://www.youtube.com/watch?v=kYB8IZa5AuE', 'The single best five minutes on why columns are the images of basis vectors.'),
@@ -281,28 +642,96 @@ print("all outputs parallel to u?",
   prereq: ['math-matrices'],
   tags: ['linear algebra', 'SVD', 'PCA'],
   sections: [
+    tldr(`Some matrices have special directions along which they only *stretch* — no rotation. Those directions
+are **eigenvectors**, the stretch factors are **eigenvalues**, and finding them turns a complicated matrix into
+a list of independent one-dimensional problems.
+
+The **SVD** is the version of that idea that works for *every* matrix, with no exceptions. It says any linear
+map is nothing more than: rotate, stretch along axes, rotate again. Truncating the small stretches gives the
+provably best low-rank approximation — which is why the same three letters show up behind PCA, image
+compression, recommender systems, and LoRA.`),
+
+    jargon([
+      ['eigenvector', 'A direction that a matrix does not turn — it only lengthens or shortens it. "Eigen" is German for "own"; these are the matrix\'s *own* natural axes.'],
+      ['eigenvalue $\\lambda$', 'The stretch factor along an eigenvector. $\\lambda = 2$ doubles it; $\\lambda = -1$ flips it; $|\\lambda| < 1$ shrinks it.'],
+      ['symmetric matrix', '$A = A^{\\mathsf T}$ — the grid is a mirror image across its diagonal. Covariance matrices and Hessians are always symmetric, which is lucky, because symmetric matrices behave far better than general ones.'],
+      ['singular value $\\sigma_i$', 'Like an eigenvalue, but always real and non-negative, and defined for *any* matrix — even non-square ones. It measures how much the matrix stretches along the $i$-th special direction.'],
+      ['SVD', 'Singular Value Decomposition. Splitting any matrix $A$ into $U\\Sigma V^{\\mathsf T}$ = rotate, stretch, rotate. `np.linalg.svd`.'],
+      ['orthogonal matrix', 'A matrix that only rotates and reflects — never stretches. Preserves all lengths and angles. Its inverse is just its transpose, which is a free lunch.'],
+      ['spectrum', 'The list of eigenvalues (or singular values) of a matrix. "Spectral" as an adjective always means "about that list".'],
+      ['covariance matrix', 'For a dataset, the grid of "how much do features $i$ and $j$ vary together". Its eigenvectors are the directions the data spreads out along.'],
+      ['Hessian', 'The matrix of second derivatives of a loss. It describes the *curvature* of the loss surface — how bowl-shaped it is, and in which directions.'],
+      ['condition number $\\kappa$', 'Biggest stretch divided by smallest, $\\sigma_1/\\sigma_r$. A large $\\kappa$ means the problem is numerically delicate and gradient descent will crawl.'],
+    ]),
+
     t(`## Eigenvectors: the axes of a transformation
 
-Most vectors get rotated *and* stretched by a matrix. A few special ones only get stretched:
+Push a random vector through a matrix and two things generally happen: it gets rotated to point somewhere new,
+*and* it gets stretched. A few special vectors get only the second treatment — they come out pointing along the
+same line they went in on:
 
 $$A\\mathbf{v} = \\lambda \\mathbf{v}$$
 
-$\\mathbf{v}$ is an **eigenvector**, $\\lambda$ its **eigenvalue**. These are the natural axes of the transformation —
-along them, the matrix acts like plain multiplication by a number.
+Read that equation carefully. The left side is "apply the whole matrix to $\\mathbf{v}$", a real piece of work.
+The right side is "multiply $\\mathbf{v}$ by a single number". For these particular directions, a matrix — with
+all $n^2$ of its entries — collapses into one scalar.
 
-Go back to the [matrix transformation figure](#/l/math-matrices) and watch the thick arrows: they are the eigenvectors,
-and they stay on their own line no matter what you do to the other entries (until the eigenvalues become complex,
-which is what happens for rotations — nothing stays put under a rotation, and that is exactly why).`),
+$\\mathbf{v}$ is an **eigenvector** and $\\lambda$ is its **eigenvalue**. Note that eigenvectors come in
+families: if $\\mathbf{v}$ works then so does $3\\mathbf{v}$, so what really matters is the *direction*, and by
+convention we normalise them to length 1.
+
+Go back to the [matrix transformation figure](#/l/math-matrices) and watch the thick arrows — those are the
+eigenvectors, and they stay on their own line no matter what you do to the other entries. Until, that is, you
+build a rotation, at which point they vanish: under a pure rotation *nothing* stays on its own line, and the
+eigenvalues become complex numbers. That is not a technicality, it is the geometry telling you the truth.`),
+
+    diagram('Eigenvector vs. ordinary vector, under the same matrix',
+`<svg viewBox="0 0 620 210" role="img" aria-label="An eigenvector stays on its line while an ordinary vector rotates">
+  <defs>
+    <marker id="ei1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--text-faint)"/></marker>
+    <marker id="ei2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--s1)"/></marker>
+    <marker id="ei3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--s3)"/></marker>
+  </defs>
+  <g transform="translate(30,0)">
+    <line x1="30" y1="160" x2="250" y2="160" style="stroke: var(--border)"/><line x1="30" y1="160" x2="30" y2="30" style="stroke: var(--border)"/>
+    <line x1="30" y1="160" x2="120" y2="100" style="stroke: var(--text-faint); stroke-width: 2; stroke-dasharray: 4 3" marker-end="url(#ei1)"/>
+    <line x1="30" y1="160" x2="200" y2="60" style="stroke: var(--s1); stroke-width: 2.6" marker-end="url(#ei2)"/>
+    <text class="dlabel" x="126" y="96" style="fill: var(--text-faint)">x</text>
+    <text class="dlabel" x="206" y="56" style="fill: var(--s1)">Ax</text>
+    <text class="dtitle" x="30" y="190" style="fill: var(--s1)">ordinary vector: turned AND stretched</text>
+  </g>
+  <g transform="translate(340,0)">
+    <line x1="30" y1="160" x2="250" y2="160" style="stroke: var(--border)"/><line x1="30" y1="160" x2="30" y2="30" style="stroke: var(--border)"/>
+    <line x1="30" y1="160" x2="240" y2="55" style="stroke: var(--s3); stroke-width: 1; stroke-dasharray: 2 4"/>
+    <line x1="30" y1="160" x2="110" y2="120" style="stroke: var(--text-faint); stroke-width: 2; stroke-dasharray: 4 3" marker-end="url(#ei1)"/>
+    <line x1="30" y1="160" x2="230" y2="60" style="stroke: var(--s3); stroke-width: 2.6" marker-end="url(#ei3)"/>
+    <text class="dlabel" x="114" y="116" style="fill: var(--text-faint)">v</text>
+    <text class="dlabel" x="236" y="56" style="fill: var(--s3)">Av = 2.5v</text>
+    <text class="dtitle" x="30" y="190" style="fill: var(--s3)">eigenvector: same line, just longer</text>
+  </g>
+</svg>`,
+      `The dotted line on the right is the point: the eigenvector never leaves it. Everything a matrix does can
+be described as "stretch by $\\lambda_i$ along each of these lines" — provided enough such lines exist, which
+is exactly the caveat the SVD removes.`),
 
     t(`### Why they matter in practice
 
-Repeatedly applying $A$ is trivial in the eigenbasis: $A^k\\mathbf{v} = \\lambda^k\\mathbf{v}$. So:
+The payoff is repeated application. Applying $A$ a hundred times to a general vector is a hundred matrix
+multiplies. Applying it to an eigenvector is one exponentiation: $A^k\\mathbf{v} = \\lambda^k\\mathbf{v}$. And
+since any vector decomposes into eigenvectors, *every* repeated-application question reduces to asking what
+$\\lambda^k$ does.
 
-- **Stability**: a recurrent network's hidden state is roughly $h_t \\approx W^t h_0$. If the largest $|\\lambda| > 1$
-  the state explodes; if $< 1$ it decays. That single fact is the vanishing/exploding gradient problem.
-- **Curvature**: the eigenvalues of the Hessian are the curvatures of the loss surface along its principal axes. Their
-  ratio, the **condition number**, determines how badly gradient descent zig-zags.
-- **Variance**: the eigenvectors of the covariance matrix are the principal components.`),
+That one observation explains three separate things you will meet later:
+
+- **Stability of recurrent networks.** An RNN's hidden state evolves roughly as $h_t \\approx W^t h_0$. If the
+  largest $|\\lambda| > 1$, then $\\lambda^t$ blows up and the state explodes; if $|\\lambda| < 1$ it decays to
+  nothing. There is no comfortable middle. That is the entire vanishing/exploding gradient problem, stated in
+  one line.
+- **Curvature of a loss surface.** The eigenvalues of the Hessian are how sharply the loss curves along each
+  principal direction — big $\\lambda$ means a narrow steep valley, small $\\lambda$ a flat plain. Their ratio,
+  the **condition number**, determines how badly gradient descent zig-zags.
+- **Directions of variance.** The eigenvectors of a covariance matrix are the directions your data actually
+  spreads along, which is precisely what PCA computes.`),
 
     viz('quadratic-form'),
 
@@ -316,26 +745,78 @@ $\\mathbf{x}^{\\mathsf T}A\\mathbf{x}$ to be a bowl with a unique minimum.`),
 
     t(`## SVD: the decomposition that always exists
 
-Eigendecomposition needs a square matrix, and even then may not exist over the reals. The **singular value
-decomposition** has no such caveats. *Every* matrix — square or not, any rank — factors as:
+Eigenvectors are wonderful when they exist. The problem is that they often don't. Eigendecomposition needs a
+*square* matrix — so a 50×3 data matrix is out immediately — and even for square matrices the eigenvectors may
+be complex, or there may not be enough of them to span the space.
+
+The **singular value decomposition** has none of those caveats. *Every* matrix — square or not, full rank or
+not, real or complex — factors as:
 
 $$A = U\\Sigma V^{\\mathsf T}$$
 
-with $U$ and $V$ orthogonal and $\\Sigma$ diagonal with non-negative entries $\\sigma_1 \\ge \\sigma_2 \\ge \\cdots \\ge 0$.
+Here $U$ and $V$ are **orthogonal** (pure rotations/reflections — they never stretch anything) and $\\Sigma$ is
+**diagonal** with non-negative entries $\\sigma_1 \\ge \\sigma_2 \\ge \\cdots \\ge 0$ running down it, sorted
+largest first. Reading right to left, in the order the operations apply to a vector:
 
-In words: **every linear map is a rotation, then an axis-aligned stretch, then another rotation.** Nothing else is
-possible. That is a remarkable structural fact about linear algebra.`),
+**every linear map is a rotation, then a stretch along the axes, then another rotation.** That is all a matrix
+can ever do. No exceptions, no fine print — which is a genuinely surprising structural fact.`),
+
+    diagram('SVD as three moves: rotate, stretch, rotate',
+`<svg viewBox="0 0 660 190" role="img" aria-label="A circle rotated, stretched into an ellipse, then rotated again">
+  <g transform="translate(20,20)">
+    <circle cx="60" cy="60" r="42" style="fill: color-mix(in srgb, var(--s1) 14%, transparent); stroke: var(--s1); stroke-width: 2"/>
+    <line x1="60" y1="60" x2="102" y2="60" style="stroke: var(--s2); stroke-width: 2"/>
+    <line x1="60" y1="60" x2="60" y2="18" style="stroke: var(--s3); stroke-width: 2"/>
+    <text class="dtitle" x="60" y="140" text-anchor="middle">the input</text>
+    <text class="dlabel" x="60" y="157" text-anchor="middle">a unit circle</text>
+  </g>
+  <text x="148" y="80" text-anchor="middle" class="dmono" style="fill: var(--text-dim)">V-transpose</text>
+  <text x="148" y="98" text-anchor="middle" class="dlabel">rotate</text>
+  <g transform="translate(190,20)">
+    <circle cx="60" cy="60" r="42" style="fill: color-mix(in srgb, var(--s1) 14%, transparent); stroke: var(--s1); stroke-width: 2"/>
+    <line x1="60" y1="60" x2="90" y2="30" style="stroke: var(--s2); stroke-width: 2"/>
+    <line x1="60" y1="60" x2="30" y2="30" style="stroke: var(--s3); stroke-width: 2"/>
+    <text class="dtitle" x="60" y="140" text-anchor="middle">axes aligned</text>
+    <text class="dlabel" x="60" y="157" text-anchor="middle">shape unchanged</text>
+  </g>
+  <text x="318" y="80" text-anchor="middle" class="dmono" style="fill: var(--text-dim)">Sigma</text>
+  <text x="318" y="98" text-anchor="middle" class="dlabel">stretch</text>
+  <g transform="translate(355,20)">
+    <ellipse cx="70" cy="60" rx="62" ry="26" style="fill: color-mix(in srgb, var(--s4) 14%, transparent); stroke: var(--s4); stroke-width: 2"/>
+    <line x1="70" y1="60" x2="132" y2="60" style="stroke: var(--s2); stroke-width: 2"/>
+    <line x1="70" y1="60" x2="70" y2="34" style="stroke: var(--s3); stroke-width: 2"/>
+    <text class="dtitle" x="70" y="140" text-anchor="middle">stretched</text>
+    <text class="dlabel" x="70" y="157" text-anchor="middle">by sigma-1 and sigma-2</text>
+  </g>
+  <text x="516" y="80" text-anchor="middle" class="dmono" style="fill: var(--text-dim)">U</text>
+  <text x="516" y="98" text-anchor="middle" class="dlabel">rotate</text>
+  <g transform="translate(548,20)">
+    <ellipse cx="55" cy="60" rx="55" ry="24" transform="rotate(-28 55 60)" style="fill: color-mix(in srgb, var(--s4) 14%, transparent); stroke: var(--s4); stroke-width: 2"/>
+    <text class="dtitle" x="55" y="140" text-anchor="middle">the output</text>
+    <text class="dlabel" x="55" y="157" text-anchor="middle">A times the circle</text>
+  </g>
+</svg>`,
+      `Read right to left when applying it to a vector, which is why $V^{\\mathsf T}$ comes first: $A\\mathbf{x} =
+U(\\Sigma(V^{\\mathsf T}\\mathbf{x}))$. The middle step is where all the interesting behaviour lives — the two
+rotations never destroy anything, so **only $\\Sigma$ can flatten a dimension**. A singular value of zero is
+exactly a lost dimension, which reconnects this to rank.`),
 
     viz('svd-demo'),
 
     t(`## Low-rank approximation, and why it is everywhere
 
-Write the SVD as a sum of rank-1 pieces:
+Multiply the SVD out and it becomes a sum of rank-1 pieces — the same outer-product layers from
+[the matrices lesson](#/l/math-matrices), now with explicit weights attached:
 
-$$A = \\sum_{i=1}^{r} \\sigma_i\\, \\mathbf{u}_i \\mathbf{v}_i^{\\mathsf T}$$
+$$A = \\sigma_1 \\mathbf{u}_1 \\mathbf{v}_1^{\\mathsf T} + \\sigma_2 \\mathbf{u}_2 \\mathbf{v}_2^{\\mathsf T} + \\cdots + \\sigma_r \\mathbf{u}_r \\mathbf{v}_r^{\\mathsf T}$$
 
-Keep only the largest $k$ terms and you get $A_k$, the **best rank-$k$ approximation of $A$ in both Frobenius and
-spectral norm** (the Eckart–Young theorem). Not a good one — the provably optimal one.
+The $\\sigma_i$ are sorted big to small, so this is a list of layers *ordered by importance*. The first layer
+carries the most structure, the last carries the least.
+
+Now truncate: throw away everything after the $k$-th term. The result $A_k$ is not merely a decent rank-$k$
+approximation of $A$ — it is the **provably optimal one**, the closest any rank-$k$ matrix can get, measured in
+either the Frobenius or the spectral norm. That is the **Eckart–Young theorem**, and "provably optimal" is
+doing real work in that sentence: it means no cleverer factorization exists, so you can stop looking.
 
 This single theorem underwrites:
 
@@ -348,9 +829,33 @@ This single theorem underwrites:
 | LoRA | The *update* to a weight matrix, constrained to rank $r$ |
 | Model compression | Weight matrices factored into two skinny ones |
 
-The **condition number** $\\kappa = \\sigma_1/\\sigma_r$ measures numerical sensitivity: how much a small perturbation of
-the input can change the output. Large $\\kappa$ means an ill-conditioned problem, slow optimization, and unreliable
-solutions.`),
+Every row of that table is the same move: *look at the singular values, notice they decay fast, keep the first
+few.* Whether the object is a photo, a ratings table, or a weight matrix changes nothing about the mathematics.`),
+
+    key(`**The singular value spectrum is a diagnostic you can run on any matrix.** Plot $\\sigma_1, \\sigma_2,
+\\ldots$ in order:
+
+- A sharp **cliff** after a few values ⇒ genuine low-dimensional structure. Compress aggressively; the data
+  really only varies in $k$ directions.
+- A **slow, smooth decay** ⇒ no free lunch. The data fills its space and truncating will cost you real
+  information.
+
+This is the first thing to check before assuming PCA, a low-rank factorization, or a small LoRA rank will work
+for your problem. The code block below prints exactly this.`),
+
+    t(`### One more thing the spectrum tells you: conditioning
+
+The **condition number** is the ratio of the largest to the smallest singular value:
+
+$$\\kappa = \\frac{\\sigma_1}{\\sigma_r}$$
+
+It measures how much a small wobble in the input can be amplified into a large wobble in the output. If
+$\\kappa = 10^6$, then six digits of precision in your input can be entirely eaten by the matrix, and solving
+$A\\mathbf{x} = \\mathbf{b}$ will give you an answer you should not trust.
+
+For optimization the interpretation is even more concrete: a large $\\kappa$ means the loss surface is a long
+narrow valley, and plain gradient descent will bounce off the steep walls while barely moving along the floor.
+Momentum, Adam, and normalization layers all exist largely to fight this.`),
 
     deriv('Connecting SVD to eigendecomposition', `Consider $A^{\\mathsf T}A$, which is symmetric and positive semi-definite:
 
@@ -405,6 +910,15 @@ for _ in range(5):
        'Nothing in particular — eigenvalues do not affect gradient descent'],
       0,
       'The condition number is $\\kappa = 1000$. Stability requires $\\eta < 2/\\lambda_{\\max} = 0.02$, but with that $\\eta$ the flat direction moves at rate $\\eta\\lambda_{\\min} = 0.002$ per step. Convergence takes $O(\\kappa)$ iterations. This is precisely what momentum, Adam, and normalization layers exist to mitigate — try it yourself in the [gradient descent figure](#/l/math-optimization).'),
+
+    recap(`- State the eigenvector equation $A\\mathbf{v} = \\lambda\\mathbf{v}$ and say in words why it is
+  remarkable (a whole matrix collapsing to one number, along one direction).
+- Explain vanishing/exploding gradients as a statement about $\\lambda^t$.
+- Recite the SVD as "rotate, stretch, rotate", and say why it exists for every matrix when eigendecomposition
+  does not.
+- Read a singular value spectrum and decide whether low-rank compression will work for your data.
+- Say what Eckart–Young guarantees, and why "provably optimal" saves you from searching for a better method.
+- Explain what a large condition number does to gradient descent.`),
   ],
   refs: [
     paper('The approximation of one matrix by another of lower rank', 'Eckart & Young', 1936, 'https://doi.org/10.1007/BF02288367', 'The original optimality theorem for truncated SVD.'),
@@ -423,29 +937,61 @@ for _ in range(5):
   mins: 25, level: 'foundations',
   tags: ['calculus', 'gradients'],
   sections: [
+    tldr(`Training a model means repeatedly asking one question: *if I nudge this parameter slightly, does the
+loss go up or down, and by how much?* The **derivative** is the answer for one parameter; the **gradient** is
+the answer for all of them at once, packaged as a vector.
+
+The gradient has a property that makes the whole enterprise work: it points in the direction of steepest
+increase. So to make the loss go down, step the other way. That is the entirety of gradient descent, and
+everything else in optimization is an argument about how big the step should be.`),
+
+    jargon([
+      ['derivative $f\'(x)$', 'The slope of $f$ at the point $x$. How fast the output moves when you wiggle the input.'],
+      ['partial derivative $\\partial f/\\partial x_i$', 'The slope with respect to *one* input while all the others are held frozen. The curly $\\partial$ instead of $d$ is the only thing signalling "there are other variables around".'],
+      ['gradient $\\nabla f$', 'All the partial derivatives collected into one vector, in the same order as the inputs. Pronounced "grad f"; the $\\nabla$ symbol is called *nabla* or *del*. Same shape as the parameter vector.'],
+      ['$\\lim_{h\\to 0}$', '"What value does this expression approach as $h$ shrinks toward zero?" A way of saying "infinitely small nudge" without dividing by literal zero.'],
+      ['level set / contour', 'The set of points where $f$ has the same value — the rings on a topographic map.'],
+      ['chain rule', 'How to differentiate nested functions. Derivatives of the pieces get *multiplied* together.'],
+      ['Hessian', 'The matrix of all second derivatives. Describes curvature: how the slope itself is changing.'],
+      ['saddle point', 'A place where the gradient is zero but it is neither a peak nor a valley — uphill in some directions, downhill in others. Like the middle of a horse saddle, or a mountain pass.'],
+      ['Taylor series', 'Approximating a curvy function near a point by a polynomial: a line, then a parabola, then a cubic, each one closer.'],
+    ]),
+
     t(`## What a derivative is
 
 $$f'(x) = \\lim_{h\\to 0}\\frac{f(x+h)-f(x)}{h}$$
 
-Three readings, all correct, all useful:
+Unpack that fraction before worrying about the limit. $f(x+h) - f(x)$ is "how much the output changed"; $h$ is
+"how much the input changed". Their ratio is rise over run — a slope. The $\\lim_{h\\to 0}$ says: shrink the run
+toward nothing, so the answer describes the function *at the point* rather than over an interval.
 
-1. **Slope** of the tangent line at $x$.
-2. **Rate of change**: "if I nudge $x$ by $\\epsilon$, $f$ changes by about $f'(x)\\epsilon$."
-3. **Best local linear approximation**: $f(x+h) \\approx f(x) + f'(x)h$.
+There are three ways to read the result, all correct, and you want all three available:
 
-Reading 3 is the one that generalizes and the one that matters for optimization.`),
+1. **Slope** of the tangent line at $x$. The picture.
+2. **Rate of change**: "if I nudge $x$ by a small $\\epsilon$, $f$ changes by about $f'(x)\\,\\epsilon$." The
+   sentence you say out loud.
+3. **Best local linear approximation**: $f(x+h) \\approx f(x) + f'(x)h$. The one that generalizes.
+
+Reading 3 is the one that survives into higher dimensions and the one optimization actually uses. It says:
+*near this point, pretend the function is a straight line — this is the right straight line.* Every gradient
+step you will ever take is a bet on that pretence being good enough over the distance you moved.`),
 
     viz('derivative-tangent'),
 
     t(`## Gradients: derivatives in many variables
 
-For $f: \\mathbb{R}^d \\to \\mathbb{R}$ (a loss function, say), the **gradient** collects all the partial derivatives:
+A neural network's loss does not depend on one number, it depends on millions. So we need a derivative per
+parameter. For $f: \\mathbb{R}^d \\to \\mathbb{R}$ — read that as "takes $d$ numbers, returns one number", which
+is exactly the type of a loss function — the **gradient** collects them all:
 
 $$\\nabla f(\\mathbf{x}) = \\left(\\frac{\\partial f}{\\partial x_1},\\ \\ldots,\\ \\frac{\\partial f}{\\partial x_d}\\right)$$
 
-Each partial answers "how does $f$ change if I move along axis $i$ and hold everything else fixed?"
+Each **partial derivative** $\\partial f/\\partial x_i$ answers a narrow question: "how does $f$ change if I move
+along axis $i$ only, holding every other coordinate fixed?" On its own that is unremarkable — it is just an
+ordinary derivative with the other variables treated as constants.
 
-Assembled into a vector, the gradient acquires two properties that are not obvious from the definition:`),
+The interesting thing is what happens when you stack them into a vector. The gradient then acquires two
+properties that are not at all obvious from the definition, and both are load-bearing:`),
 
     key(`1. **$\\nabla f$ points in the direction of steepest ascent**, and $\\|\\nabla f\\|$ is how steep.
 2. **$\\nabla f$ is perpendicular to the level set** (contour line) through that point.
@@ -470,41 +1016,81 @@ so $\\nabla f\\cdot\\mathbf{u}=0$ — the gradient is orthogonal to every direct
 
     t(`## The chain rule is the whole of backpropagation
 
-For composed functions, derivatives multiply:
+Real models are functions inside functions inside functions. The chain rule tells you how to differentiate
+those, and the punchline is that the derivatives **multiply**:
 
 $$\\frac{d}{dx}g(h(x)) = g'(h(x))\\cdot h'(x)$$
 
-A neural network is a deep composition $f_L \\circ f_{L-1}\\circ\\cdots\\circ f_1$, so the gradient with respect to an
-early parameter is a **product of many local derivatives**. That product structure explains almost every training
-pathology you will encounter:`),
+The sentence version: *how sensitive the final output is to $x$* equals *how sensitive $g$ is to its input*
+times *how sensitive $h$ is to $x$*. Sensitivities compound, the same way percentage changes compound.
+
+A neural network is a deep composition — layer $L$ applied to layer $L-1$ applied to … applied to the input. So
+the gradient with respect to an *early* parameter is a product of many local derivatives, one per layer it has
+to travel back through. That product structure is not a detail; it explains almost every training pathology you
+will ever meet.`),
 
     viz('chain-rule'),
 
-    warn(`If each factor is slightly less than 1, the product decays exponentially with depth — **vanishing gradients**,
-and early layers stop learning. If each is slightly more than 1, it explodes. Neither is a bug in the algorithm; it is
-arithmetic. The fixes (careful initialization, normalization layers, residual connections) all work by controlling
-the magnitude of those factors.`),
+    warn(`Multiplying many numbers together is unstable in a way that adding them is not.
+
+If each factor in the chain is slightly less than 1 — say 0.8 — then after 30 layers the product is
+$0.8^{30} \\approx 0.001$. The gradient reaching the early layers is a thousandth of what the late layers see,
+so they barely learn. These are **vanishing gradients**. If each factor is slightly more than 1, the same
+arithmetic runs the other way and the gradient explodes into \`NaN\`.
+
+Neither is a bug in backpropagation. It is what exponentials do. Every fix you will meet — careful
+initialization, normalization layers, residual connections, ReLU instead of sigmoid — is ultimately a scheme
+for keeping those per-layer factors near 1.`),
 
     t(`## Second derivatives: curvature
 
-The **Hessian** $H_{ij} = \\frac{\\partial^2 f}{\\partial x_i \\partial x_j}$ collects the second derivatives. It tells
-you how the gradient itself changes:
+The derivative tells you the slope. The **second** derivative tells you how the slope is changing — whether you
+are in a tight bowl or on a gentle plain. In many variables, the second derivatives form a matrix called the
+**Hessian**:
 
-- All eigenvalues positive → local **minimum** (bowl).
-- All negative → local **maximum** (dome).
-- Mixed signs → **saddle point**.
+$$H_{ij} = \\frac{\\partial^2 f}{\\partial x_i \\partial x_j}$$
 
-In high dimensions, saddle points vastly outnumber local minima — for a random landscape, having *all* $d$ eigenvalues
-come out negative is exponentially unlikely. This was an important realization around 2014: deep learning's optimization
-problem is not "escaping bad local minima" so much as "escaping saddles and plateaus," and gradient noise handles that
-reasonably well.`),
+Entry $(i,j)$ answers "as I move along axis $j$, how fast does the slope along axis $i$ change?" Reading its
+[eigenvalues](#/l/math-eigen-svd) — the curvatures along its natural axes — classifies any point where the
+gradient is zero:
+
+- All eigenvalues **positive** → curves upward in every direction → local **minimum** (a bowl).
+- All **negative** → curves downward everywhere → local **maximum** (a dome).
+- **Mixed signs** → up in some directions, down in others → a **saddle point** (a mountain pass).`),
+
+    intuition(`Here is a counting argument worth internalising. For a point to be a local minimum, *all* $d$
+Hessian eigenvalues must come out positive. In a $d$-dimensional loss landscape with $d$ in the millions, that
+is like asking a million coin flips to all land heads — vanishingly unlikely. A point with a zero gradient is
+overwhelmingly likely to be a **saddle**, not a minimum.
+
+This reframed the field around 2014. The folk worry had been "deep networks get stuck in bad local minima." The
+better description is: bad local minima are rare, saddles and long flat plateaus are everywhere, and the noise
+in stochastic gradient descent is usually enough to slide off a saddle. That is a much more optimistic picture,
+and it matches what practitioners actually observe.`),
 
     t(`## Taylor series: the approximation hierarchy
 
-$$f(x+h) = f(x) + f'(x)h + \\tfrac{1}{2}f''(x)h^2 + \\tfrac{1}{6}f'''(x)h^3 + \\cdots$$
+A Taylor series builds better and better approximations of a curvy function near a point, by adding polynomial
+terms one at a time:
 
-Truncate at order 1 and you have what gradient descent believes. Truncate at order 2 and you have what Newton's method
-believes. Both are only valid **near** $x$ — which is the real reason for small learning rates.`),
+$$f(x+h) = \\underbrace{f(x)}_{\\text{a flat guess}} + \\underbrace{f'(x)h}_{\\text{a line}} + \\underbrace{\\tfrac{1}{2}f''(x)h^2}_{\\text{a parabola}} + \\tfrac{1}{6}f'''(x)h^3 + \\cdots$$
+
+Each term corrects the previous one, and each involves a higher derivative and a higher power of $h$ — the
+distance you moved. That second factor is the important one: if $h$ is small, $h^2$ is *very* small, so the
+later terms fade out fast and truncating early is safe.
+
+Which is exactly the trade every optimizer makes:
+
+| Truncate at | You are assuming the loss is | Which method believes this |
+|---|---|---|
+| order 0 | flat | random search |
+| order 1 | a straight line / plane | gradient descent, SGD, Adam |
+| order 2 | a parabola / bowl | Newton's method, L-BFGS, K-FAC |
+
+Both approximations are only valid **near** $x$, and "near" is doing all the work. Take a step too big and the
+straight line you extrapolated along stopped describing the function some distance back. That is the honest
+reason learning rates must be small — not numerical superstition, but the radius over which your linear
+approximation is still telling the truth.`),
 
     viz('taylor-approx'),
 
@@ -549,6 +1135,15 @@ print("relative error:", f"{rel:.2e}", "->", "PASS" if rel < 1e-5 else "FAIL")`,
        'The loss function is wrong'],
       0,
       "Each sigmoid contributes a factor of at most 0.25 to the backward product, and typically much less since it saturates. Over 20 layers this annihilates the gradient reaching the early weights. Historically this is exactly what blocked deep networks until ReLU (gradient of 1 on the positive side), better initialization, and residual connections arrived. See the [vanishing gradients figure](#/l/nn-backprop)."),
+
+    recap(`- Give all three readings of a derivative, and say which one optimization relies on.
+- Explain what a gradient is in terms of an array of parameters, and why $-\\nabla f$ is the direction to step.
+- Say why the gradient is perpendicular to the contour lines, without hand-waving.
+- Explain vanishing and exploding gradients as a fact about **multiplying many numbers**, and predict the
+  behaviour from the size of a typical factor.
+- Read the Hessian's eigenvalue signs to classify a critical point, and explain why saddles dominate minima in
+  high dimensions.
+- Justify small learning rates by pointing at the truncated Taylor series rather than at tradition.`),
   ],
   refs: [
     video('Essence of Calculus', '3Blue1Brown', 2017, 'https://www.3blue1brown.com/topics/calculus', 'Builds the geometric picture of derivatives from scratch.'),
@@ -567,29 +1162,63 @@ print("relative error:", f"{rel:.2e}", "->", "PASS" if rel < 1e-5 else "FAIL")`,
   prereq: ['math-derivatives'],
   tags: ['calculus', 'backprop'],
   sections: [
+    tldr(`A gradient is what you get when a function has many inputs and *one* output. A **Jacobian** is what you
+get when it has many inputs and many outputs — a whole matrix of partial derivatives.
+
+Every layer of a neural network is a many-in, many-out function, so backprop is conceptually a long product of
+Jacobian matrices. The practical insight is that you never build them: for the shapes involved, forming one
+Jacobian would cost more memory than the entire model. Autodiff multiplies by them without ever writing them
+down, and that trick is what makes training large networks possible at all.`),
+
+    jargon([
+      ['Jacobian $J$', 'The derivative of a function with many inputs *and* many outputs. An $m \\times n$ grid: row $i$, column $j$ says how output $i$ responds to input $j$.'],
+      ['$f: \\mathbb{R}^n \\to \\mathbb{R}^m$', 'A type signature: "takes $n$ numbers, returns $m$ numbers". A gradient is the special case $m = 1$.'],
+      ['VJP (vector–Jacobian product)', 'Computing $\\mathbf{v}^{\\mathsf T}J$ *without ever constructing* $J$. The core operation of backprop.'],
+      ['JVP (Jacobian–vector product)', 'The mirror image, $J\\mathbf{v}$. What forward-mode autodiff computes.'],
+      ['autodiff / automatic differentiation', 'A framework computing exact derivatives by tracking operations as you run the forward pass. Not symbolic algebra, and not finite differences — a third thing.'],
+      ['reverse mode', 'Autodiff run backwards from the output. Cheap when there are few outputs and many inputs — i.e. always, in deep learning. "Backpropagation" is this.'],
+      ['activations', 'The intermediate values a network computes on its way from input to output. Reverse mode has to remember them.'],
+      ['gradient checkpointing', 'Deliberately throwing away stored activations and recomputing them during the backward pass. Trades compute for memory.'],
+      ['logits', 'The raw scores a classifier outputs before softmax turns them into probabilities.'],
+      ['one-hot', 'Encoding a category as a vector of zeros with a single 1 in the correct slot. Class 2 of 5 becomes $(0,0,1,0,0)$.'],
+    ]),
+
     t(`## The Jacobian
 
-For a function $f:\\mathbb{R}^n\\to\\mathbb{R}^m$, the derivative is not a number or a vector — it is an $m\\times n$
-**matrix** of all the partials:
+So far the functions have been many-in, one-out: a loss takes all your parameters and returns a single number.
+Its derivative is a gradient — one vector.
 
-$$J_{ij} = \\frac{\\partial f_i}{\\partial x_j}$$
+But a *layer* is not like that. It takes $n$ numbers and returns $m$ numbers. Now there is no single slope,
+because there are $m \\times n$ separate questions to ask: how does output 1 respond to input 1, how does
+output 1 respond to input 2, and so on. Collect all those answers into a grid and you have the **Jacobian**:
 
-And it means the same thing derivatives always mean: $f(\\mathbf{x}+\\mathbf{h}) \\approx f(\\mathbf{x}) + J\\mathbf{h}$.
-The Jacobian *is* the best local linear map.`),
+$$J_{ij} = \\frac{\\partial f_i}{\\partial x_j} \\qquad \\text{(row } i \\text{ = which output, column } j \\text{ = which input)}$$
+
+Despite being a matrix, it means what derivatives always mean — the best local linear approximation:
+
+$$f(\\mathbf{x}+\\mathbf{h}) \\approx f(\\mathbf{x}) + J\\mathbf{h}$$
+
+Compare that with $f(x+h) \\approx f(x) + f'(x)h$ from the previous lesson. Identical sentence; the slope has
+just become a matrix, because "multiply by a matrix" is what a linear map looks like in many dimensions.`),
 
     viz('jacobian'),
 
     t(`## The chain rule with Jacobians
 
-Composition means matrix multiplication:
+If a derivative in one dimension is a number, and the chain rule multiplies numbers, then a derivative in many
+dimensions is a matrix and the chain rule multiplies matrices:
 
 $$J_{g\\circ f}(\\mathbf{x}) = J_g(f(\\mathbf{x}))\\; J_f(\\mathbf{x})$$
 
-For a network $L$ layers deep, the gradient of the loss with respect to layer-1 activations is
+(That $\\circ$ means composition — "$g$ applied to the result of $f$".) And since matrix multiplication *is*
+function composition, this is the same statement as before rather than a new rule.
+
+Stack that up over a network $L$ layers deep and the gradient of the loss with respect to the first layer's
+activations is a chain of $L-1$ Jacobians:
 
 $$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{h}_1} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{h}_L}\\, J_L\\, J_{L-1}\\cdots J_2$$
 
-a product of $L-1$ Jacobians.`),
+Which raises an immediate practical problem, and the answer to it is the whole design of modern autodiff.`),
 
     key(`**Backprop never builds these matrices.** For a layer with 4096 inputs and outputs, the Jacobian is
 $4096^2 = 16.8$M entries — per example, per layer. Instead, autodiff computes **vector–Jacobian products**
@@ -601,18 +1230,61 @@ This is the entire computational trick behind reverse-mode automatic differentia
 
     t(`## Forward mode vs reverse mode
 
-There are two ways to accumulate that product of Jacobians:
+A product like $J_L J_{L-1} \\cdots J_2$ can be evaluated in either order — matrix multiplication is
+associative, so the answer is the same. But the *cost* is wildly different, and choosing correctly is the
+single most consequential decision in the design of an autodiff system.
 
-- **Forward mode** computes $J\\mathbf{v}$ (Jacobian–vector products), going left to right through the network. Cost
-  scales with the number of *inputs*.
-- **Reverse mode** computes $\\mathbf{v}^{\\mathsf T}J$ (vector–Jacobian products), going right to left. Cost scales with
-  the number of *outputs*.
+- **Forward mode** goes left to right through the network, computing $J\\mathbf{v}$ (Jacobian–vector products).
+  Each pass gives you the derivative with respect to **one input**. Cost scales with the number of *inputs*.
+- **Reverse mode** goes right to left, computing $\\mathbf{v}^{\\mathsf T}J$ (vector–Jacobian products). Each
+  pass gives you the derivative of **one output** with respect to everything. Cost scales with the number of
+  *outputs*.
 
-Deep learning has millions of inputs (parameters) and exactly one output (the scalar loss). So reverse mode wins by a
-factor of millions, and "backpropagation" is just reverse-mode autodiff applied to a neural network.
+Now count. Deep learning has $10^9$ inputs (the parameters) and exactly **one** output (the scalar loss). Forward
+mode would need a billion passes. Reverse mode needs one. That factor of a billion is the entire reason
+"backpropagation" is the algorithm — and backpropagation is nothing more exotic than reverse-mode autodiff
+applied to a neural network.`),
 
-The price is memory: reverse mode must store the forward activations to use in the backward pass. That is what
-**gradient checkpointing** trades away — recompute some activations instead of storing them.`),
+    diagram('Why the multiplication order matters so much',
+`<svg viewBox="0 0 620 200" role="img" aria-label="Forward mode versus reverse mode cost">
+  <text class="dtitle" x="20" y="24">FORWARD — one pass per input</text>
+  <g>
+    <rect x="20" y="38" width="60" height="46" rx="3" style="fill: color-mix(in srgb, var(--s6) 14%, transparent); stroke: var(--s6)"/>
+    <text class="dmono" x="50" y="63" text-anchor="middle" style="fill: var(--s6)">J2</text>
+    <text x="93" y="63" text-anchor="middle" style="font-size:14px; fill: var(--text-faint)">·</text>
+    <rect x="106" y="38" width="60" height="46" rx="3" style="fill: color-mix(in srgb, var(--s6) 14%, transparent); stroke: var(--s6)"/>
+    <text class="dmono" x="136" y="63" text-anchor="middle" style="fill: var(--s6)">J3</text>
+    <text x="179" y="63" text-anchor="middle" style="font-size:14px; fill: var(--text-faint)">·</text>
+    <rect x="192" y="38" width="60" height="46" rx="3" style="fill: color-mix(in srgb, var(--s6) 14%, transparent); stroke: var(--s6)"/>
+    <text class="dmono" x="222" y="63" text-anchor="middle" style="fill: var(--s6)">J4</text>
+    <text class="dlabel" x="300" y="63" style="fill: var(--s6)">start left: matrix x matrix, over and over</text>
+    <text class="dlabel" x="300" y="80" style="fill: var(--text-faint)">10^9 passes for 10^9 parameters</text>
+  </g>
+  <text class="dtitle" x="20" y="124">REVERSE — one pass, total</text>
+  <g>
+    <rect x="20" y="138" width="30" height="46" rx="3" style="fill: color-mix(in srgb, var(--s3) 22%, transparent); stroke: var(--s3)"/>
+    <text class="dmono" x="35" y="163" text-anchor="middle" style="fill: var(--s3)">v</text>
+    <text x="62" y="163" text-anchor="middle" style="font-size:14px; fill: var(--text-faint)">·</text>
+    <rect x="76" y="138" width="60" height="46" rx="3" style="fill: color-mix(in srgb, var(--s3) 14%, transparent); stroke: var(--s3)"/>
+    <text class="dmono" x="106" y="163" text-anchor="middle" style="fill: var(--s3)">J4</text>
+    <text x="149" y="163" text-anchor="middle" style="font-size:14px; fill: var(--text-faint)">·</text>
+    <rect x="162" y="138" width="60" height="46" rx="3" style="fill: color-mix(in srgb, var(--s3) 14%, transparent); stroke: var(--s3)"/>
+    <text class="dmono" x="192" y="163" text-anchor="middle" style="fill: var(--s3)">J3</text>
+    <text class="dlabel" x="300" y="163" style="fill: var(--s3)">start right: vector x matrix, always</text>
+    <text class="dlabel" x="300" y="180" style="fill: var(--text-faint)">1 pass, because the loss is 1 number</text>
+  </g>
+</svg>`,
+      `The trick is starting from the side where the vector is. A vector times a matrix stays a vector, so every
+subsequent step is a cheap matrix–vector multiply. Start from the other end and you are doing full matrix–matrix
+products the whole way. Same answer, wildly different bill.`),
+
+    warn(`Reverse mode's advantage is not free — it is bought with **memory**. To compute a backward pass you
+need the activations from the forward pass, so all of them must be kept alive until the backward pass reaches
+them. For a large model on a long sequence, activations, not weights, are what fills your GPU.
+
+**Gradient checkpointing** is the standard escape hatch: store only every $k$-th layer's activations and
+recompute the rest on the way back. Roughly $\\sqrt{L}$ memory instead of $L$, for about 30% more compute. When
+you see "OOM during backward but forward was fine", this is why, and this is the fix.`),
 
     t(`## Matrix calculus you will actually need
 
@@ -695,6 +1367,16 @@ print(f"  VJP:               {d:,} floats  = {d*4/1e3:.0f} KB")`),
        'Reverse mode uses less memory'],
       0,
       'Forward mode costs one pass per *input* dimension; reverse mode costs one pass per *output* dimension. With $10^9$ parameters and a single scalar loss, reverse mode is a billion times cheaper. It actually uses **more** memory (it must cache activations) — that is the trade you accept, and gradient checkpointing is how you claw some of it back.'),
+
+    recap(`- Say what a Jacobian is and how it relates to a gradient (a gradient is the one-output case).
+- Explain why backprop is a product of Jacobians, and why nobody ever builds one.
+- Choose reverse mode over forward mode from a parameter count and an output count, and justify it in one
+  sentence.
+- Name the price reverse mode pays, and what gradient checkpointing buys back.
+- Reconstruct $\\partial\\mathcal{L}/\\partial W = \\delta\\mathbf{x}^{\\mathsf T}$ from shapes alone when you
+  cannot remember the formula.
+- State the softmax + cross-entropy gradient from memory — "predicted minus actual" — and say why frameworks
+  fuse the two operations.`),
   ],
   refs: [
     blog('The Matrix Calculus You Need For Deep Learning', 'Parr & Howard', 2018, 'https://explained.ai/matrix-calculus/', ''),
@@ -713,21 +1395,65 @@ print(f"  VJP:               {d:,} floats  = {d*4/1e3:.0f} KB")`),
   mins: 30, level: 'foundations',
   tags: ['probability', 'statistics', 'Bayes'],
   sections: [
+    tldr(`Every model in this atlas outputs a **distribution**, not an answer. A classifier does not say "cat",
+it says "83% cat". A language model does not pick the next word, it scores every possible word. Probability is
+the language for that, and once you see it you cannot unsee it: loss functions, regularization, and evaluation
+metrics all turn out to be probabilistic statements wearing different clothes.
+
+Three objects carry the whole lesson — **distributions** (what could happen and how often), **expectations**
+(the average of something random), and **conditioning** (updating what you believe when new information
+arrives). Bayes' rule is just conditioning written down carefully.`),
+
+    jargon([
+      ['random variable', 'A quantity whose value depends on chance. Written with a capital letter, $X$, while a specific value it took is lowercase, $x$.'],
+      ['distribution', 'The full description of what values a random variable can take and how likely each is. Not a single number.'],
+      ['$p(x)$', 'The probability (or density) of the value $x$. Shorthand that gets overloaded constantly — context tells you which variable it is about.'],
+      ['$p(y \\mid x)$', 'Read: "the probability of $y$ **given** $x$". The vertical bar means "conditional on", i.e. assuming $x$ already happened. This is what a classifier outputs.'],
+      ['joint $p(x, y)$', 'The probability of $x$ **and** $y$ both happening.'],
+      ['marginal', 'A joint distribution with some variables summed away. "Marginalising out $y$" means "I no longer care about $y$, average over it".'],
+      ['expectation $\\mathbb{E}[X]$', 'The long-run average value of $X$, weighted by how likely each outcome is. Not necessarily a value $X$ can actually take.'],
+      ['variance', 'How spread out a distribution is. Big variance = unpredictable.'],
+      ['i.i.d.', '"Independent and identically distributed" — each data point drawn from the same distribution, none influencing the others. The standard (often false) assumption behind nearly every method.'],
+      ['likelihood', '$p(\\text{data} \\mid \\text{parameters})$, read as a function of the *parameters*. "How well does this setting explain what I saw?"'],
+      ['prior / posterior', 'What you believed before seeing the data / after seeing it. Bayes\' rule converts one into the other.'],
+      ['MLE / MAP', 'Maximum Likelihood Estimate (pick the parameters that best explain the data) / Maximum A Posteriori (same, but also weighted by your prior).'],
+      ['conjugate prior', 'A prior chosen so the posterior comes out in the same family, making the update pure arithmetic instead of an integral.'],
+    ]),
+
     t(`## Why probability
 
-Every ML model is a claim about a distribution. A classifier outputs $p(y \\mid \\mathbf{x})$. A language model outputs
-$p(\\text{next token}\\mid \\text{context})$. A diffusion model *is* a sampler for $p(\\text{image})$. Even a plain
-regression is a distributional claim in disguise — it says $y = f(\\mathbf{x}) + \\epsilon$ with $\\epsilon$ Gaussian,
-which is why least squares is the right loss.
+Every ML model is a claim about a distribution, even when it does not look like one:
 
-Get comfortable with three objects and the rest follows: distributions, expectations, and conditioning.`),
+- A classifier outputs $p(y \\mid \\mathbf{x})$ — a probability for each class given the input.
+- A language model outputs $p(\\text{next token} \\mid \\text{context})$ — a score over the full vocabulary.
+- A diffusion model *is* a sampler for $p(\\text{image})$ — it draws from the distribution of plausible images.
+- Even plain linear regression is a distributional claim in disguise. Saying $y = f(\\mathbf{x}) + \\epsilon$
+  with Gaussian noise $\\epsilon$ *is* a statement about a distribution, and it is the reason least squares is
+  the right loss rather than an arbitrary one.
+
+That last point generalises into one of the most clarifying facts in the subject, and we will derive it below:
+**every loss function is a distributional assumption**. If you know what noise you believe in, the loss is
+determined; you do not get to pick it separately.`),
 
     t(`## Random variables and distributions
 
-A **random variable** is a quantity whose value depends on chance. Discrete ones have a probability mass function
-$p(x) = P(X=x)$; continuous ones have a density $p(x)$ where $P(a\\le X\\le b)=\\int_a^b p(x)\\,dx$.
+A **random variable** is a quantity whose value depends on chance — a die roll, tomorrow's temperature, the
+next token. The convention is capital $X$ for the variable and lowercase $x$ for a value it took.
 
-For a density, $p(x)$ can exceed 1 — it is a density, not a probability. Only its integral must equal 1.`),
+How you describe its distribution depends on whether the values are countable:
+
+- **Discrete** variables (die rolls, classes, tokens) have a **probability mass function** $p(x) = P(X = x)$.
+  Each value gets an actual probability, and they sum to 1.
+- **Continuous** variables (heights, weights, pixel intensities) have a **density** $p(x)$, where probability
+  comes from *area*: $P(a\\le X\\le b)=\\int_a^b p(x)\\,dx$. The $\\int$ is a sum over a continuum.`),
+
+    warn(`A density is not a probability. For a continuous variable, $p(x)$ can be greater than 1 — a narrow
+Gaussian with $\\sigma = 0.01$ has a peak density around 40. Nothing is broken. The probability of landing
+*exactly* on any single real number is zero; only the **area** under the curve is a probability, and only that
+area must integrate to 1.
+
+This trips people up when reading log-density values from a model and finding them positive. Positive
+log-density is fine. Positive log-*probability* would not be.`),
 
     viz('distributions'),
 
@@ -744,31 +1470,62 @@ For a density, $p(x)$ can exceed 1 — it is a density, not a probability. Only 
 
     t(`## Expectation and variance
 
-$$\\mathbb{E}[X] = \\sum_x x\\,p(x) \\quad\\text{or}\\quad \\int x\\,p(x)\\,dx, \\qquad
-\\text{Var}(X) = \\mathbb{E}[(X-\\mathbb{E}[X])^2] = \\mathbb{E}[X^2]-\\mathbb{E}[X]^2$$
+The **expectation** $\\mathbb{E}[X]$ is the average value of $X$ you would see over infinitely many draws,
+weighting each outcome by how likely it is:
 
-Two properties do most of the work:
+$$\\mathbb{E}[X] = \\sum_x x\\,p(x) \\quad\\text{or, for continuous } X,\\quad \\int x\\,p(x)\\,dx$$
 
-- **Linearity**: $\\mathbb{E}[aX+bY] = a\\mathbb{E}[X]+b\\mathbb{E}[Y]$, *always*, even for dependent variables. This is
-  why minibatch gradients are unbiased estimates of the full gradient.
-- **Variance of a sum**: $\\text{Var}(X+Y) = \\text{Var}(X)+\\text{Var}(Y)$ only when they are **uncorrelated**. This is
-  why averaging $B$ independent samples reduces variance by $B$ — and why a batch of $B$ gradients has noise
-  $\\propto 1/\\sqrt{B}$.`),
+The **variance** measures spread — the average squared distance from the mean:
+
+$$\\text{Var}(X) = \\mathbb{E}[(X-\\mathbb{E}[X])^2] = \\mathbb{E}[X^2]-\\mathbb{E}[X]^2$$
+
+(The second form is the one you compute with; it follows from expanding the square.)
+
+Two properties do almost all the work in ML, and the difference between them matters enormously:`),
+
+    key(`**Linearity of expectation** holds *always*:
+$\\mathbb{E}[aX+bY] = a\\mathbb{E}[X]+b\\mathbb{E}[Y]$ — even if $X$ and $Y$ are wildly dependent. No conditions,
+no fine print.
+
+*Why you care:* a minibatch gradient is an average of per-example gradients, so its expectation equals the full
+gradient. Minibatch SGD is therefore **unbiased** — it takes the right step on average, no matter how small the
+batch. That is the licence to train on batches of 32 instead of 50 million.
+
+**Variance of a sum** does *not* hold always:
+$\\text{Var}(X+Y) = \\text{Var}(X)+\\text{Var}(Y)$ only when $X$ and $Y$ are **uncorrelated**.
+
+*Why you care:* when it does hold, averaging $B$ independent samples divides variance by $B$, so gradient noise
+shrinks like $1/\\sqrt{B}$. Quadrupling the batch size only halves the noise — which is why batch size has
+sharply diminishing returns, and why correlated samples (a batch of near-duplicate examples) buy you far less
+than the count suggests.`),
 
     viz('clt'),
 
     t(`## Conditioning and Bayes' rule
 
-The joint, marginal, and conditional are related by
+**Conditioning** is what happens to a distribution when you learn something. Before you know anything, the
+chance of rain is whatever it is; once you know the sky is dark, it changes. Written $p(\\text{rain} \\mid
+\\text{dark sky})$.
 
-$$p(x,y) = p(x\\mid y)\\,p(y), \\qquad p(x) = \\sum_y p(x,y)$$
+Joint, marginal, and conditional distributions are tied together by one relation and one operation:
 
-Rearranging gives **Bayes' rule**:
+$$\\underbrace{p(x,y) = p(x\\mid y)\\,p(y)}_{\\text{the chain rule of probability}}, \\qquad \\underbrace{p(x) = \\sum_y p(x,y)}_{\\text{marginalising } y \\text{ away}}$$
+
+The first says a joint probability factors into "the chance of $y$" times "the chance of $x$ once you know
+$y$". Since $p(x,y) = p(y,x)$, you can factor it the other way too — and setting those two factorizations equal
+and rearranging gives **Bayes' rule**:
 
 $$\\underbrace{p(\\theta\\mid \\mathcal{D})}_{\\text{posterior}} = \\frac{\\overbrace{p(\\mathcal{D}\\mid\\theta)}^{\\text{likelihood}}\\ \\overbrace{p(\\theta)}^{\\text{prior}}}{\\underbrace{p(\\mathcal{D})}_{\\text{evidence}}}$$
 
-Read it as a procedure: *start with a belief, see data, update.* The denominator is just a normalizing constant, which
-is why you will constantly see $p(\\theta\\mid\\mathcal D) \\propto p(\\mathcal D\\mid\\theta)p(\\theta)$.`),
+That is the entire derivation — Bayes' rule is algebra, not a deep principle. What is deep is how you read it.`),
+
+    steps("Reading Bayes' rule as a procedure", [
+      { h: 'Start with a belief — the prior $p(\\theta)$', md: `Before seeing any data, what do you think the parameters are? "This coin is probably fair-ish." Choosing a prior is a modelling decision, and pretending you have not made one is itself a choice (a flat prior).` },
+      { h: 'Ask how well each hypothesis explains the data — the likelihood $p(\\mathcal{D} \\mid \\theta)$', md: `For each candidate $\\theta$: if the world really worked that way, how likely was the data I actually observed? A $\\theta$ that makes your observations look like a miracle scores badly.` },
+      { h: 'Multiply', md: `$p(\\mathcal{D}\\mid\\theta)\\,p(\\theta)$. A hypothesis needs *both* to be plausible beforehand *and* to explain the data. Failing either kills it.` },
+      { h: 'Normalise — divide by the evidence $p(\\mathcal{D})$', md: `This denominator does not depend on $\\theta$ at all; it just makes everything sum to 1. Which is why you constantly see the rule written with a $\\propto$ ("proportional to") and the denominator dropped: $p(\\theta\\mid\\mathcal D) \\propto p(\\mathcal D\\mid\\theta)p(\\theta)$.` },
+      { h: 'The result is your new belief — the posterior', md: `And it becomes the prior for the next batch of data. Belief updating is a loop, not a one-shot calculation.` },
+    ]),
 
     viz('bayes-coin'),
 
@@ -781,16 +1538,30 @@ Among 10,000 people, 1 is sick (and tests positive), while ~100 healthy people a
 This is the same arithmetic that makes precision collapse for rare-class classifiers — see the
 [ROC and prevalence figure](#/l/ml-evaluation).`),
 
-    t(`## Maximum likelihood
+    t(`## Maximum likelihood — where loss functions come from
 
-Given data $\\mathcal{D}=\\{x_1,\\ldots,x_n\\}$ assumed i.i.d. from $p(x\\mid\\theta)$, the likelihood is
-$\\prod_i p(x_i\\mid\\theta)$. We maximize its logarithm, because sums are easier than products and floats do not
-underflow:
+Suppose you have data $\\mathcal{D}=\\{x_1,\\ldots,x_n\\}$ and a family of models indexed by parameters $\\theta$.
+Which $\\theta$ should you pick? Maximum likelihood says: **the one that makes the data you actually saw as
+unsurprising as possible.**
+
+If the data points are i.i.d., the probability of the whole dataset is the product of the individual
+probabilities, $\\prod_i p(x_i\\mid\\theta)$. In practice we maximise its logarithm instead:
 
 $$\\hat\\theta_{\\text{MLE}} = \\arg\\max_\\theta \\sum_{i=1}^n \\log p(x_i\\mid\\theta)$$
 
-**MAP** adds a prior: $\\arg\\max_\\theta [\\sum_i \\log p(x_i\\mid\\theta) + \\log p(\\theta)]$. And that extra term is
-*exactly* regularization: a Gaussian prior on the weights gives you L2 / weight decay; a Laplace prior gives L1.`),
+Two reasons for the log, both mundane and both important. First, $\\log$ turns products into sums, and sums are
+far easier to differentiate. Second, a product of ten thousand numbers each below 1 underflows to exactly \`0.0\`
+in float32 — the log keeps everything in a sane range. Since $\\log$ is increasing, whatever maximises the sum
+also maximises the product, so nothing is lost.
+
+**MAP** (maximum a posteriori) is the same thing with the prior kept:
+
+$$\\hat\\theta_{\\text{MAP}} = \\arg\\max_\\theta \\Big[\\underbrace{\\textstyle\\sum_i \\log p(x_i\\mid\\theta)}_{\\text{fit the data}} + \\underbrace{\\log p(\\theta)}_{\\text{stay plausible}}\\Big]$$
+
+And that second term is *exactly* regularization. Put a zero-mean Gaussian prior on the weights and $\\log
+p(\\theta)$ works out to $-\\lambda\\|\\theta\\|^2$ — L2 / weight decay. Use a Laplace prior instead and you get
+$-\\lambda\\|\\theta\\|_1$ — L1 and sparsity. Regularization was never a hack bolted onto the loss; it is what a
+prior looks like after you take logs.`),
 
     viz('mle-fit'),
 
@@ -841,6 +1612,18 @@ for i, f in enumerate(flips):
        'Nothing Bayesian — weight decay is purely an optimization trick'],
       0,
       'MAP maximizes $\\log p(\\mathcal D\\mid\\theta)+\\log p(\\theta)$. With $\\theta\\sim\\mathcal N(0,\\tau^2 I)$, the log-prior is $-\\|\\theta\\|^2/(2\\tau^2)+\\text{const}$ — precisely an L2 penalty with $\\lambda = 1/(2\\tau^2)$. A Laplace prior would give L1 instead. (Careful: with Adam, decoupled weight decay as in AdamW is *not* the same as adding L2 to the loss — see the optimizers lesson.)'),
+
+    recap(`- Say what $p(y \\mid \\mathbf{x})$ means out loud, and name what a classifier, a language model, and a
+  diffusion model each put on the left of that bar.
+- Explain why a density can exceed 1 while a probability cannot.
+- Use linearity of expectation to justify minibatch SGD, and the variance rule to predict what doubling the
+  batch size buys you.
+- Walk through Bayes' rule as prior → likelihood → multiply → normalise, and explain why the denominator is
+  usually dropped.
+- Work the base rate trap and say why a 99%-accurate test for a rare disease is mostly wrong when positive.
+- Derive least squares from Gaussian noise, and state the general principle: **every loss is a distributional
+  assumption**.
+- Translate weight decay into Bayesian language and back.`),
   ],
   refs: [
     book('Pattern Recognition and Machine Learning, Ch. 1–2', 'Christopher Bishop', 2006, 'https://www.microsoft.com/en-us/research/publication/pattern-recognition-machine-learning/', 'The canonical Bayesian treatment. Free PDF from Microsoft Research.'),
@@ -860,34 +1643,106 @@ for i, f in enumerate(flips):
   prereq: ['math-probability'],
   tags: ['information theory', 'loss functions'],
   sections: [
+    tldr(`If you have ever typed \`nn.CrossEntropyLoss()\` and wondered where that formula came from, this is
+the lesson.
+
+The chain is short. **Surprise** is $-\\log p$. **Entropy** is average surprise — the true cost of describing
+data from a distribution. **Cross-entropy** is what it costs when your model is wrong about that distribution.
+**KL divergence** is the excess: exactly how much extra you pay for being wrong. Minimising cross-entropy,
+minimising KL, and maximising likelihood are all literally the same computation with three different names.`),
+
+    jargon([
+      ['bit / nat', 'A unit of information. Bits use $\\log_2$, nats use $\\log_e$. Code uses nats (natural log is faster and cleaner to differentiate); textbooks often use bits because they are easier to interpret. The only difference is a constant factor.'],
+      ['surprise / surprisal', '$-\\log p(x)$. How startling it is that outcome $x$ happened. Certain events carry zero surprise; impossible ones carry infinite surprise.'],
+      ['entropy $H(p)$', 'Average surprise under $p$. Also: the minimum average bits needed to encode data drawn from $p$. High entropy = unpredictable.'],
+      ['cross-entropy $H(p, q)$', 'Average surprise when the truth is $p$ but your model says $q$. Always at least $H(p)$. **This is your classification loss.**'],
+      ['KL divergence $D_{\\text{KL}}(p\\|q)$', 'The gap $H(p,q) - H(p)$ — the bits wasted by using the wrong model. Never negative, zero only when $p = q$. Not a distance: it is asymmetric.'],
+      ['perplexity', '$e^{\\text{cross-entropy}}$. "How many options is the model effectively choosing between?" The standard language-model metric.'],
+      ['mutual information $I(X;Y)$', 'How many bits knowing $Y$ saves you when describing $X$. Zero exactly when they are independent.'],
+      ['logits', 'Raw model outputs before softmax. Can be any real number, positive or negative.'],
+    ]),
+
     t(`## Surprise, quantified
 
-How surprising is an outcome with probability $p$? Whatever function we choose should be (a) decreasing in $p$,
-(b) zero when $p=1$, and (c) additive for independent events. Only one function satisfies all three:
+Start with a question that sounds unanswerable: *how surprising is an event?*
+
+It turns out you can pin the answer down by listing what any sensible measure of surprise must do:
+
+1. **Decreasing in $p$.** Rarer events are more surprising.
+2. **Zero when $p = 1$.** A certain event surprises no one.
+3. **Additive for independent events.** Learning two unrelated facts should be as surprising as the sum of
+   learning each separately.
+
+Exactly one function satisfies all three:
 
 $$I(x) = -\\log p(x)$$
 
-In bits (log base 2) or nats (base $e$). An event with $p=1/2$ carries 1 bit; $p=1/1024$ carries 10 bits.
+Property 3 is what forces the logarithm specifically — logs are the only functions turning multiplication (of
+independent probabilities) into addition. The minus sign is there because probabilities are below 1, so their
+logs are negative, and we want surprise to be a positive quantity.
 
-**Entropy** is average surprise:
+Sanity-check it: an event with $p = 1/2$ carries $-\\log_2(1/2) = 1$ bit. One coin flip, one bit. An event with
+$p = 1/1024$ carries 10 bits — ten coin flips' worth of information. That matches intuition exactly.
+
+**Entropy** is then just the average surprise you expect from a distribution:
 
 $$H(p) = -\\sum_x p(x)\\log p(x) = \\mathbb{E}_{x\\sim p}[-\\log p(x)]$$
 
-It is maximal for the uniform distribution (maximum uncertainty) and zero for a point mass (no uncertainty). Shannon's
-source coding theorem gives it a hard operational meaning: **$H(p)$ is the minimum average number of bits needed to
-encode samples from $p$.**`),
+It is largest for the uniform distribution (nothing is predictable, every outcome equally startling) and zero
+for a point mass (you always know what is coming). And Shannon's source coding theorem gives it a hard
+operational meaning, not merely a suggestive one: **$H(p)$ is the minimum average number of bits needed to
+encode samples from $p$.** No compression scheme can do better. That is a theorem, not a heuristic.`),
 
-    t(`## Cross-entropy: coding with the wrong model
+    t(`## Cross-entropy: the cost of coding with the wrong model
 
-Suppose the truth is $p$ but you built your code assuming $q$. Your average code length is
+Now the case that matters for training. The truth is $p$, but your model believes $q$, and you built your code
+around $q$. What do you pay?
 
-$$H(p,q) = -\\sum_x p(x)\\log q(x)$$
+You are still drawing events from $p$ — that is reality, and it does not care what you believe. But your cost
+per event, $-\\log q(x)$, is set by your model. So your average bill is:
 
-You pay a penalty for being wrong, and that penalty is the **KL divergence**:
+$$H(p,q) = -\\sum_x p(x)\\log q(x) \\qquad \\text{(weight by reality } p \\text{, pay by belief } q\\text{)}$$
 
-$$D_{\\text{KL}}(p\\,\\|\\,q) = H(p,q) - H(p) = \\sum_x p(x)\\log\\frac{p(x)}{q(x)} \\ \\ge 0$$
+That is **cross-entropy**, and it is precisely the loss function every classifier and language model minimises.
 
-with equality iff $p=q$ (Gibbs' inequality).`),
+You are clearly paying more than you had to. The excess is the **KL divergence**:
+
+$$D_{\\text{KL}}(p\\,\\|\\,q) = \\underbrace{H(p,q)}_{\\text{what you paid}} - \\underbrace{H(p)}_{\\text{the best possible}} = \\sum_x p(x)\\log\\frac{p(x)}{q(x)} \\;\\ge\\; 0$$
+
+It is never negative — you can never beat the true entropy — and it is zero only when $q = p$ exactly. That
+result is Gibbs' inequality.`),
+
+    diagram('The three quantities, and how they stack',
+`<svg viewBox="0 0 600 190" role="img" aria-label="Cross-entropy equals entropy plus KL divergence">
+  <rect x="60" y="50" width="230" height="46" rx="4" style="fill: color-mix(in srgb, var(--s1) 20%, transparent); stroke: var(--s1); stroke-width: 1.6"/>
+  <text class="dmono" x="175" y="74" text-anchor="middle" style="fill: var(--s1)">H(p)</text>
+  <rect x="290" y="50" width="120" height="46" rx="4" style="fill: color-mix(in srgb, var(--s6) 20%, transparent); stroke: var(--s6); stroke-width: 1.6"/>
+  <text class="dmono" x="350" y="74" text-anchor="middle" style="fill: var(--s6)">KL(p||q)</text>
+  <line x1="60" y1="118" x2="410" y2="118" style="stroke: var(--s3); stroke-width: 1.6"/>
+  <line x1="60" y1="112" x2="60" y2="124" style="stroke: var(--s3); stroke-width: 1.6"/>
+  <line x1="410" y1="112" x2="410" y2="124" style="stroke: var(--s3); stroke-width: 1.6"/>
+  <text class="dmono" x="235" y="138" text-anchor="middle" style="fill: var(--s3)">H(p, q) — what your loss reports</text>
+  <text class="dlabel" x="175" y="36" text-anchor="middle">irreducible: the data's own randomness</text>
+  <text class="dlabel" x="350" y="36" text-anchor="middle">your model's error</text>
+  <text class="dlabel" x="60" y="168">Training can only shrink the right-hand block. The left one is a property of the world.</text>
+</svg>`,
+      `This picture explains why training loss plateaus above zero and *should*. $H(p)$ is the intrinsic
+unpredictability of the data — the irreducible noise. A perfect model still pays it. If your language-model loss
+bottoms out around 2.0 nats, that is not a failure to converge; a good chunk of it is English simply not being
+deterministic.`),
+
+    viz('entropy-kl'),
+
+    key(`Training a classifier or a language model minimises cross-entropy $H(p, q_\\theta)$, where $p$ is the
+empirical data distribution and $q_\\theta$ is your model.
+
+Now look at the decomposition: $H(p, q_\\theta) = H(p) + D_{\\text{KL}}(p\\|q_\\theta)$. The first term has no
+$\\theta$ in it — it is fixed by the data. So **minimising cross-entropy is identical to minimising
+$D_{\\text{KL}}(p\\|q_\\theta)$**, which (expand the definitions) is identical to maximising likelihood.
+
+Three names, one objective. When one paper says "we minimise the KL to the data distribution" and another says
+"we maximise likelihood" and your code says \`cross_entropy\`, all three are running the same arithmetic. This is
+worth knowing purely so that the vocabulary stops being intimidating.`),
 
     viz('entropy-kl'),
 
@@ -898,38 +1753,84 @@ $D_{\\text{KL}}(p\\|q_\\theta)$**, which is identical to maximum likelihood.
 Three names, one objective. When a paper says "we minimize the KL to the data distribution" and another says "we
 maximize likelihood," they are doing the same arithmetic.`),
 
-    t(`## KL is not symmetric, and the asymmetry matters
+    t(`## KL is not symmetric, and the asymmetry has consequences
 
-$D_{\\text{KL}}(p\\|q) \\ne D_{\\text{KL}}(q\\|p)$, and choosing which one to minimize changes the answer qualitatively:
+$D_{\\text{KL}}(p\\|q) \\ne D_{\\text{KL}}(q\\|p)$. This is not a technicality to file away — swapping the
+arguments produces qualitatively different models, and knowing which one an algorithm minimises tells you in
+advance how it will fail.
 
-- **Forward KL, $D(p\\|q)$ — "mass covering."** The term $p(x)\\log\\frac{p(x)}{q(x)}$ blows up wherever $p$ has mass
-  and $q$ does not. So $q$ is forced to cover everything $p$ does, even if that means smearing over regions $p$
-  ignores. Maximum likelihood minimizes this. It is why a Gaussian fit to a bimodal distribution lands in the middle,
-  covering both modes badly.
-- **Reverse KL, $D(q\\|p)$ — "mode seeking."** Now the penalty is for $q$ putting mass where $p$ has none. $q$ can
-  safely ignore modes; it just must not hallucinate. Variational inference minimizes this, which is why VI is famous
-  for underestimating posterior variance, and why RL-with-KL-penalty to a reference policy behaves the way it does.`),
+Look at where each version blows up. In $\\sum p \\log(p/q)$, the terms are weighted by $p$, so only places
+where $p$ has mass can contribute. If $q$ is near zero somewhere $p$ is not, that term goes to infinity.
+
+**Forward KL, $D(p\\|q)$ — "mass covering."** Infinite penalty for putting near-zero probability where the data
+has mass. So $q$ is forced to stretch over everything $p$ covers, even if that means smearing probability across
+empty regions in between. **Maximum likelihood minimises this**, which is why fitting a single Gaussian to a
+two-humped distribution lands it in the valley between the humps, covering both badly and the middle wrongly.
+
+**Reverse KL, $D(q\\|p)$ — "mode seeking."** Now the weights are $q$'s, so the penalty is for $q$ putting mass
+where $p$ has none. $q$ is free to ignore entire modes; it must only avoid hallucinating. **Variational
+inference minimises this**, which is exactly why VI is notorious for underestimating posterior variance — and
+why an RL policy trained with a KL penalty against a reference model collapses toward a narrow, safe subset of
+its behaviour rather than covering it.`),
+
+    diagram('The same bimodal target, fitted two ways',
+`<svg viewBox="0 0 620 200" role="img" aria-label="Forward KL covers both modes badly, reverse KL picks one mode">
+  <g transform="translate(15,0)">
+    <path d="M20,150 C60,150 60,60 100,60 C140,60 130,150 155,150 C180,150 175,70 210,70 C245,70 250,150 280,150"
+          style="fill:none; stroke: var(--text-faint); stroke-width: 2; stroke-dasharray: 4 3"/>
+    <path d="M20,150 C80,150 90,88 150,88 C210,88 220,150 280,150" style="fill: color-mix(in srgb, var(--s1) 14%, transparent); stroke: var(--s1); stroke-width: 2.4"/>
+    <text class="dtitle" x="20" y="178" style="fill: var(--s1)">forward KL — covers everything, fits nothing</text>
+    <text class="dlabel" x="20" y="30">maximum likelihood does this</text>
+  </g>
+  <g transform="translate(330,0)">
+    <path d="M20,150 C60,150 60,60 100,60 C140,60 130,150 155,150 C180,150 175,70 210,70 C245,70 250,150 280,150"
+          style="fill:none; stroke: var(--text-faint); stroke-width: 2; stroke-dasharray: 4 3"/>
+    <path d="M45,150 C75,150 75,62 100,62 C125,62 125,150 155,150" style="fill: color-mix(in srgb, var(--s4) 14%, transparent); stroke: var(--s4); stroke-width: 2.4"/>
+    <text class="dtitle" x="20" y="178" style="fill: var(--s4)">reverse KL — picks one mode, ignores the rest</text>
+    <text class="dlabel" x="20" y="30">variational inference, RL with a KL penalty</text>
+  </g>
+</svg>`,
+      `Dashed grey is the truth in both panels. Neither fit is "wrong" — they optimise different things. When a
+generative model produces bland averaged-out samples, suspect forward KL; when it produces confident but
+low-diversity output, suspect reverse KL.`),
 
     t(`## Perplexity
 
-Language modeling reports **perplexity** rather than loss:
+Language modelling reports **perplexity** rather than raw loss. It is nothing new — just cross-entropy run back
+through an exponential:
 
 $$\\text{PPL} = \\exp\\!\\left(\\frac{1}{N}\\sum_{i=1}^{N} -\\log q(x_i\\mid x_{<i})\\right) = e^{\\text{cross-entropy}}$$
 
-It has a useful interpretation: *the effective number of equally likely choices the model is deciding between at each
-step.* Perplexity 10 means the model is about as uncertain as if it were picking uniformly among 10 tokens.
+The exponential is there to make the number interpretable. Cross-entropy is measured in bits or nats, which
+few people have intuition for. Perplexity converts it to **the effective number of equally likely options the
+model is choosing between at each step**. Perplexity 10 means "about as uncertain as picking uniformly from 10
+tokens". Perplexity 1 would be perfect prediction; perplexity equal to your vocabulary size means the model has
+learned nothing.
 
-A caution: perplexity depends on the tokenizer. A model with a larger vocabulary compresses more text per token, so
-its per-token perplexity is not comparable to a model with a smaller one. Bits-per-byte is the tokenizer-independent
-alternative.`),
+One caution that bites people comparing models: **perplexity depends on the tokenizer.** A model with a bigger
+vocabulary packs more text into each token, so its per-token perplexity is smaller without the model being any
+better. Comparing perplexities across different tokenizers is meaningless. **Bits-per-byte** normalises by raw
+text length instead and is the number to use for cross-model comparison.`),
 
     t(`## Mutual information
 
-$$I(X;Y) = D_{\\text{KL}}\\big(p(x,y)\\,\\|\\,p(x)p(y)\\big) = H(X) - H(X\\mid Y)$$
+The last piece of vocabulary. **Mutual information** asks: how much does knowing one variable tell you about
+another?
 
-"How many bits does knowing $Y$ save me when describing $X$?" Zero iff independent. It appears in feature selection,
-in the information bottleneck view of representation learning, and — importantly — as the quantity that contrastive
-objectives like InfoNCE (used by CLIP and SimCLR) lower-bound.`),
+$$I(X;Y) = \\underbrace{H(X)}_{\\text{uncertainty about } X} - \\underbrace{H(X\\mid Y)}_{\\text{uncertainty left after seeing } Y}$$
+
+Literally "bits of uncertainty removed". Equivalently it is a KL divergence — between the true joint
+distribution and the fake one you would get if $X$ and $Y$ were independent:
+
+$$I(X;Y) = D_{\\text{KL}}\\big(p(x,y)\\,\\|\\,p(x)p(y)\\big)$$
+
+Read that as measuring *how far from independent they are*. It is zero exactly when knowing $Y$ tells you
+nothing about $X$.
+
+Where it shows up: feature selection (keep features with high MI to the label), the information-bottleneck
+account of what representation learning does, and — most importantly for this atlas — as the quantity that
+contrastive objectives like InfoNCE secretly lower-bound. When CLIP or SimCLR pull matching pairs together and
+push non-matching pairs apart, the thing being maximised is a bound on mutual information.`),
 
     code('Entropy, cross-entropy, KL — and the stable way to compute them', `import numpy as np
 
@@ -967,6 +1868,14 @@ print("perplexity   :", np.exp(-log_softmax(logits)[target]))`,
        'It needs 8 tokens of context to make a prediction'],
       0,
       'Perplexity is $e^{H(p,q)}$ — the *effective branching factor*. Cross-entropy here is $\\log_2 8 = 3$ bits per token, not 8. And it is not an accuracy: a model can have low perplexity while rarely making the single most likely choice, because it spreads probability sensibly.'),
+
+    recap(`- Derive $-\\log p$ as the only sensible measure of surprise, from three requirements.
+- Explain entropy as both "average surprise" and "the minimum bits to encode this data", and say why the second
+  is a theorem rather than an analogy.
+- Write cross-entropy as $H(p) + D_{\\text{KL}}(p\\|q)$ and use it to explain why training loss plateaus above zero.
+- State why minimising cross-entropy, minimising KL, and maximising likelihood are the same computation.
+- Predict whether a method will smear across modes or collapse onto one, from which direction of KL it minimises.
+- Interpret a perplexity number, and say why perplexities across different tokenizers cannot be compared.`),
   ],
   refs: [
     paper('A Mathematical Theory of Communication', 'Claude Shannon', 1948, 'https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf', 'The founding paper. Genuinely readable, and worth reading in the original.'),
@@ -985,78 +1894,175 @@ print("perplexity   :", np.exp(-log_softmax(logits)[target]))`,
   prereq: ['math-derivatives'],
   tags: ['optimization', 'SGD', 'Adam'],
   sections: [
+    tldr(`Training a model is a loop with three lines: compute the loss, compute the gradient, step downhill.
+Everything difficult about it comes down to **how big should the step be?**
+
+Too big and you overshoot and diverge. Too small and training takes a week. And there is no single right
+answer, because the loss surface is steep in some directions and flat in others *at the same time*. Momentum,
+Adam, learning-rate schedules, and normalization layers are all attacks on that one problem, and knowing which
+problem they solve is more useful than memorising their update rules.`),
+
+    jargon([
+      ['$\\theta$ (theta)', 'The parameters — every trainable number in the model, stacked into one long vector. Training means searching over $\\theta$.'],
+      ['loss $\\mathcal{L}(\\theta)$', 'A single number saying how badly the model is doing right now. Lower is better. Always a function of $\\theta$.'],
+      ['$\\arg\\min_\\theta$', '"The value of $\\theta$ that makes what follows smallest." Note: the *argument*, not the minimum value itself.'],
+      ['$\\eta$ (eta)', 'The learning rate — how far to move per step. Often written `lr` in code. The single most consequential hyperparameter.'],
+      ['step / iteration', 'One update of the parameters, using one minibatch.'],
+      ['epoch', 'One full pass over the training set. Many steps.'],
+      ['minibatch $B$', 'The handful of examples (32, 256, …) used to estimate the gradient for one step, instead of the whole dataset.'],
+      ['SGD', 'Stochastic Gradient Descent — gradient descent using minibatch estimates. "Stochastic" just means "with randomness in it".'],
+      ['unbiased estimate', 'A noisy measurement that is correct *on average*. Minibatch gradients are noisy but unbiased, which is what makes SGD sound.'],
+      ['momentum', 'Averaging the recent gradients instead of using only the latest one, so the update carries velocity like a rolling ball.'],
+      ['convex', 'Bowl-shaped: any local minimum is *the* global minimum. Convex problems are solved; non-convex ones are gambled on.'],
+      ['condition number', 'Ratio of the sharpest curvature to the flattest. Large = a long narrow valley = slow, awkward optimization.'],
+    ]),
+
     t(`## The setup
 
-Training is minimization. You have parameters $\\theta$, a loss $\\mathcal{L}(\\theta)$ averaged over data, and you want
+Training is minimisation, and nothing more exotic. You have parameters $\\theta$, a loss $\\mathcal{L}(\\theta)$
+averaged over your data, and you want the parameters that make it smallest:
 
 $$\\theta^* = \\arg\\min_\\theta \\mathcal{L}(\\theta)$$
 
-For a handful of models (linear regression, some SVMs) there is a closed form. For everything else you iterate:
+For a small handful of models — linear regression, some SVMs — you can solve that with algebra and be done. For
+everything else in this atlas there is no closed form, so you iterate:
 
 $$\\theta_{t+1} = \\theta_t - \\eta\\,\\nabla\\mathcal{L}(\\theta_t)$$
 
-Take the steepest downhill direction, step a little, repeat.`),
+Read it left to right: *new parameters = old parameters, minus a small step in the direction of the gradient*.
+The minus sign is the whole idea — the gradient points **uphill**, and we want to go down. $\\eta$ controls how
+far. That is it. Every optimizer in this lesson is a variation on this one line.`),
 
     viz('gradient-descent'),
 
     t(`## Learning rate: the one hyperparameter that will ruin your day
 
-On a quadratic $\\mathcal{L}=\\tfrac12 a\\theta^2$, one step maps $\\theta \\mapsto (1-\\eta a)\\theta$. Convergence requires
-$|1-\\eta a|<1$, that is:
+How big can $\\eta$ be before things break? For once this has an exact answer, and the simplest possible case
+gives it away.
+
+Take a one-dimensional parabola, $\\mathcal{L}=\\tfrac12 a\\theta^2$, where $a$ is the curvature. Its gradient is
+$a\\theta$, so a single step does:
+
+$$\\theta_{t+1} = \\theta_t - \\eta\\, a\\theta_t = (1-\\eta a)\\,\\theta_t$$
+
+Each step multiplies your distance-from-the-minimum by the fixed factor $(1-\\eta a)$. So the behaviour is
+completely determined by that one number:
+
+| $(1-\\eta a)$ | What happens |
+|---|---|
+| between 0 and 1 | shrinks smoothly toward the minimum |
+| between −1 and 0 | overshoots past the minimum each step, but by less each time — converges while oscillating |
+| exactly −1 | bounces between two points forever |
+| below −1 | overshoots by *more* each time — **diverges**, exponentially |
+
+Converging requires $|1-\\eta a| < 1$, which rearranges to the stability bound:
 
 $$\\eta < \\frac{2}{a} = \\frac{2}{\\lambda_{\\max}(H)}$$
 
-Above that, you diverge geometrically. Below $1/\\lambda_{\\max}$ you descend monotonically; between the two you
-oscillate while converging.`),
+In words: **the maximum safe learning rate is set by the sharpest curvature in the landscape.** Exceed it and no
+amount of patience will save the run — the divergence is geometric.`),
 
     viz('lr-stability'),
 
-    key(`In a deep network, $\\lambda_{\\max}$ is the sharpest curvature *anywhere in the whole parameter space*. So a single
-badly-conditioned direction caps the learning rate for **every** parameter. That is the core problem, and everything
-below is a response to it:
+    key(`Here is why that bound is a genuine problem rather than a formula to plug into.
 
-- **Momentum / Adam** — adapt the effective step per direction.
-- **Normalization layers** — reshape the landscape so curvature is more uniform.
-- **Warmup** — avoid the early phase where curvature estimates are unreliable.
-- **Gradient clipping** — survive the occasional sharp region without blowing up.`),
+A real loss surface is not one parabola — it is steep along some directions and nearly flat along others, at the
+same point. But you only get **one** $\\eta$, shared by every parameter. So the learning rate is capped by the
+*sharpest* direction anywhere in the landscape, while progress along the *flattest* direction crawls at
+$\\eta\\lambda_{\\min}$.
+
+The damage is exactly the condition number: if $\\lambda_{\\max}/\\lambda_{\\min} = 1000$, you need roughly 1000×
+more steps than you would in a nicely-rounded bowl. **One badly-behaved direction taxes every parameter in the
+model.**
+
+Every technique in the rest of this lesson attacks that:
+
+- **Momentum / Adam** — give different directions different effective step sizes.
+- **Normalization layers** — reshape the landscape so curvature is more uniform to begin with.
+- **Warmup** — start small, because early curvature estimates are unreliable and the sharpest region is often
+  encountered in the first few hundred steps.
+- **Gradient clipping** — survive the occasional sharp cliff without a single step destroying the run.`),
 
     t(`## Stochastic gradient descent
 
-Computing $\\nabla\\mathcal{L}$ over millions of examples per step is wasteful. Use a minibatch:
+The gradient in that update rule is defined as an average over your *entire* dataset. For a million examples,
+one step would mean a million forward and backward passes. Absurd.
+
+So estimate it from a small random sample instead — a **minibatch**:
 
 $$\\nabla\\mathcal{L}(\\theta) \\approx \\frac{1}{B}\\sum_{i\\in\\text{batch}} \\nabla\\ell_i(\\theta)$$
 
-This is an **unbiased** estimate (by linearity of expectation) with variance $\\propto 1/B$. Two consequences:
+This is legitimate because of linearity of expectation from the [probability lesson](#/l/math-probability): the
+minibatch gradient is an **unbiased** estimate of the true one. It is wrong on any given step, but it is wrong
+in a way that averages out, and its noise shrinks like $1/\\sqrt{B}$.
 
-1. You get roughly $N/B$ times more steps for the same compute. Almost always worth it.
-2. The noise is not purely a cost. It helps escape saddle points and shallow minima, and it biases SGD toward flatter
-   regions of the loss surface, which correlates with better generalization.`),
+The trade is overwhelmingly favourable. With $B = 256$ out of $N = 10^6$ you get roughly 4000× more steps for
+the same compute. Taking 4000 slightly-wrong steps beats taking one perfect one, essentially always.`),
+
+    intuition(`The noise in SGD is not purely a cost you tolerate — it does useful work.
+
+A perfectly computed gradient is exactly zero at a saddle point, so full-batch gradient descent parks there
+indefinitely. Minibatch noise jostles you off. Likewise, noise makes it hard to settle into a *narrow* minimum
+— you get shaken out — while a *wide* flat one holds you even with jitter. So SGD is quietly biased toward flat
+minima, and flat minima empirically generalise better.
+
+This is part of why "just use a huge batch size" underperforms: you compute a cleaner gradient and lose the
+regularizing noise along with it. Very large batch training needs learning-rate scaling and warmup to
+compensate.`),
 
     t(`## Momentum
 
-Plain GD in a narrow valley oscillates across the walls while creeping along the floor. Momentum accumulates a velocity:
+Picture the narrow valley again: gradient descent bounces off the steep side walls while barely advancing along
+the floor. Look at the sequence of gradients — the across-the-valley component keeps **flipping sign**, while
+the along-the-floor component points the **same way** every time.
+
+That suggests an obvious fix: average the recent gradients instead of using only the latest. Flip-flopping
+components cancel; consistent ones survive and add up. That is momentum:
 
 $$v_{t+1} = \\beta v_t - \\eta\\nabla\\mathcal{L}(\\theta_t), \\qquad \\theta_{t+1} = \\theta_t + v_{t+1}$$
 
-Oscillating components cancel across steps; consistent components accumulate. With $\\beta=0.9$ the effective step in a
-consistent direction is amplified by $\\frac{1}{1-\\beta}=10\\times$.
+$v$ is a velocity that decays by a factor $\\beta$ each step while accumulating new gradient. The physical
+analogy is exact: a ball with inertia rolling down the surface, rather than a hiker who re-reads the map and
+starts fresh at every step.
 
-**Nesterov momentum** evaluates the gradient at the *look-ahead* point $\\theta_t + \\beta v_t$, which corrects the
-overshoot a step earlier. Small change, consistently slightly better.`),
+With the standard $\\beta=0.9$, a consistently-pointing direction gets amplified by $\\frac{1}{1-\\beta} = 10\\times$
+compared to plain SGD, while the oscillating directions are damped. You get a bigger effective step exactly where
+a bigger step is safe.
+
+**Nesterov momentum** is a small refinement: evaluate the gradient at the *look-ahead* position $\\theta_t +
+\\beta v_t$ — where momentum is about to carry you — rather than where you currently are. It notices an upcoming
+overshoot one step earlier. Marginally but consistently better.`),
 
     t(`## Adaptive methods: RMSProp and Adam
 
-Different parameters need different step sizes — a rarely-active feature's weight should move further per gradient
-than a constantly-active one. Adaptive methods estimate a per-parameter scale from the gradient history.
+Momentum helps, but it still applies one global learning rate. The next idea is to give **every parameter its
+own step size**, inferred from its own gradient history.
 
-**Adam** combines momentum (first moment) with per-parameter scaling (second moment):
+The motivation is concrete: a weight attached to a feature that appears in 1% of examples receives a gradient
+only 1% of the time. It should take bigger steps when it finally gets one. A weight in a constantly-active path
+gets a gradient every step and needs smaller ones. A single $\\eta$ cannot serve both.
+
+The heuristic that works: **divide each parameter's step by the typical magnitude of its recent gradients.**
+Large historical gradients ⇒ damp it down. Small ones ⇒ let it move. That is RMSProp.
+
+**Adam** is RMSProp plus momentum — it tracks two running averages, one of the gradient (first moment, the
+direction) and one of the squared gradient (second moment, the scale):
 
 $$m_t = \\beta_1 m_{t-1} + (1-\\beta_1)g_t \\qquad v_t = \\beta_2 v_{t-1}+(1-\\beta_2)g_t^2$$
 $$\\hat m_t = \\frac{m_t}{1-\\beta_1^t}, \\quad \\hat v_t = \\frac{v_t}{1-\\beta_2^t}, \\qquad
 \\theta_{t+1} = \\theta_t - \\eta\\frac{\\hat m_t}{\\sqrt{\\hat v_t}+\\epsilon}$$
 
-Defaults $\\beta_1=0.9,\\beta_2=0.999,\\epsilon=10^{-8}$ work remarkably often. The bias-correction terms matter early,
-when $m$ and $v$ are still initialized near zero.`),
+Line by line: $m_t$ is a running average of the gradient (momentum). $v_t$ is a running average of the gradient
+*squared*, which measures magnitude regardless of sign. The hatted versions correct a startup bias — $m$ and $v$
+begin at zero, so early on they under-report, and dividing by $1-\\beta^t$ compensates until $t$ grows. The final
+line is the update: step in the momentum direction, scaled down by the recent gradient magnitude.
+
+The $\\epsilon$ in the denominator only exists to stop division by zero for parameters that have received no
+gradient yet.
+
+Defaults $\\beta_1=0.9,\\ \\beta_2=0.999,\\ \\epsilon=10^{-8}$ work remarkably often, which is most of why Adam won:
+it is far less sensitive to getting $\\eta$ exactly right than plain SGD, and that saves an enormous amount of
+tuning time.`),
 
     warn(`**Adam has a memory cost.** It stores two extra float32 values per parameter, so optimizer state is
 $8$ bytes/param on top of weights and gradients — often the largest single term in your training memory budget. This is
@@ -1071,19 +2077,36 @@ for essentially all transformer training.`),
 
     t(`## Convexity, and how much we should care
 
-A convex function has one minimum, and any local minimum is global. Linear and logistic regression, SVMs, and Lasso
-are convex — solvers just work.`),
+A **convex** function is bowl-shaped: pick any two points on it, draw a straight line between them, and the
+function stays below that line. The consequence that matters is a guarantee — *any local minimum is the global
+minimum*. There is nowhere to get stuck. Run any reasonable solver, get the right answer, go home.
+
+Linear regression, logistic regression, SVMs, and Lasso are all convex. This is why those methods felt solid
+and theoretically respectable, and why 1990s ML theory was largely built around them.`),
 
     viz('convexity'),
 
-    t(`Neural networks are wildly non-convex, with exponentially many critical points. Empirically this matters far less
-than 1990s theory predicted:
+    t(`Neural networks are not convex. Not slightly non-convex — wildly so, with an astronomical number of
+critical points and no guarantee whatsoever that gradient descent finds anything good. On the theory of the day,
+they should not work.
 
-- Most critical points in high dimensions are **saddles**, not local minima, and gradient noise escapes them.
-- Overparameterized networks have vast connected regions of near-optimal loss; you do not need *the* minimum.
-- The minima SGD finds tend to be flat, and flatness correlates with generalization.
+They work anyway, and the reasons are partly understood:
 
-None of this is fully explained. It is one of the genuinely open theoretical questions in the field.`),
+- **Most critical points are saddles, not minima.** As the [derivatives lesson](#/l/math-derivatives) argued,
+  needing all million eigenvalues to be positive is an absurdly strong coincidence. Gradient noise slides off
+  saddles.
+- **Overparameterised networks have vast connected basins of near-optimal loss.** You do not need to find *the*
+  minimum; a huge region is good enough, and many of them turn out to be connected to each other.
+- **SGD is biased toward flat minima**, and flatness correlates with generalisation.`),
+
+    warn(`Take that list as *current best understanding*, not settled fact. Why non-convex optimization works so
+reliably for deep networks — and why the solutions it finds generalise rather than memorise — is genuinely
+open. Statements you will see asserted confidently in blog posts ("SGD finds flat minima which generalise
+better") have real empirical support and known counterexamples both.
+
+Being aware of the gap is useful in practice: it is why deep learning results are established by running the
+experiment rather than by deriving them, and why a technique that works for one architecture and dataset may
+simply not transfer.`),
 
     code('Optimizers from scratch', `import numpy as np
 
@@ -1126,6 +2149,16 @@ for name, lr, kw in [("sgd", 0.4, {}), ("sgd", 0.49, {}), ("sgd", 0.51, {}),
        'Add more layers'],
       0,
       'NaN almost always follows a gradient explosion or an overflow (especially in fp16). Log the gradient norm every step: you will usually see it climb for several steps before the blowup. Standard fixes, in order: clip the global grad norm to ~1.0, lengthen warmup, lower the peak LR, and check for fp16 overflow in attention logits (bf16 avoids most of this).'),
+
+    recap(`- Write the gradient descent update from memory and explain every symbol in it, including the minus sign.
+- Derive the stability bound $\\eta < 2/\\lambda_{\\max}$ from a one-dimensional parabola.
+- Explain why one sharp direction throttles the learning rate for the entire model.
+- Justify minibatching with "unbiased estimate", and name a benefit of the noise beyond saving compute.
+- Say what momentum does to oscillating vs. consistent gradient directions.
+- Read Adam's update and identify which term is momentum, which is per-parameter scaling, and what the bias
+  correction is for.
+- State the difference between AdamW and "Adam plus L2", and which to use.
+- Say honestly what is and is not understood about why non-convex training works.`),
   ],
   refs: [
     paper('Adam: A Method for Stochastic Optimization', 'Kingma & Ba', 2014, 'https://arxiv.org/abs/1412.6980', 'The most-cited optimizer paper in ML.'),
@@ -1145,10 +2178,41 @@ for name, lr, kw in [("sgd", 0.4, {}), ("sgd", 0.49, {}), ("sgd", 0.51, {}),
   mins: 20, level: 'foundations',
   tags: ['numerics', 'systems'],
   sections: [
+    tldr(`Every number in a model is stored in a fixed number of bits, and that storage format leaks into your
+results. Most of the time you can ignore it. When you cannot, the symptoms are dramatic: \`NaN\` losses,
+negative variances, training that diverges only on some hardware.
+
+Two ideas cover almost all of it. **Precision** — how many digits a format keeps — and **range** — the biggest
+and smallest magnitudes it can express. bf16 beat fp16 for training because it traded away precision to keep
+range, and range is what attention logits need.`),
+
+    jargon([
+      ['floating point', 'How computers store non-integer numbers: a few bits for the exponent (the scale) and the rest for the mantissa (the digits). Scientific notation in binary.'],
+      ['mantissa', 'The significant digits. More mantissa bits = finer distinctions between nearby numbers = more **precision**.'],
+      ['exponent', 'The scale. More exponent bits = a wider span between the largest and smallest representable magnitudes = more **range**.'],
+      ['fp32 / fp16 / bf16', '32-bit float, 16-bit float, and "brain float" 16. The number is the total bit count; the difference between fp16 and bf16 is how those 16 bits are split.'],
+      ['overflow / underflow', 'A value too large for the format (becomes `inf`) or too small (becomes `0`). Both silently destroy your computation.'],
+      ['mixed precision', 'Doing most arithmetic in 16 bits for speed and memory, but keeping a 32-bit copy of the weights so tiny updates are not lost.'],
+      ['loss scaling', 'Multiplying the loss by a large constant before the backward pass so small gradients do not underflow to zero in fp16. bf16 does not need this.'],
+      ['catastrophic cancellation', 'Subtracting two nearly-equal large numbers. The leading digits cancel and you are left with mostly rounding error.'],
+      ['conditioning', 'How much a small change to a problem\'s input can change its answer. Badly conditioned problems amplify floating-point error.'],
+      ['quantization', 'Deliberately storing weights in very few bits (8 or 4) to shrink a model for inference.'],
+    ]),
+
     t(`## Floats are not real numbers
 
-A floating-point number is $\\pm m \\times 2^{e}$ — a sign bit, some exponent bits (setting the *range*), and some
-mantissa bits (setting the *precision*). The split between exponent and mantissa is the entire design space.`),
+The mathematics in this track assumed real numbers: infinitely many, infinitely precise. Your hardware has 32
+bits. Something has to give.
+
+A floating-point number is stored as $\\pm m \\times 2^{e}$ — a sign bit, some **exponent** bits, and some
+**mantissa** bits. It is scientific notation in binary, and the split between those two groups is the entire
+design space:
+
+- More **exponent** bits ⇒ wider **range**. You can represent $10^{38}$ and $10^{-38}$ without overflowing.
+- More **mantissa** bits ⇒ finer **precision**. You can tell $1.0000001$ from $1.0000002$.
+
+With a fixed total bit budget, you buy one with the other. Every format in the table below is a different answer
+to that trade, and the reason bf16 won for training is that it made the right call about which one matters.`),
 
     viz('float-precision'),
 
@@ -1161,21 +2225,30 @@ mantissa bits (setting the *precision*). The split between exponent and mantissa
 | fp8 | 8 | 4 or 5 | 3 or 2 | $448$ | H100+ training, inference |
 | int8 / int4 | 8 / 4 | — | — | — | quantized inference |
 
-**bf16 is fp32 with the mantissa chopped off.** Same exponent range, so the same values are representable — you just
-lose precision. That is why it needs no loss scaling and why it displaced fp16 for large-scale training. fp16, with
-only 5 exponent bits, overflows above 65,504 — and attention logits routinely exceed that.`),
+Read the exponent column and the story tells itself. **bf16 is simply fp32 with the mantissa chopped off** — it
+keeps all 8 exponent bits, so exactly the same *range* of magnitudes is representable. You lose precision, not
+reach. Casting fp32 → bf16 can never overflow.
+
+fp16 made the opposite bet: 5 exponent bits, 10 mantissa bits. More precision, far less range — its largest
+value is 65,504. That sounds like plenty until you remember attention logits are dot products over thousands of
+dimensions, which routinely exceed it. Training in fp16 therefore requires **loss scaling** (multiply the loss
+up before the backward pass, divide out after) plus overflow detection and step-skipping, all of which is
+machinery you simply do not need with bf16.
+
+That is the whole reason the industry switched. Not that bf16 is more accurate — it is *less* accurate — but
+that neural network training turns out to be robust to low precision and extremely fragile to overflow.`),
 
     t(`## Mixed precision, in practice
 
-The standard recipe:
+You do not pick one format — you use several at once, each where it is strongest. The standard recipe:`),
 
-1. Keep **master weights in fp32**.
-2. Cast to bf16 for the forward and backward passes (2× less memory traffic, and tensor cores are much faster).
-3. Accumulate matmuls in fp32 inside the hardware.
-4. Apply the optimizer update in fp32.
-
-Some operations stay in fp32 regardless because they are precision-sensitive: softmax denominators, layer norm
-statistics, and loss computation. Frameworks maintain an allowlist for this.`),
+    steps('The mixed-precision training loop', [
+      { h: 'Keep master weights in fp32', md: `A single optimizer step changes a weight by something like $10^{-7}$ of its magnitude. In bf16, with 7 mantissa bits, that update rounds to *exactly nothing* and the weight never moves. The fp32 master copy is what makes tiny accumulated updates possible at all.` },
+      { h: 'Cast to bf16 for the forward and backward passes', md: `Half the bytes means half the memory traffic, and matrix-multiply units run several times faster on 16-bit inputs. This is where nearly all the speedup comes from.` },
+      { h: 'Accumulate matmul results in fp32', md: `Summing thousands of products in 16 bits would lose precision badly. The hardware multiplies in bf16 but accumulates in fp32 internally — you get the speed without the error. This happens automatically inside tensor cores.` },
+      { h: 'Apply the optimizer update in fp32', md: `Back on the master copy, at full precision. Then cast down again for the next forward pass.` },
+      { h: 'Keep the precision-sensitive operations in fp32 regardless', md: `Softmax denominators, layer-norm statistics, and the loss itself all involve sums or divisions where small errors compound. Frameworks maintain an allowlist of ops that stay in fp32 no matter what the surrounding cast says.` },
+    ]),
 
     warn(`**Catastrophic cancellation.** Subtracting nearly-equal numbers destroys significant digits. The classic
 example is computing variance as $\\mathbb{E}[X^2]-\\mathbb{E}[X]^2$: if the mean is large relative to the spread, both
@@ -1184,14 +2257,22 @@ terms are huge and nearly equal, and you can get a *negative* variance. Use a st
 The same issue is why softmax subtracts the max before exponentiating, and why you should never write
 \`log(softmax(x))\` instead of \`log_softmax(x)\`.`),
 
-    t(`## Conditioning
+    t(`## Conditioning: when the problem itself amplifies error
 
-The **condition number** of a problem measures how much the output can move when the input is perturbed slightly.
-For solving $A\\mathbf{x}=\\mathbf{b}$, it is $\\kappa(A)=\\sigma_{\\max}/\\sigma_{\\min}$, and the rule of thumb is:
+Floating-point error is small. Whether it *stays* small depends on the problem, and the condition number is
+what tells you.
 
-> You lose about $\\log_{10}\\kappa$ digits of accuracy.
+The **condition number** measures how much the answer can move when the input is nudged. For solving
+$A\\mathbf{x}=\\mathbf{b}$ it is the same ratio from the [SVD lesson](#/l/math-eigen-svd),
+$\\kappa(A)=\\sigma_{\\max}/\\sigma_{\\min}$, and it comes with a blunt rule of thumb:
 
-With $\\kappa=10^8$ in float32 (≈7 digits), your answer is noise. This is exactly why you should never solve the normal
+> **You lose about $\\log_{10}\\kappa$ digits of accuracy.**
+
+float32 carries roughly 7 decimal digits. So a problem with $\\kappa=10^8$ consumes all of them and your answer
+is pure noise — not "slightly off", but meaningless. And you get no warning: the solver returns
+confident-looking numbers either way.
+
+This has one very concrete consequence worth memorising. You should never solve the normal
 equations $X^{\\mathsf T}X\\mathbf{w}=X^{\\mathsf T}\\mathbf{y}$ by forming $X^{\\mathsf T}X$ — that **squares** the condition
 number. Use a QR or SVD-based least-squares solver (\`np.linalg.lstsq\`) instead.`),
 
@@ -1237,6 +2318,14 @@ print("difference between the two solutions:",
        'It uses less memory than fp16'],
       0,
       'bf16 and fp16 are both 16 bits and use identical memory. bf16 trades mantissa bits for exponent bits: **less precise, but the same range as fp32**. Since training blows up from overflow far more often than from rounding, that is the right trade — and it removes the loss-scaling machinery fp16 requires.'),
+
+    recap(`- Explain the exponent/mantissa trade in one sentence, and map it onto range vs. precision.
+- Say why bf16 replaced fp16 for training, and why "it is more accurate" is the wrong answer.
+- Describe the mixed-precision recipe and, in particular, why fp32 master weights are not optional.
+- Recognise catastrophic cancellation, and name two places it is deliberately engineered around
+  (\\\`log_softmax\\\`, the softmax max-subtraction).
+- Use $\\log_{10}\\kappa$ to predict how many digits a computation will cost you.
+- Explain why forming $X^{\\mathsf T}X$ is a bad idea, and what to call instead.`),
   ],
   refs: [
     paper('What Every Computer Scientist Should Know About Floating-Point Arithmetic', 'David Goldberg', 1991, 'https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html', 'The definitive reference. Long, but the first few sections are essential.'),

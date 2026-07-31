@@ -398,8 +398,43 @@ function renderSection(s, host, lesson) {
   } else if (s.t === 'note') {
     const d = document.createElement('div');
     d.className = 'callout ' + (s.kind || 'key');
-    const labels = { intuition: '◈ Intuition', warning: '⚠ Watch out', key: '★ Key idea', history: '⏱ History', math: '∑ Math note' };
+    const labels = { intuition: '◈ Intuition', warning: '⚠ Watch out', key: '★ Key idea', history: '⏱ History', math: '∑ Math note',
+                     tldr: '◎ The short version', recap: '✓ You can now say' };
     d.innerHTML = `<div class="callout-label">${s.title || labels[s.kind] || '★ Key idea'}</div>${md(s.md)}`;
+    host.appendChild(d);
+
+  } else if (s.t === 'jargon') {
+    const d = document.createElement('div');
+    d.className = 'jargon';
+    d.innerHTML = `<div class="jargon-label">⌘ Words you will need first</div>` +
+      (s.items || []).map(([term, gloss]) =>
+        `<div class="jargon-row"><div class="jargon-term">${md(term).replace(/^<p>|<\/p>$/g, '')}</div>` +
+        `<div class="jargon-def">${md(gloss).replace(/^<p>|<\/p>$/g, '')}</div></div>`).join('');
+    host.appendChild(d);
+
+  } else if (s.t === 'steps') {
+    const d = document.createElement('div');
+    d.className = 'steps';
+    if (s.title) d.innerHTML = `<div class="steps-label">${s.title}</div>`;
+    (s.items || []).forEach((it, i) => {
+      const body = typeof it === 'string' ? it : it.md;
+      const head = typeof it === 'string' ? '' : it.h;
+      const row = document.createElement('div');
+      row.className = 'step';
+      row.innerHTML = `<div class="step-n">${i + 1}</div><div class="step-body">` +
+        (head ? `<div class="step-h">${md(head).replace(/^<p>|<\/p>$/g, '')}</div>` : '') +
+        md(body) + `</div>`;
+      d.appendChild(row);
+    });
+    host.appendChild(d);
+
+  } else if (s.t === 'diagram') {
+    const d = document.createElement('div');
+    d.className = 'viz diagram';
+    d.innerHTML =
+      (s.title ? `<div class="viz-head"><span class="viz-title">${s.title}</span></div>` : '') +
+      `<div class="diagram-body">${s.svg}</div>` +
+      (s.caption ? `<div class="viz-caption">${md(s.caption)}</div>` : '');
     host.appendChild(d);
 
   } else if (s.t === 'deriv') {

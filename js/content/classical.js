@@ -2,7 +2,8 @@
    Track 2 — Classical machine learning
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -14,21 +15,73 @@ export default [
   mins: 20, level: 'core',
   tags: ['theory', 'generalization'],
   sections: [
+    tldr(`"Learning" has a precise meaning, and it is not "getting good scores on your data". It is: doing well
+on data you have **not seen yet**.
+
+That gap is the whole subject. You can only measure performance on the examples you have, but you only care
+about performance on the ones you don't. Everything in classical ML — validation splits, regularization,
+cross-validation, the obsession with not touching the test set — exists to stop you from fooling yourself about
+that gap.`),
+
+    jargon([
+      ['distribution $\\mathcal{D}$', 'The imaginary infinite pool of all possible examples your data was drawn from. You never see it; you only ever hold a finite sample.'],
+      ['$(\\mathbf{x}, y)$', 'One labelled example: the input features $\\mathbf{x}$ and the correct answer $y$.'],
+      ['loss $\\ell$', 'A number saying how wrong a single prediction was. Squared error, cross-entropy, and so on.'],
+      ['risk', 'Confusingly, just "average loss". **True risk** = average over the whole distribution (what you want). **Empirical risk** = average over your dataset (what you can measure).'],
+      ['ERM', 'Empirical Risk Minimization — the strategy of "minimise the average loss on the data I have and hope". Almost all supervised learning is this plus a safeguard.'],
+      ['generalization', 'How well the model does on unseen data. The gap between empirical and true risk.'],
+      ['i.i.d.', '"Independent and identically distributed" — the assumption that your test data looks like your training data and the examples do not influence each other.'],
+      ['capacity', 'How complicated a function a model is able to represent. High capacity can fit anything, including noise.'],
+      ['inductive bias', 'The assumptions a model makes before seeing any data. A CNN assumes nearby pixels matter together; that assumption is its inductive bias.'],
+      ['hyperparameter', 'A setting you choose rather than learn — learning rate, tree depth, number of layers. Distinguished from parameters, which are fit from data.'],
+    ]),
+
     t(`## The setup, formally
 
-There is a distribution $\\mathcal{D}$ over pairs $(\\mathbf{x}, y)$. You never see it. You see $n$ samples drawn from
-it. You want a function $f$ that predicts $y$ from $\\mathbf{x}$ on **future** samples from the same $\\mathcal{D}$.
+Here is the whole problem in four objects.
 
-Define a loss $\\ell(f(\\mathbf{x}), y)$. The thing you actually care about is the **true risk**:
+There is a **distribution** $\\mathcal{D}$ over input–output pairs $(\\mathbf{x}, y)$ — think of it as an
+infinite pool of every photo that could ever be taken and its correct label. You never see $\\mathcal{D}$. You
+see $n$ examples drawn from it. And you want a function $f$ that predicts $y$ from $\\mathbf{x}$ well on
+**future** draws from that same pool.
+
+Pick a **loss** $\\ell(f(\\mathbf{x}), y)$ measuring how wrong one prediction is. What you genuinely care about
+is the average loss over the whole pool — the **true risk**:
 
 $$R(f) = \\mathbb{E}_{(\\mathbf{x},y)\\sim\\mathcal{D}}\\big[\\ell(f(\\mathbf{x}), y)\\big]$$
 
-You cannot compute it. What you can compute is the **empirical risk** on your sample:
+And here is the problem in one line: **you cannot compute that.** It is an average over a distribution you do
+not have access to. The best you can do is average over the examples you happen to hold — the **empirical
+risk**:
 
 $$\\hat R(f) = \\frac{1}{n}\\sum_{i=1}^{n} \\ell(f(\\mathbf{x}_i), y_i)$$
 
-and minimizing that is called **empirical risk minimization** (ERM). Essentially all supervised learning is ERM plus
-some form of capacity control.`),
+Minimising *that* is called **empirical risk minimization** (ERM), and essentially all supervised learning is
+ERM plus some scheme for stopping the model from taking the "minimise" instruction too literally.`),
+
+    diagram('The one gap that everything else is about',
+`<svg viewBox="0 0 620 210" role="img" aria-label="Empirical risk measured on a sample versus true risk on the full distribution">
+  <ellipse cx="150" cy="105" rx="128" ry="80" style="fill: color-mix(in srgb, var(--s1) 8%, transparent); stroke: var(--s1); stroke-width: 1.6; stroke-dasharray: 5 4"/>
+  <text class="dtitle" x="150" y="42" text-anchor="middle" style="fill: var(--s1)">the distribution D</text>
+  <text class="dlabel" x="150" y="60" text-anchor="middle">everything that could happen</text>
+  <g style="fill: var(--s1); opacity: .35">
+    <circle cx="90" cy="95" r="3"/><circle cx="200" cy="80" r="3"/><circle cx="118" cy="145" r="3"/>
+    <circle cx="215" cy="140" r="3"/><circle cx="72" cy="130" r="3"/><circle cx="175" cy="120" r="3"/>
+    <circle cx="140" cy="72" r="3"/><circle cx="235" cy="105" r="3"/><circle cx="60" cy="100" r="3"/>
+  </g>
+  <rect x="100" y="88" width="88" height="56" rx="4" style="fill: color-mix(in srgb, var(--s2) 16%, transparent); stroke: var(--s2); stroke-width: 1.8"/>
+  <g style="fill: var(--s2)"><circle cx="118" cy="102" r="3.4"/><circle cx="150" cy="118" r="3.4"/><circle cx="172" cy="100" r="3.4"/><circle cx="132" cy="132" r="3.4"/></g>
+  <text class="dtitle" x="144" y="170" text-anchor="middle" style="fill: var(--s2)">your dataset</text>
+  <line x1="285" y1="105" x2="330" y2="105" style="stroke: var(--border); stroke-width: 1.5"/>
+  <text class="dmono" x="350" y="82" style="fill: var(--s2)">R-hat  = what you measure</text>
+  <text class="dmono" x="350" y="106" style="fill: var(--s1)">R      = what you care about</text>
+  <text class="dtitle" x="350" y="140" style="fill: var(--s6)">the difference = generalization gap</text>
+  <text class="dlabel" x="350" y="160">shrinks with more data,</text>
+  <text class="dlabel" x="350" y="177">grows with more model capacity</text>
+</svg>`,
+      `Keep this picture when you read a benchmark number. Every reported score is the orange box; the claim being
+made is about the blue ellipse. The two coincide only when the sample is representative and you did not tune
+your way into fitting it.`),
 
     key(`The entire discipline hinges on one question: **when does small $\\hat R$ imply small $R$?**
 
@@ -50,12 +103,17 @@ Two assumptions are doing all the work, and both fail in the real world more oft
 
     t(`## No free lunch, and why it does not paralyze us
 
-The No Free Lunch theorem says that averaged over *all possible* target functions, every learning algorithm performs
-identically. Which sounds devastating until you notice the premise: we do not care about all possible functions. Real
-data has structure — smoothness, locality, compositionality, hierarchy — and an algorithm wins by encoding assumptions
-that match that structure.
+There is a theorem that sounds like it should end the field. The **No Free Lunch theorem** says that averaged
+over *all possible* target functions, every learning algorithm performs identically. Random guessing included.
+No method is better than any other.
 
-Those assumptions are called **inductive bias**, and choosing them is the actual craft:
+The escape is hiding in the premise. "All possible functions" includes every function that maps inputs to
+outputs at random with no structure whatsoever — an overwhelming majority of the space, and none of it anything
+you will ever be asked to learn. Real data has structure: it is smooth, local, compositional, hierarchical.
+
+So an algorithm wins not by being universally good, but by **encoding assumptions that happen to match the
+structure of your data**. Those assumptions are called **inductive bias**, and choosing them is the actual
+craft of the field:
 
 | Model | Inductive bias |
 |---|---|
@@ -73,15 +131,27 @@ is the recurring theme of the last decade, and scale has consistently favored th
 
     t(`## Train, validation, test
 
-Three splits, three distinct jobs:
+Three splits, three distinct jobs, and conflating any two of them will quietly ruin your results:
 
-- **Train** — fit parameters.
-- **Validation** — choose hyperparameters, architecture, when to stop.
-- **Test** — estimate true risk. **Touch once.**
+- **Train** — fit the parameters. The model sees these directly.
+- **Validation** — choose hyperparameters, pick the architecture, decide when to stop. The model does not train
+  on these, but *you* do: every decision you make based on validation performance is a form of fitting.
+- **Test** — estimate the true risk. **Touch once, at the very end.**
 
-Every time you look at the test set and change something, you leak a bit of it into your model. Do it enough and your
-test score becomes a training score wearing a disguise. This is the most common methodological failure in applied ML,
-and it is entirely self-inflicted.`),
+The reason the third one is so strict is worth spelling out, because "I never trained on the test set" feels
+like enough and is not.`),
+
+    warn(`**Selection is training.** Every time you look at a test score and change something — a hyperparameter,
+an architecture, a preprocessing step — you have used the test set to make a decision. That is optimization, run
+by hand, at one bit per look.
+
+Do it twenty times and your test score is no longer an estimate of true risk. It is a *validation* score
+wearing a disguise, and it is optimistically biased: you selected the maximum of twenty noisy numbers, and the
+maximum of noisy numbers sits above the average of what they are estimating.
+
+This is the most common methodological failure in applied ML, it is entirely self-inflicted, and it is why
+published results routinely fail to reproduce. The discipline is to hold out a test set, forget it exists,
+iterate on validation, and look exactly once.`),
 
     viz('cross-validation'),
 
@@ -122,6 +192,14 @@ print(f"irreducible noise floor:      {0.5**2:.4f}")`,
        'You should have used a larger test set'],
       0,
       'With 200 draws you are selecting the maximum of 200 noisy estimates, and the max of noisy estimates is biased upward. This is the multiple-comparisons problem. The fix: select on a validation set, then evaluate the single chosen model on the test set once. Expect the test number to be meaningfully lower.'),
+
+    recap(`- Define true risk and empirical risk, and say precisely why one is computable and the other is not.
+- Name the two assumptions that make ERM work, and give a real situation that breaks each.
+- Explain No Free Lunch, then explain why it does not mean "all models are equally good in practice".
+- Read off the inductive bias of a model you are considering, and predict whether it will win on small or large
+  data.
+- Say why selecting a model on the test set turns your test score into a lie, in terms of the maximum of noisy
+  estimates.`),
   ],
   refs: [
     book('Understanding Machine Learning: From Theory to Algorithms', 'Shalev-Shwartz & Ben-David', 2014, 'https://www.cs.huji.ac.il/~shais/UnderstandingMachineLearning/', 'Free PDF. The rigorous foundation for everything in this lesson.'),
@@ -140,29 +218,94 @@ print(f"irreducible noise floor:      {0.5**2:.4f}")`,
   prereq: ['math-vectors', 'math-probability'],
   tags: ['regression', 'least squares'],
   sections: [
+    tldr(`Fit a straight line (or a flat plane, in more dimensions) through your data by making the squared
+errors as small as possible. That is the entire model, and it has a closed-form solution — no iteration, no
+learning rate, no training loop.
+
+It is worth taking seriously rather than treating as a warm-up. Linear regression is the baseline that tells
+you whether a fancier model is earning its complexity, its coefficients are interpretable in a way no neural
+network's are, and the geometry behind it — **projection onto what your features can explain** — reappears in
+PCA, in attention, and in the least-squares core of half the methods in this atlas.`),
+
+    jargon([
+      ['$\\hat y$ ("y-hat")', 'The model\'s *prediction*. The hat always means "estimated" as opposed to the true value $y$.'],
+      ['$\\mathbf{w}$ (weights) and $b$ (bias)', 'The numbers being learned. Each $w_j$ scales one feature; $b$ shifts the whole line up or down (the intercept).'],
+      ['feature', 'One input column. "Square footage" is a feature; "square footage, bedrooms, zip code" are three.'],
+      ['residual', 'The error on one example: actual minus predicted, $y_i - \\hat y_i$. What the model failed to explain.'],
+      ['design matrix $X$', 'Your whole dataset as a matrix: one row per example, one column per feature.'],
+      ['least squares', 'Choosing $\\mathbf{w}$ to minimise the *sum of squared* residuals. The squaring is a real modelling choice, not an aesthetic one.'],
+      ['closed form', 'A solution you can write down as a formula and compute directly, with no iterative search.'],
+      ['normal equations', 'The specific formula that solves least squares. "Normal" here means *perpendicular* — it comes from the geometry, not from the normal distribution.'],
+      ['column space of $X$', 'Every prediction your features are capable of producing — the [span](#/l/math-matrices) of the columns of $X$.'],
+      ['$R^2$ ("R-squared")', 'The fraction of the target\'s variance the model explains. 1 is perfect, 0 is no better than predicting the average.'],
+      ['covariate', 'Another word for a feature, more common in statistics.'],
+    ]),
+
     t(`## The model
+
+A prediction is a weighted sum of the features, plus an offset:
 
 $$\\hat y = \\mathbf{w}^{\\mathsf T}\\mathbf{x} + b = w_1x_1 + \\cdots + w_dx_d + b$$
 
-Fold $b$ into $\\mathbf{w}$ by appending a constant 1 feature, and it becomes $\\hat y = \\mathbf{w}^{\\mathsf T}\\mathbf{x}$.
-Fit by minimizing squared error:
+Read $\\mathbf{w}^{\\mathsf T}\\mathbf{x}$ as the dot product from [the vectors lesson](#/l/math-vectors) — it is
+literally "multiply each feature by its weight and add them up". Each $w_j$ says how much feature $j$ pushes
+the prediction; $b$ is where the line crosses zero.
 
-$$\\mathcal{L}(\\mathbf{w}) = \\frac{1}{n}\\|X\\mathbf{w}-\\mathbf{y}\\|^2$$`),
+A standard piece of bookkeeping: append a constant 1 to every input, and $b$ becomes just another weight. Then
+the model is simply $\\hat y = \\mathbf{w}^{\\mathsf T}\\mathbf{x}$, with no special case for the intercept. Every
+library does this internally.
+
+Now fit it. Stack all $n$ examples into a matrix $X$ (one row each) so $X\\mathbf{w}$ gives all $n$ predictions
+at once, and minimise the average squared error:
+
+$$\\mathcal{L}(\\mathbf{w}) = \\frac{1}{n}\\|X\\mathbf{w}-\\mathbf{y}\\|^2$$
+
+Inside the norm, $X\\mathbf{w}-\\mathbf{y}$ is the vector of residuals. The $\\|\\cdot\\|^2$ squares each one and
+adds them up. So the objective reads: *make the total squared miss as small as possible*.`),
 
     viz('linear-regression'),
 
     t(`## Why squared error?
 
-Three independent justifications converge on it, which is a good sign:
+Squaring the errors is a choice. Why not absolute error, or the fourth power? Three completely independent
+lines of reasoning land on the square, which is usually a sign that a definition is the right one:
 
-1. **Probabilistic.** It is maximum likelihood under Gaussian noise (derived in the
-   [probability lesson](#/l/math-probability)).
-2. **Geometric.** It finds the orthogonal projection of $\\mathbf{y}$ onto the column space of $X$ — the closest
-   reachable point.
-3. **Computational.** It is convex and quadratic, so the minimum is unique and available in closed form.
+1. **Probabilistic.** It is exactly maximum likelihood if you assume the noise is Gaussian — derived in the
+   [probability lesson](#/l/math-probability). So "use squared error" and "I believe the errors are normally
+   distributed" are the same statement.
+2. **Geometric.** It finds the orthogonal projection of $\\mathbf{y}$ onto the column space of $X$: the closest
+   point to your target that your features are capable of producing. This is the projection picture from
+   [the vectors lesson](#/l/math-vectors), scaled up.
+3. **Computational.** Squared error is convex and quadratic, so there is exactly one minimum and you can solve
+   for it directly. No local minima, no learning rate, no waiting.
 
-The cost of this convenience is sensitivity: squared error punishes large residuals quadratically, so one outlier can
-dominate the fit. Try the **+ outlier** button above.`),
+The price for all that convenience is fragility. A residual of 10 contributes 100 to the loss while a residual
+of 1 contributes 1, so a single wild outlier can outvote a hundred well-behaved points and drag the whole line
+toward itself. Press **+ outlier** in the figure and watch it happen. When your data has outliers you want
+absolute error (L1) or a Huber loss, which are more robust precisely because they punish large residuals less.`),
+
+    diagram('Least squares as projection: the picture behind the algebra',
+`<svg viewBox="0 0 560 230" role="img" aria-label="y projected onto the plane spanned by the feature columns">
+  <polygon points="60,175 330,175 430,110 160,110" style="fill: color-mix(in srgb, var(--s1) 12%, transparent); stroke: var(--s1); stroke-width: 1.5"/>
+  <text class="dlabel" x="72" y="196" style="fill: var(--s1)">column space of X — every prediction your features can make</text>
+  <defs>
+    <marker id="ls1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--s6)"/></marker>
+    <marker id="ls2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" style="fill: var(--s3)"/></marker>
+  </defs>
+  <line x1="180" y1="150" x2="300" y2="35" style="stroke: var(--s6); stroke-width: 2.4" marker-end="url(#ls1)"/>
+  <text class="dmono" x="308" y="32" style="fill: var(--s6)">y  (the target)</text>
+  <line x1="180" y1="150" x2="292" y2="140" style="stroke: var(--s3); stroke-width: 2.4" marker-end="url(#ls2)"/>
+  <text class="dmono" x="300" y="146" style="fill: var(--s3)">y-hat = Xw  (best fit)</text>
+  <line x1="296" y1="139" x2="300" y2="35" style="stroke: var(--s2); stroke-width: 2; stroke-dasharray: 4 3"/>
+  <text class="dmono" x="310" y="90" style="fill: var(--s2)">residual</text>
+  <path d="M287,131 L279,130 L280,138" style="fill:none; stroke: var(--text-faint); stroke-width: 1.4"/>
+  <text class="dlabel" x="60" y="222">The residual meets the plane at 90 degrees. That right angle IS the normal equations.</text>
+</svg>`,
+      `The target $\\mathbf{y}$ almost never lies in the plane your features can reach — real data has noise your
+model cannot express. Least squares drops a perpendicular onto that plane. The right angle is not decoration:
+"the residual is orthogonal to every feature column" is algebraically identical to $X^{\\mathsf
+T}(X\\mathbf{w}-\\mathbf{y}) = 0$, which *is* the normal equations. That is also why they are called "normal" —
+the word means perpendicular here, and has nothing to do with the normal distribution.`),
 
     deriv('The normal equations', `Minimize $\\mathcal{L}(\\mathbf{w}) = \\|X\\mathbf{w}-\\mathbf{y}\\|^2 = (X\\mathbf{w}-\\mathbf{y})^{\\mathsf T}(X\\mathbf{w}-\\mathbf{y})$.
 
@@ -187,37 +330,68 @@ which goes through QR or SVD.`),
 
     t(`## Reading the coefficients
 
-$w_j$ is the expected change in $y$ per unit change in $x_j$, **holding all other features fixed**. That last clause is
-where interpretation usually goes wrong:
+Interpretability is linear regression's main selling point over a neural network, so it is worth being precise
+about what a coefficient actually claims.
 
-- If features are correlated, "holding others fixed" may describe a situation that never occurs in your data. The
-  coefficients become unstable — small data changes can flip their signs.
-- Coefficient magnitude means nothing unless features are on comparable scales. Standardize first if you want to
-  compare.
-- **Correlation is not causation, and a regression coefficient is a correlation.** Adding or removing a covariate can
-  reverse a coefficient's sign entirely (Simpson's paradox). Regression coefficients answer causal questions only
-  under assumptions the regression itself cannot check.`),
+$w_j$ is the expected change in $y$ per unit change in $x_j$, **holding every other feature fixed**. That last
+clause is small, easy to skip, and where nearly all misinterpretation happens.
+
+**Correlated features make "holding others fixed" fictional.** If square footage and bedroom count move together
+in your data, then "one more bedroom with the square footage unchanged" describes a house that essentially never
+appears. The model still reports a number for it, extrapolated from nothing. Symptom: coefficients that swing
+wildly — even flipping sign — when you refit on a slightly different sample.
+
+**Magnitudes are not comparable across features unless the scales are.** A coefficient of 0.001 on "house price
+in dollars" and 5.0 on "number of bathrooms" tells you nothing about relative importance. Standardise the
+features first (subtract the mean, divide by the standard deviation) if you want to compare.`),
+
+    warn(`**A regression coefficient is a correlation, and correlation is not causation.** This is repeated so
+often that it has lost its force, so here is the concrete version:
+
+Adding or removing a single covariate can *reverse* a coefficient's sign. This is Simpson's paradox, and it is
+not a rare edge case — it shows up in medical trials, hiring data, and A/B tests routinely. A model showing
+"treatment X is associated with worse outcomes" can flip to "better outcomes" once severity is included, because
+sicker patients got the treatment.
+
+Regression answers causal questions only under assumptions about *which* variables to include, and the
+regression itself has no way to check those assumptions. Nothing in the fit will warn you. If you need a causal
+claim, you need a causal design — a randomised experiment, or an explicit causal model — not a bigger $R^2$.`),
 
     t(`## $R^2$ and its traps
 
-$$R^2 = 1 - \\frac{\\sum_i (y_i-\\hat y_i)^2}{\\sum_i (y_i-\\bar y)^2}$$
+$$R^2 = 1 - \\frac{\\sum_i (y_i-\\hat y_i)^2}{\\sum_i (y_i-\\bar y)^2} = 1 - \\frac{\\text{your error}}{\\text{the error of just guessing the mean}}$$
 
-"Fraction of variance explained." Useful, with caveats:
+That second form is the useful reading. The denominator is how badly you would do with the dumbest possible
+model — always predict $\\bar y$, the average. So $R^2$ measures how much of that baseline error you eliminated.
+$R^2 = 0.8$ means "I removed 80% of the error a constant predictor would have made".
 
-- $R^2$ **never decreases** when you add a feature, even a random one. Use adjusted $R^2$, or just look at held-out
-  error.
-- High $R^2$ does not mean the model is right; low $R^2$ does not mean it is useless (a weak signal on a noisy target
-  can still be valuable).
-- On the *test* set, $R^2$ can be negative — meaning you would have done better predicting the mean.`),
+Three traps, in increasing order of how often they catch people:
+
+- **$R^2$ never decreases when you add a feature** — not even a column of pure random noise, which will always
+  find some accidental correlation to exploit. So $R^2$ on the training set cannot be used to choose between
+  models of different sizes. Use adjusted $R^2$, or better, just look at held-out error.
+- **High $R^2$ does not mean the model is right**, and low $R^2$ does not mean it is useless. A model that
+  explains 3% of the variance in stock returns is extraordinarily valuable. A model that explains 95% of the
+  variance using a feature that leaked from the future is worthless.
+- **On the test set, $R^2$ can be negative.** It just means you did worse than predicting the mean. Surprising
+  the first time you see it, entirely possible.`),
 
     t(`## Beyond straight lines
 
-Linear regression is linear **in the parameters**, not in the features. So this is still linear regression:
+One point that trips up almost everyone: linear regression is linear **in the parameters**, not in the
+features. The requirement is that the prediction is a weighted sum of *something* — the somethings can be as
+curvy as you like.
+
+So all of this is still linear regression, solvable with the exact same closed form:
 
 $$\\hat y = w_0 + w_1x + w_2x^2 + w_3\\sin(x) + w_4 x_1x_2$$
 
-You can fit any curve by engineering features. Which immediately raises the question of how many features to add —
-and that is the next lesson.`),
+Just compute $x^2$, $\\sin(x)$, and $x_1x_2$ as new columns and hand them to the same solver. The model has no
+idea they are related to each other. Under this trick, linear regression can fit any curve at all, given enough
+engineered features.
+
+Which raises the obvious next question, and it is not a happy one: if I can always add more features and always
+reduce my training error, when should I stop? That is [the next lesson](#/l/ml-overfitting).`),
 
     code('Least squares, three ways', `import numpy as np
 
@@ -268,6 +442,14 @@ print("\\nw4 (true value 0) should have |t| < 2 -> not distinguishable from zero
        'Predictions will be badly biased'],
       0,
       'This is **multicollinearity**. $X^{\\mathsf T}X$ becomes near-singular, so the coefficient split between the two features is nearly arbitrary — the fit can trade a large positive weight on one against a large negative weight on the other. Predictions stay accurate (their *sum* is well determined) but interpretation is worthless. Ridge regularization is the standard remedy.'),
+
+    recap(`- Write the linear model and say what each symbol does, including why the intercept is usually folded
+  into $\\mathbf{w}$.
+- Give the three independent justifications for squared error, and name the failure mode you accept in return.
+- Draw the projection picture and explain why "the residual is perpendicular" *is* the normal equations.
+- State exactly what a coefficient claims, and two reasons that claim is often meaningless in practice.
+- Explain why $R^2$ always improves on training data and what to look at instead.
+- Explain why $\\hat y = w_0 + w_1x + w_2x^2$ is still linear regression.`),
   ],
   refs: [
     book('The Elements of Statistical Learning, Ch. 3', 'Hastie, Tibshirani & Friedman', 2009, 'https://hastie.su.domains/ElemStatLearn/', 'The definitive treatment of linear methods for regression.'),
@@ -286,30 +468,104 @@ print("\\nw4 (true value 0) should have |t| < 2 -> not distinguishable from zero
   prereq: ['ml-linear-regression'],
   tags: ['generalization', 'bias-variance'],
   sections: [
+    tldr(`Give a model enough flexibility and it will fit your training data perfectly — including the parts
+that were pure noise. Noise does not repeat, so the model then fails on anything new. That is **overfitting**,
+and managing it is most of what applied ML practice consists of.
+
+The classical framing splits your error into **bias** (the model is too rigid to capture the truth) and
+**variance** (the model is so flexible it chases the randomness in your particular sample), and says you must
+trade one against the other.
+
+That framing is correct and incomplete. Modern deep networks sit in a regime where it visibly fails, and the
+lesson ends with two phenomena — double descent and grokking — that the textbook story cannot account for.`),
+
+    jargon([
+      ['overfitting', 'Fitting the noise in your training data, not just the signal. Training error keeps dropping while test error rises.'],
+      ['underfitting', 'The opposite: the model is too simple to capture the real pattern. Both errors stay high.'],
+      ['capacity', 'How complicated a function a model *can* represent. More capacity = more ability to overfit.'],
+      ['bias (in this lesson)', 'How far off the model is *on average across different training sets*. Nothing to do with the $b$ term in linear regression, or with social bias. Unfortunate overloading of the word.'],
+      ['variance (in this lesson)', 'How much the fitted model changes when you retrain it on a different sample of the same size.'],
+      ['irreducible noise $\\sigma^2$', 'Randomness in the data itself that no model can predict. The floor on your error.'],
+      ['interpolate', 'Fit the training data *exactly* — zero training error. In classical theory this was a warning sign; in deep learning it is normal.'],
+      ['data leakage', 'Information about the answer sneaking into your features. Produces suspiciously good scores and models that fail in production.'],
+      ['early stopping', 'Halting training before the model has had time to overfit. A regularizer disguised as a scheduling decision.'],
+      ['double descent', 'The observation that test error goes up, then *down again* as models grow past the interpolation point.'],
+      ['grokking', 'A model reaching perfect training accuracy while still at chance on test, then abruptly generalizing many thousands of steps later.'],
+    ]),
+
     t(`## The phenomenon
 
-A model complex enough will fit your training data perfectly, including the noise. It will then fail on new data,
-because the noise does not repeat.`),
+A model with enough flexibility will fit your training data perfectly. That sounds like success and is often
+the opposite: real data is signal plus noise, and a sufficiently flexible model fits both. The signal
+generalises. The noise does not — it was random, and the randomness in your next batch of data will be
+different.
+
+So the model has memorised accidents.`),
 
     viz('polynomial-overfit'),
 
-    t(`Move the degree slider from 0 to 14 with 12 training points and watch the two error numbers diverge. That gap
-between train and test error is the thing all of ML methodology exists to manage.`),
+    t(`Move the degree slider from 0 to 14 with only 12 training points and watch the two error numbers separate.
+At low degree the curve is too stiff to follow the data at all. Around degree 3 it tracks the underlying shape.
+By degree 11 it passes through every single point exactly — training error zero — while writhing violently in
+between, and the test error has gone through the roof.
+
+**That gap between training and test error is the thing all of ML methodology exists to manage.** Everything
+that follows — the bias-variance decomposition, regularization, cross-validation — is a tool for reasoning
+about it.`),
 
     t(`## The decomposition
 
-For squared loss, expected test error at a point decomposes exactly:
+Where does test error actually come from? For squared loss it splits into exactly three parts, and the split is
+an identity, not an approximation:
 
 $$\\underbrace{\\mathbb{E}\\big[(y-\\hat f(\\mathbf{x}))^2\\big]}_{\\text{expected test error}} =
 \\underbrace{\\big(\\mathbb{E}[\\hat f(\\mathbf{x})]-f(\\mathbf{x})\\big)^2}_{\\text{bias}^2} +
 \\underbrace{\\mathbb{E}\\big[(\\hat f(\\mathbf{x})-\\mathbb{E}[\\hat f(\\mathbf{x})])^2\\big]}_{\\text{variance}} +
 \\underbrace{\\sigma^2}_{\\text{noise}}$$
 
-where the expectations are over *random draws of the training set*.
+The crucial and easily-missed detail: **the expectations are over random draws of the training set.** Imagine
+collecting 100 different training sets of the same size, fitting your model on each, and getting 100 slightly
+different models. The decomposition is a statement about that collection.
 
-- **Bias** — how far the average model is from the truth. High bias = too rigid = underfitting.
-- **Variance** — how much the model changes if you resample the data. High variance = too flexible = overfitting.
-- **Noise** — irreducible. No model beats this floor.`),
+- **Bias** — how far the *average* of those 100 models is from the truth. High bias means the model class is
+  fundamentally too rigid; collecting more data will not help. This is **underfitting**.
+- **Variance** — how much the 100 models differ *from each other*. High variance means the model is chasing
+  the accidents of whichever sample it happened to get. This is **overfitting**.
+- **Noise** — the randomness in $y$ itself. Irreducible. No model, however good, beats this floor, and a
+  model that appears to beat it is leaking.`),
+
+    diagram('Bias and variance, as a dartboard',
+`<svg viewBox="0 0 620 220" role="img" aria-label="Four dartboards showing high and low bias crossed with high and low variance">
+  <g transform="translate(30,20)">
+    <circle cx="55" cy="55" r="48" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="30" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="12" style="fill: color-mix(in srgb, var(--s3) 25%, transparent); stroke: var(--s3)"/>
+    <g style="fill: var(--s1)"><circle cx="52" cy="53" r="3"/><circle cx="58" cy="57" r="3"/><circle cx="55" cy="60" r="3"/><circle cx="59" cy="51" r="3"/></g>
+    <text class="dtitle" x="55" y="126" text-anchor="middle" style="fill: var(--s3)">just right</text>
+    <text class="dlabel" x="55" y="143" text-anchor="middle">low bias, low variance</text>
+  </g>
+  <g transform="translate(180,20)">
+    <circle cx="55" cy="55" r="48" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="30" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="12" style="fill:none; stroke: var(--s3)"/>
+    <g style="fill: var(--s1)"><circle cx="30" cy="35" r="3"/><circle cx="36" cy="30" r="3"/><circle cx="33" cy="41" r="3"/><circle cx="27" cy="33" r="3"/></g>
+    <text class="dtitle" x="55" y="126" text-anchor="middle" style="fill: var(--s2)">underfitting</text>
+    <text class="dlabel" x="55" y="143" text-anchor="middle">HIGH bias, low variance</text>
+  </g>
+  <g transform="translate(330,20)">
+    <circle cx="55" cy="55" r="48" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="30" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="12" style="fill:none; stroke: var(--s3)"/>
+    <g style="fill: var(--s1)"><circle cx="25" cy="60" r="3"/><circle cx="80" cy="35" r="3"/><circle cx="50" cy="88" r="3"/><circle cx="70" cy="70" r="3"/><circle cx="40" cy="25" r="3"/></g>
+    <text class="dtitle" x="55" y="126" text-anchor="middle" style="fill: var(--s6)">overfitting</text>
+    <text class="dlabel" x="55" y="143" text-anchor="middle">low bias, HIGH variance</text>
+  </g>
+  <g transform="translate(480,20)">
+    <circle cx="55" cy="55" r="48" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="30" style="fill:none; stroke: var(--border)"/><circle cx="55" cy="55" r="12" style="fill:none; stroke: var(--s3)"/>
+    <g style="fill: var(--s1)"><circle cx="18" cy="28" r="3"/><circle cx="42" cy="20" r="3"/><circle cx="22" cy="48" r="3"/><circle cx="38" cy="38" r="3"/></g>
+    <text class="dtitle" x="55" y="126" text-anchor="middle" style="fill: var(--text-faint)">worst case</text>
+    <text class="dlabel" x="55" y="143" text-anchor="middle">HIGH bias, HIGH variance</text>
+  </g>
+  <text class="dlabel" x="30" y="200">Each dot is the model you would get from one training set. Bias = how far the CLUSTER is from the bullseye.</text>
+  <text class="dlabel" x="30" y="216">Variance = how SPREAD OUT the dots are. You only ever get to throw one dart — that is the difficulty.</text>
+</svg>`,
+      `The last line is the practical trap. You train once, so you see one dot. A model with high variance can
+land near the centre by luck, and you will believe it is a good model. Cross-validation is essentially a way of
+throwing several darts so you can see the spread.`),
 
     viz('bias-variance'),
 
@@ -338,34 +594,62 @@ number of steps playing the role of $1/\\lambda$. It is regularization by not-ye
 
     t(`## Double descent: the picture is incomplete
 
-The classical U-curve says error rises past the sweet spot. It does — and then, past the point where the model can
-exactly interpolate the training data, it **falls again**, often below the classical optimum.`),
+Everything above is the classical story, and it predicts a U-shaped curve: error falls as the model gets big
+enough to capture the signal, then rises as it starts capturing noise. Pick the bottom of the U.
+
+That is true right up until it isn't. Keep growing the model past the point where it can fit the training data
+*exactly*, and test error **falls again** — frequently below the classical sweet spot.`),
 
     viz('double-descent'),
 
-    t(`The peak sits exactly at $d = n$, where the model can *just barely* fit the data and must do so with enormous,
-precariously balanced weights. Push past it and many interpolating solutions exist; gradient descent finds the
-minimum-norm one, which is smooth.
+    t(`Look at where the peak sits: precisely at $d = n$, the point where the model has just barely enough
+parameters to interpolate. That location is the clue.
 
-This is not a curiosity. It is the regime every modern deep network lives in — vastly more parameters than data
-points, zero training loss, and good generalization anyway. The classical theory does not explain it. Candidate
-explanations involve implicit regularization by SGD, the norm of the interpolating solution, and the effective rather
-than nominal parameter count.`),
+At $d = n$ there is essentially **one** way to fit the data exactly, and the model is forced into it whatever
+the cost — typically enormous, precariously balanced weights that cancel each other out. It is the worst of both
+worlds: no flexibility to choose a sensible fit, and no slack to ignore the noise.
 
-    t(`## Grokking: training loss stopping is not learning stopping
+Push past $d = n$ and suddenly there are *many* exact fits available. Now the question becomes which one
+gradient descent picks — and it turns out to pick something close to the minimum-norm solution, which is the
+smooth one. More parameters gave the optimizer room to choose well.`),
 
-A related and even stranger phenomenon. On small algorithmic tasks — modular arithmetic, say — a transformer reaches
-**100% training accuracy while test accuracy sits at chance**, and then, tens of thousands of steps later, test
-accuracy suddenly jumps to 100%.`),
+    warn(`This is not a curiosity from a toy experiment. **It is the regime every modern deep network lives
+in**: far more parameters than training examples, training loss driven to essentially zero, and good
+generalization anyway.
+
+Classical capacity theory says that should not work, and it does not merely fail to predict it — it predicts the
+opposite. The candidate explanations (implicit regularization by SGD, the norm rather than the count of
+parameters, effective versus nominal capacity) are all plausible and none is settled.
+
+Practical consequence: **be suspicious of "the model is too big for this dataset" as an argument.** It was
+excellent advice for 2005 and is often wrong now. Measure it.`),
+
+    t(`## Grokking: "training loss stopped improving" is not "learning stopped"
+
+Here is a stranger one. Train a small transformer on a clean algorithmic task — modular arithmetic, say. Watch
+what happens:
+
+- Within a few thousand steps it reaches **100% training accuracy**. Memorised the table.
+- Test accuracy sits at **chance**. It has learned nothing generalizable.
+- Training loss is flat. By every normal signal, the run is finished.
+- Then, tens of thousands of steps later, test accuracy **abruptly jumps to 100%**.
+
+It did not learn gradually. It sat there apparently doing nothing and then suddenly understood modular
+arithmetic.`),
 
     viz('grokking'),
 
-    t(`Set weight decay to zero in that figure and it never happens. The current explanation: both a memorizing circuit
-and a generalizing circuit fit the training data, but the generalizing one has smaller norm, so regularization slowly
-replaces one with the other long after the loss curve went flat.
+    t(`Set weight decay to zero in that figure and it never happens — the model memorises and stays memorised
+forever.
 
-The practical lesson is uncomfortable — "the training loss stopped improving" is not reliable evidence that learning
-has stopped.`),
+The current explanation goes: two different internal circuits can fit the training data. One memorises the
+lookup table; the other implements the actual algorithm. Both achieve zero training loss, so the loss provides
+no pressure to prefer either. But the generalizing circuit has **smaller weight norm**, and weight decay applies
+a slow, constant pull toward small norm. So regularization gradually dismantles the memorising solution and
+grows the algorithmic one, long after the loss curve went flat.
+
+The practical lesson is uncomfortable, and it is why this sits in a lesson about overfitting: **a flat training
+loss is not reliable evidence that learning has stopped.** Something can still be reorganising internally.`),
 
     warn(`**Overfitting is not the only failure.** The others are often worse because they are invisible in your metrics:
 
@@ -411,6 +695,15 @@ print("\\nSame 14 parameters. The penalty, not the count, controls capacity.")`,
        'Both fall'],
       0,
       'More data is harder to memorize, so train accuracy drops toward the true achievable rate. It also reduces variance, so test accuracy rises. Both effects shrink the gap. If test accuracy does *not* improve with substantially more data, your problem is bias or distribution shift, not overfitting — and more data will not fix it.'),
+
+    recap(`- Explain overfitting as "fitting the noise", and say why noise is the part that cannot transfer.
+- Name the three terms of the bias–variance decomposition and say what the expectation is taken over.
+- Diagnose a model from its train/test gap: high both = bias, big gap = variance, and what to do about each.
+- List four ways to reduce effective capacity that are not "use fewer parameters".
+- Describe double descent and say why the peak sits at $d = n$.
+- Explain why "your model is too big for this dataset" is weaker advice than it used to be.
+- Name three failure modes that overfitting language does not cover — leakage, distribution shift, shortcut
+  learning — and how each announces itself.`),
   ],
   refs: [
     paper('Reconciling modern machine learning practice and the bias-variance trade-off', 'Belkin et al.', 2019, 'https://arxiv.org/abs/1812.11118', 'The double descent paper. Short and important.'),
@@ -430,31 +723,77 @@ print("\\nSame 14 parameters. The penalty, not the count, controls capacity.")`,
   prereq: ['ml-overfitting'],
   tags: ['regularization', 'sparsity'],
   sections: [
+    tldr(`If overfitting is caused by a model having too much freedom, the fix is to take some freedom away.
+**Regularization** does that by adding a penalty for large weights, so the model has to *earn* every bit of
+complexity with a matching reduction in error.
+
+Two flavours dominate, and the difference between them is genuinely interesting rather than a detail.
+**Ridge (L2)** shrinks every coefficient smoothly toward zero. **Lasso (L1)** shrinks them *and drives some to
+exactly zero*, doing feature selection as a side effect. Why one produces exact zeros and the other does not
+comes down to the shape of a diamond versus a circle.`),
+
+    jargon([
+      ['regularization', 'Anything that constrains a model to reduce overfitting. Usually a penalty term, but early stopping and dropout count too.'],
+      ['penalty term', 'An extra quantity added to the loss that grows as the weights grow, so the optimizer is pushed toward smaller weights.'],
+      ['$\\lambda$ (lambda)', 'The regularization strength — the knob controlling how much you care about small weights versus fitting the data. Chosen by cross-validation.'],
+      ['ridge / L2', 'Penalising the sum of *squared* weights, $\\|\\mathbf{w}\\|_2^2$. Also called weight decay in deep learning, and Tikhonov regularization in numerical analysis. Three names, one thing.'],
+      ['lasso / L1', 'Penalising the sum of *absolute* weights, $\\|\\mathbf{w}\\|_1$. Produces sparse solutions.'],
+      ['sparse', 'Most entries are exactly zero. A sparse model uses only a few of the available features.'],
+      ['shrinkage', 'Pulling coefficient estimates toward zero. Adds a little bias in exchange for a large reduction in variance — usually a good trade.'],
+      ['support', 'The set of features with nonzero coefficients. "Recovering the support" = correctly identifying which features actually matter.'],
+      ['elastic net', 'Using L1 and L2 penalties together, to get sparsity without L1\'s instability on correlated features.'],
+      ['standardize', 'Rescale each feature to mean 0 and standard deviation 1. Mandatory before regularizing — see the warning below.'],
+    ]),
+
     t(`## Add a penalty
 
-$$\\mathcal{L}(\\mathbf{w}) = \\underbrace{\\|X\\mathbf{w}-\\mathbf{y}\\|^2}_{\\text{fit}} + \\lambda\\, \\underbrace{\\Omega(\\mathbf{w})}_{\\text{penalty}}$$
+The idea in one line: stop asking only "does this fit the data?" and start asking "does this fit the data
+*without needing extreme weights*?"
 
-- **Ridge (L2)**: $\\Omega = \\|\\mathbf{w}\\|_2^2$. Shrinks all coefficients smoothly toward zero.
-- **Lasso (L1)**: $\\Omega = \\|\\mathbf{w}\\|_1$. Shrinks *and* sets some exactly to zero.
-- **Elastic net**: $\\alpha\\|\\mathbf{w}\\|_1 + (1-\\alpha)\\|\\mathbf{w}\\|_2^2$. Both.
+$$\\mathcal{L}(\\mathbf{w}) = \\underbrace{\\|X\\mathbf{w}-\\mathbf{y}\\|^2}_{\\text{fit the data}} + \\lambda\\, \\underbrace{\\Omega(\\mathbf{w})}_{\\text{stay simple}}$$
 
-$\\lambda$ interpolates between the unpenalized fit ($\\lambda\\to0$) and the all-zero model ($\\lambda\\to\\infty$). It is
-chosen by cross-validation, essentially always.`),
+The optimizer now has to balance two demands. Reducing the fit term by adding an elaborate wiggle is only worth
+it if the wiggle does not cost too much in the penalty term. Complexity has a price.
+
+Which penalty you use determines the character of the solution:
+
+- **Ridge (L2)**: $\\Omega = \\|\\mathbf{w}\\|_2^2 = \\sum_j w_j^2$. Shrinks all coefficients smoothly toward zero,
+  never quite reaching it.
+- **Lasso (L1)**: $\\Omega = \\|\\mathbf{w}\\|_1 = \\sum_j |w_j|$. Shrinks *and* sets some to exactly zero.
+- **Elastic net**: $\\alpha\\|\\mathbf{w}\\|_1 + (1-\\alpha)\\|\\mathbf{w}\\|_2^2$. Both at once.
+
+The knob $\\lambda$ sweeps between two extremes: at $\\lambda \\to 0$ you recover the ordinary unpenalized fit,
+and at $\\lambda \\to \\infty$ every coefficient is crushed to zero and the model predicts a constant. The useful
+setting is somewhere in between, and it is found by cross-validation essentially every time — there is no
+formula for it.`),
 
     t(`## Why L1 gives you exact zeros
 
-This is the question everyone asks, and the constrained-optimization picture answers it completely.`),
+This is the question everyone asks and few explanations answer properly. The trick is to stop thinking about
+penalties and start thinking about **constraints**.
+
+Minimising $\\text{loss} + \\lambda\\Omega(\\mathbf{w})$ is equivalent to minimising the loss *subject to*
+$\\Omega(\\mathbf{w}) \\le t$ for some budget $t$ — with a bigger $\\lambda$ corresponding to a tighter budget.
+So picture it geometrically: the loss forms elliptical contours around the unpenalized optimum, the constraint
+carves out a region around the origin, and the answer is where the smallest loss contour first **touches** that
+region.
+
+Now recall the [unit ball shapes](#/l/math-vectors): the L1 region is a **diamond with sharp corners sitting on
+the axes**, while the L2 region is a **smooth circle**. That difference is the whole answer.`),
 
     viz('regularization-geometry'),
 
-    key(`Minimizing $\\text{loss} + \\lambda\\Omega(\\mathbf{w})$ is equivalent to minimizing the loss subject to
-$\\Omega(\\mathbf{w}) \\le t$ for some $t$. So: find the smallest loss contour that **touches** the constraint region.
+    key(`**A corner is a coordinate that equals exactly zero.**
 
-The L1 ball is a **diamond with corners on the axes**. Contours coming in from a generic direction hit a corner first —
-and a corner has a coordinate exactly equal to zero.
+The L1 diamond has corners on the axes, and a corner sticks out. A loss contour drifting in from a generic
+direction hits the pointy bit first — and at that point of contact, one coordinate is precisely 0. That is a
+coefficient set to exactly zero, and it happens for a *range* of directions, not by fluke.
 
-The L2 ball is a **smooth circle**. Contact happens at a generic boundary point, which has no zero coordinates.
-Coefficients shrink toward zero but never arrive.`),
+The L2 circle has no corners. Contact happens at whichever boundary point the contour reaches first, which is
+generically a place where every coordinate is small but nonzero. Coefficients approach zero and never arrive.
+
+That is the entire explanation. Sparsity from L1 is not a numerical accident or a property of the solver — it is
+a consequence of the constraint region having corners aligned with the axes.`),
 
     viz('regularization-path'),
 
@@ -491,9 +830,20 @@ Lasso has no closed form (the L1 term is not differentiable at 0) and is solved 
 Elastic net exists precisely for the correlated-features case: the L2 term encourages correlated predictors to enter
 or leave together (the "grouping effect") while L1 still produces sparsity.`),
 
-    warn(`**Standardize your features before regularizing.** The penalty treats all coefficients equally, so a feature
-measured in millimetres gets a coefficient 1000× smaller than the same feature in metres — and is therefore penalized
-1000× less. This is a genuinely common bug. Also: do not penalize the intercept.`),
+    warn(`**Standardize your features before regularizing.** This is the single most common regularization bug,
+and it fails silently.
+
+The penalty treats all coefficients identically — it just sums them up. But a coefficient's *size* depends on
+the units of its feature. Measure a length in metres and you get some coefficient $w$; measure the same length
+in millimetres and the coefficient becomes $w/1000$ to compensate. Identical model, identical predictions — but
+the millimetre version is penalized a thousand times less.
+
+So without standardisation, your regularization strength is silently set by your unit choices. Subtract the
+mean and divide by the standard deviation for every feature first.
+
+**And do not penalize the intercept.** Shrinking $b$ toward zero is a statement that the target's mean should be
+near zero, which is almost never something you believe. Every library excludes it by default; make sure yours
+does if you write the penalty by hand.`),
 
     t(`## The Bayesian reading
 
@@ -553,6 +903,13 @@ for lam in [0.1, 5, 30]:
        'Dropout'],
       0,
       'Your prior is *sparsity*, so match it: L1 selects. Ridge would also make the problem well-posed but would give you 10,000 small nonzero coefficients — no selection. If features are correlated in groups, prefer elastic net, since pure lasso picks one member of each correlated group arbitrarily and unstably.'),
+
+    recap(`- Write a regularized objective and explain what the two terms are competing over.
+- Explain L1 sparsity from the geometry — corners on the axes — without saying "it just does".
+- Choose between ridge, lasso, and elastic net from a description of the data, and justify the choice.
+- Say what ridge does to well-determined versus poorly-determined directions, and connect it to singular values.
+- Explain why failing to standardise features silently corrupts regularization.
+- Translate ridge and lasso into priors, and say which prior believes "most coefficients are exactly zero".`),
   ],
   refs: [
     paper('Regression Shrinkage and Selection via the Lasso', 'Robert Tibshirani', 1996, 'https://www.jstor.org/stable/2346178', 'The original lasso paper.'),
@@ -571,29 +928,102 @@ for lam in [0.1, 5, 30]:
   prereq: ['ml-linear-regression', 'math-information'],
   tags: ['classification', 'cross-entropy'],
   sections: [
+    tldr(`Take linear regression, and squash its output through a function that maps any real number into
+$[0,1]$. Now it outputs a probability instead of an unbounded score, and you have a classifier.
+
+Despite the name, logistic regression is a **classification** method. It is worth more attention than its
+simplicity suggests, because its final layer *is* the final layer of essentially every neural classifier and
+every language model. When GPT picks a next token, the last thing it does is softmax regression over the
+vocabulary.`),
+
+    jargon([
+      ['classification', 'Predicting a category (cat/dog, spam/not) rather than a number. Regression predicts numbers.'],
+      ['sigmoid $\\sigma(z)$', 'The S-shaped squashing function $1/(1+e^{-z})$. Maps any real number into $(0,1)$, so its output can be read as a probability.'],
+      ['logit', 'The raw pre-squash score $\\mathbf{w}^{\\mathsf T}\\mathbf{x}+b$. Any real number. Also the name of the inverse of the sigmoid.'],
+      ['odds', 'Probability expressed as a ratio: $p/(1-p)$. A probability of 0.75 is odds of 3 (three to one).'],
+      ['log-odds', 'The logarithm of the odds. Ranges over all reals, which is exactly why a linear model can predict it directly.'],
+      ['odds ratio', '$e^{w_j}$ — how much the odds multiply per unit increase in feature $j$. The number reported in every medical paper.'],
+      ['cross-entropy loss', 'The standard classification loss, from [the information lesson](#/l/math-information). Also called log loss or negative log-likelihood.'],
+      ['softmax', 'The multi-class version of the sigmoid: turns $K$ scores into $K$ probabilities that sum to 1.'],
+      ['calibration', 'Whether the reported probabilities are honest. A calibrated model that says "70%" is right about 70% of the time.'],
+      ['threshold', 'The cutoff for turning a probability into a decision. Defaults to 0.5, which is usually wrong.'],
+      ['separable data', 'Data where some straight line perfectly divides the classes with no mistakes.'],
+    ]),
+
     t(`## From scores to probabilities
 
-We want $p(y=1\\mid\\mathbf{x}) \\in [0,1]$, but a linear function produces any real number. Squash it:
+We want to output $p(y=1\\mid\\mathbf{x})$ — a probability, so a number between 0 and 1. But a linear function
+$\\mathbf{w}^{\\mathsf T}\\mathbf{x}+b$ produces any real number at all, including $-47$ and $1000$.
+
+The fix is to squash it:
 
 $$p(y=1\\mid\\mathbf{x}) = \\sigma(\\mathbf{w}^{\\mathsf T}\\mathbf{x}+b), \\qquad \\sigma(z)=\\frac{1}{1+e^{-z}}$$
 
-The inverse view is cleaner: logistic regression models the **log-odds** as linear.
+Check the ends: as $z \\to +\\infty$, $e^{-z} \\to 0$ and $\\sigma \\to 1$. As $z \\to -\\infty$, $e^{-z}$ blows up
+and $\\sigma \\to 0$. At $z = 0$ it gives exactly $0.5$. Smooth, monotonic, bounded — everything we asked for.
+
+But there is a cleaner way to read the model, by turning the sigmoid inside out. Rearranging gives:
 
 $$\\log\\frac{p}{1-p} = \\mathbf{w}^{\\mathsf T}\\mathbf{x}+b$$
 
-So $w_j$ is "the change in log-odds per unit of $x_j$", and $e^{w_j}$ is the odds ratio — which is how the coefficient
-is reported in every medical paper you will ever read.`),
+The left side is the **log-odds**. So logistic regression is not really "linear regression with a squash bolted
+on" — it is a linear model *of the log-odds*, and the sigmoid is just how you get back to a probability.
+
+This is why the model is interpretable at all. $w_j$ is the change in log-odds per unit of $x_j$, and $e^{w_j}$
+is the **odds ratio** — "each additional year of age multiplies the odds of the diagnosis by 1.07". That is the
+form every clinical paper reports, and now you know where it comes from.`),
+
+    diagram('Probability, odds, and log-odds are the same information in three coordinate systems',
+`<svg viewBox="0 0 620 170" role="img" aria-label="Mapping between probability, odds and log-odds">
+  <text class="dtitle" x="20" y="26">probability p</text>
+  <line x1="150" y1="20" x2="580" y2="20" style="stroke: var(--s1); stroke-width: 2"/>
+  <g style="fill: var(--s1)"><circle cx="150" cy="20" r="4"/><circle cx="365" cy="20" r="4"/><circle cx="580" cy="20" r="4"/></g>
+  <text class="dmono" x="150" y="42" text-anchor="middle" style="fill: var(--s1)">0</text>
+  <text class="dmono" x="365" y="42" text-anchor="middle" style="fill: var(--s1)">0.5</text>
+  <text class="dmono" x="580" y="42" text-anchor="middle" style="fill: var(--s1)">1</text>
+  <text class="dlabel" x="150" y="58">bounded — a linear model cannot safely predict this</text>
+
+  <text class="dtitle" x="20" y="94">odds p/(1-p)</text>
+  <line x1="150" y1="88" x2="580" y2="88" style="stroke: var(--s2); stroke-width: 2"/>
+  <g style="fill: var(--s2)"><circle cx="150" cy="88" r="4"/><circle cx="365" cy="88" r="4"/></g>
+  <text class="dmono" x="150" y="110" text-anchor="middle" style="fill: var(--s2)">0</text>
+  <text class="dmono" x="365" y="110" text-anchor="middle" style="fill: var(--s2)">1</text>
+  <text class="dmono" x="590" y="92" style="fill: var(--s2)">→ ∞</text>
+  <text class="dlabel" x="150" y="126">half-bounded — better, still asymmetric</text>
+
+  <text class="dtitle" x="20" y="152">log-odds</text>
+  <line x1="150" y1="146" x2="580" y2="146" style="stroke: var(--s3); stroke-width: 2"/>
+  <circle cx="365" cy="146" r="4" style="fill: var(--s3)"/>
+  <text class="dmono" x="130" y="150" text-anchor="end" style="fill: var(--s3)">-∞ ←</text>
+  <text class="dmono" x="365" y="168" text-anchor="middle" style="fill: var(--s3)">0</text>
+  <text class="dmono" x="590" y="150" style="fill: var(--s3)">→ ∞</text>
+</svg>`,
+      `The bottom line is the whole design. Log-odds run over *all* real numbers, symmetrically around zero, which
+is exactly the range a linear model naturally produces. Model the log-odds linearly, then map back down. The
+sigmoid is just that map.`),
 
     viz('sigmoid-softmax'),
 
     t(`## The loss
 
-Squared error is wrong here. It is non-convex under the sigmoid, and it produces tiny gradients exactly where the
-model is most confidently wrong. Use the negative log-likelihood, a.k.a. **binary cross-entropy**:
+Now, how do we fit it? The obvious move — reuse squared error — is wrong, and instructively so.
+
+Two problems. First, squared error composed with a sigmoid is **non-convex** in $\\mathbf{w}$, so you lose the
+guarantee of a single optimum. Second, and worse: it produces near-zero gradients exactly where the model is
+*most confidently wrong*. A model that says $p = 0.001$ when the answer is 1 sits in the sigmoid's flat tail,
+and squared error's gradient there is essentially nothing. The model is maximally wrong and receives almost no
+signal to change.
+
+The right loss is the negative log-likelihood, known here as **binary cross-entropy**:
 
 $$\\mathcal{L} = -\\frac{1}{n}\\sum_i \\big[y_i\\log p_i + (1-y_i)\\log(1-p_i)\\big]$$
 
-This is convex in $\\mathbf{w}$, and its gradient is remarkably clean.`),
+Read it as a switch. When $y_i = 1$, the second term vanishes and you are left with $-\\log p_i$ — the
+[surprise](#/l/math-information) of the true answer. When $y_i = 0$, the first term vanishes and you pay
+$-\\log(1-p_i)$ instead. Either way: *how surprised was the model by what actually happened?*
+
+This is convex in $\\mathbf{w}$, its gradient is remarkably clean, and — as the derivation below shows — it
+solves the vanishing-gradient problem exactly.`),
 
     deriv('The gradient, and why it looks like linear regression', `With $p = \\sigma(z)$ and $z = \\mathbf{w}^{\\mathsf T}\\mathbf{x}$, use $\\sigma'(z) = \\sigma(z)(1-\\sigma(z))$:
 
@@ -631,18 +1061,41 @@ max-margin separator — an early and clean example of implicit bias in gradient
 
     t(`## Calibration
 
-Logistic regression is usually well calibrated: among examples where it says 0.7, about 70% are positive. That is a
-direct consequence of the loss — cross-entropy is a **proper scoring rule**, minimized by reporting true probabilities.
+A model outputs 0.7. Does that *mean* anything, or is it just a number that happens to be large?
 
-Deep networks trained with the same loss are often badly *over*confident anyway, for reasons involving capacity and
-training to zero loss. Standard remedies: temperature scaling on a validation set, or label smoothing during training. RLHF makes this
-markedly worse — human raters reward confident-sounding answers whether or not they are correct.`),
+A model is **calibrated** if it does: among all the examples where it said 0.7, about 70% really are positive.
+Uncalibrated models can still rank correctly — putting positives above negatives — while their actual numbers
+are nonsense.
+
+Logistic regression is usually well calibrated, and this follows directly from the loss. Cross-entropy is a
+**proper scoring rule**, meaning it is minimised precisely by reporting your true beliefs. Any systematic
+over- or under-confidence increases the loss, so training pushes toward honesty.`),
+
+    warn(`Deep networks trained with *the same loss* are frequently badly **overconfident** — a network reporting
+0.99 might be right only 80% of the time. The proper-scoring-rule argument does not save you, because it assumes
+you actually reached the minimum; a high-capacity network trained to near-zero training loss has learned to be
+confident on training data and carries that habit to test data.
+
+Standard remedies: **temperature scaling** (divide the logits by a single constant tuned on a validation set —
+cheap, effective, does not change the ranking) or **label smoothing** during training.
+
+RLHF makes this markedly worse. Human raters prefer confident-sounding answers regardless of correctness, so
+optimizing for their approval directly trains overconfidence in. This is a large part of why chat models
+state wrong things with total assurance.`),
 
     t(`## Thresholds are a separate decision
 
-The model gives $p$. Turning $p$ into a decision requires a threshold, and 0.5 is only optimal when false positives and
-false negatives cost the same. They rarely do. Choose the threshold from the cost structure, or from a target
-precision/recall — not by default.`),
+The model gives you $p$. Turning $p$ into an action — flag this transaction, order this biopsy — requires a
+**threshold**, and that is a different question with a different answer.
+
+The default of 0.5 is optimal only when a false positive and a false negative cost the same. Consider how rarely
+that is true: a missed cancer diagnosis and an unnecessary follow-up scan are not comparable, and neither are a
+blocked legitimate payment and an approved fraudulent one.
+
+The threshold should come from the cost structure — if a false negative is 10× worse than a false positive,
+threshold near 0.1, not 0.5 — or from a target precision or recall your application actually requires. It is a
+business decision that happens to be implemented in code, and separating it from the model is what lets you
+change it without retraining.`),
 
     viz('roc-curve'),
 
@@ -686,6 +1139,14 @@ for lo in np.arange(0, 1, 0.2):
        'It always overfits'],
       0,
       "With squared error the gradient carries a factor of $\\sigma'(z) = p(1-p)$, which goes to zero as $p \\to 0$ or $1$. A model that predicts 0.001 for a positive example gets essentially no gradient — it is maximally wrong and maximally stuck. Cross-entropy's $p-y$ gradient is largest precisely there. The $p(1-p)$ factors cancel; that cancellation is the whole point."),
+
+    recap(`- Explain why the model predicts **log-odds** linearly rather than probability directly.
+- Convert a coefficient into an odds ratio and state it in a sentence a doctor would accept.
+- Give two reasons squared error is the wrong loss here, one about convexity and one about gradients.
+- Recall the gradient $(p - y)\\mathbf{x}$ and say why it looks identical to linear regression's.
+- Explain what calibration means, why logistic regression tends to have it, and why deep networks tend not to.
+- Argue that choosing a decision threshold is a separate question from fitting the model, with an example where
+  0.5 would be badly wrong.`),
   ],
   refs: [
     book('The Elements of Statistical Learning, Ch. 4', 'Hastie, Tibshirani & Friedman', 2009, 'https://hastie.su.domains/ElemStatLearn/', ''),
@@ -703,64 +1164,180 @@ for lo in np.arange(0, 1, 0.2):
   mins: 26, level: 'core',
   tags: ['trees', 'ensembles', 'boosting'],
   sections: [
+    tldr(`A decision tree is a flowchart of yes/no questions learned from data — "is age > 35? if so, is income
+> 60k?" — with a prediction at each leaf. One tree is weak and unstable. Combining many is not.
+
+There are two ways to combine them, and the distinction is the real content of this lesson. **Bagging** grows
+many trees in parallel on different samples and averages them, which cancels out their instability. **Boosting**
+grows trees one at a time, each fixing the errors of the ones before it, which builds accuracy incrementally.
+
+On tabular data — spreadsheets, databases, anything with named columns — boosted trees are still the thing to
+beat, and neural networks have repeatedly failed to beat them. That is worth understanding rather than
+resenting.`),
+
+    jargon([
+      ['decision tree', 'A model that makes predictions by asking a sequence of threshold questions about features. Reads like nested if-statements, because that is what it is.'],
+      ['split', 'One yes/no question: "feature 3 ≤ 0.7?" Each split divides the data into two groups.'],
+      ['leaf', 'A terminal node — no more questions. Holds the prediction for everything that lands there.'],
+      ['axis-aligned', 'Each split uses one feature at a time, so boundaries are always horizontal or vertical (in 2-D). Trees cannot draw a diagonal line except as a staircase.'],
+      ['impurity', 'How mixed the labels are in a group. Zero when all examples share a label. Splits are chosen to reduce it.'],
+      ['Gini / entropy', 'Two common impurity measures. They almost always pick the same splits; the choice rarely matters.'],
+      ['ensemble', 'Many models combined into one prediction. Nearly always better than any single member.'],
+      ['bagging', 'Bootstrap AGGregatING: train many models on random resamples of the data and average them. Reduces variance.'],
+      ['bootstrap resample', 'A new dataset of the same size, drawn from the original *with replacement* — so some rows appear twice and about 37% not at all.'],
+      ['random forest', 'Bagging applied to trees, plus a random subset of features considered at each split.'],
+      ['boosting', 'Training models sequentially, each one focused on the mistakes of the previous ones. Reduces bias.'],
+      ['residual', 'What the current model got wrong — actual minus predicted. Boosting fits new trees to these.'],
+      ['stump', 'A tree with a single split. Deliberately weak; boosting prefers weak learners.'],
+      ['tabular data', 'Data in rows and columns with heterogeneous, named features. As opposed to images, audio, or text.'],
+    ]),
+
     t(`## Decision trees
 
-Recursively split the feature space with axis-aligned cuts, choosing at each step the (feature, threshold) that most
-reduces impurity:
+The algorithm is almost embarrassingly simple. Look at all your data. Try every possible question of the form
+"is feature $j$ above threshold $\\tau$?", and pick the one that best separates the labels. Split the data in
+two, then repeat on each half. Stop when a group is pure enough or too small to bother with.
 
-- **Gini**: $1-\\sum_k p_k^2$
-- **Entropy**: $-\\sum_k p_k\\log p_k$
-- **Variance** (for regression)
+"Best separates the labels" is made precise by an **impurity** measure — a number that is zero when a group is
+all one class and large when it is evenly mixed:
 
-Predict the majority class or mean value in each leaf.`),
+- **Gini**: $1-\\sum_k p_k^2$ — the probability two randomly drawn members of the group disagree.
+- **Entropy**: $-\\sum_k p_k\\log p_k$ — [average surprise](#/l/math-information), same as before.
+- **Variance**, for regression — the spread of the target values in the group.
+
+At each step you choose the split that reduces impurity most. To predict, walk a new example down the questions
+until it reaches a leaf, and return that leaf's majority class or mean value.`),
 
     viz('decision-tree'),
 
-    t(`Trees are attractive: no scaling needed, they handle mixed types and missing values natively, they capture
-interactions automatically, and a shallow one is genuinely interpretable.
+    t(`Trees have a genuinely attractive set of properties, and it is worth being specific because they explain
+the final section of this lesson:
 
-They are also **high variance**. Change a few data points near a split and the entire subtree below it can change.
-A fully grown tree memorizes. Which is why nobody uses a single tree — but it is why the two great ensembling ideas
-work so well on them.`),
+- **No feature scaling needed.** A split at "income > 60000" is unaffected if you switch to thousands. Trees are
+  invariant to any monotone transformation of a feature — logging it changes nothing.
+- **Mixed types and missing values handled natively.** Categorical, ordinal, numeric all coexist; missing can be
+  its own branch.
+- **Interactions come free.** Splitting on age and then on income *within* that branch is an interaction effect,
+  discovered automatically without anyone specifying it.
+- **A shallow tree is genuinely interpretable** — not "interpretable" in the aspirational sense, but readable as
+  a set of rules by a domain expert.
+
+And then the fatal flaw: **trees are high variance.** Move a handful of data points near the top split and a
+different feature may win, changing every subtree below it. A fully-grown tree drives training error to zero by
+carving out a leaf per example — pure memorisation.
+
+That is exactly the failure mode from [the bias-variance lesson](#/l/ml-overfitting), and it is why nobody
+deploys a single tree. It is also why the two great ensembling ideas work so unusually well *on* trees: they are
+low-bias, high-variance base learners, which is precisely what averaging fixes.`),
 
     t(`## Bagging and random forests
 
-**Bagging**: train $M$ trees on bootstrap resamples, average their predictions. Averaging $M$ estimators with
-individual variance $\\sigma^2$ and pairwise correlation $\\rho$ gives variance
+**Bagging** = **B**ootstrap **AGG**regat**ING**. Draw $M$ resamples of your data (each the same size, sampled
+with replacement so some rows repeat and others are absent), train a tree on each, and average their
+predictions.
 
-$$\\rho\\sigma^2 + \\frac{1-\\rho}{M}\\sigma^2$$
+Why should that help? Because averaging kills variance — but only under a condition worth knowing exactly.
+Average $M$ estimators, each with variance $\\sigma^2$ and pairwise correlation $\\rho$, and the result has
+variance:
 
-The second term vanishes with $M$; the first does not. **So the win comes from decorrelating the trees**, not from
-adding more of them.
+$$\\underbrace{\\rho\\sigma^2}_{\\text{does not shrink}} + \\underbrace{\\frac{1-\\rho}{M}\\sigma^2}_{\\text{shrinks to nothing}}$$
 
-**Random forests** add exactly that: at each split, consider only a random subset of features (typically
-$\\sqrt{d}$ for classification). This forces different trees to rely on different features, driving $\\rho$ down.
+Look at the two terms. The second vanishes as $M$ grows — throw enough trees at it and it disappears. The first
+does **not**. It is a floor set entirely by how correlated the trees are with each other.
 
-Practical notes: forests essentially do not overfit as you add trees — more is monotonically better up to diminishing
-returns. Out-of-bag error (each tree evaluated on the ~37% of samples it did not see) gives you free cross-validation.`),
+So the win does not come from *more* trees, past a point. **It comes from making the trees disagree.** Two
+hundred nearly-identical trees are barely better than one.`),
+
+    key(`**Random forests** are bagging plus one addition aimed squarely at that $\\rho\\sigma^2$ floor: at each
+split, only a random subset of features is even considered (typically $\\sqrt{d}$ of them for classification).
+
+That sounds like sabotage — you are hiding the best feature from most splits. It is, and that is the point. If
+one feature is strongly predictive, every bagged tree would split on it first and they would all look alike.
+Forcing trees to work with different features makes them genuinely different models, driving $\\rho$ down and
+lowering the floor.
+
+Two practical consequences worth knowing:
+- **Forests do not overfit as you add trees.** More is monotonically better, up to diminishing returns. $M$ is
+  a compute budget, not a hyperparameter to tune carefully.
+- **Out-of-bag error is free cross-validation.** Each tree never saw ~37% of the data, so evaluate it on those
+  rows. No separate validation split required.`),
 
     t(`## Gradient boosting
 
-Boosting builds trees **sequentially**, each fit to the errors of the current ensemble:
+Boosting attacks the problem from the opposite end. Instead of many strong trees averaged, it builds many
+**weak** trees in sequence, each one correcting what the ensemble so far still gets wrong:
 
 $$F_m(\\mathbf{x}) = F_{m-1}(\\mathbf{x}) + \\nu\\, h_m(\\mathbf{x})$$
 
-where $h_m$ is fit to the negative gradient of the loss with respect to the current predictions, and $\\nu$ is the
-learning rate (shrinkage). For squared loss the negative gradient *is* the residual, which is where the "fit the
-residuals" description comes from — but the gradient framing is what lets you boost any differentiable loss.`),
+$F_{m-1}$ is the ensemble so far, $h_m$ is the new tree, and $\\nu$ is a small learning rate (0.1 or less) that
+keeps any single tree from dominating.
+
+What is $h_m$ fit to? The **negative gradient of the loss** with respect to the current predictions — which is
+where the name comes from. For squared loss that gradient works out to be exactly the residual, $y - F_{m-1}$,
+which is why boosting is usually first explained as "each tree fits the errors of the previous ones".
+
+That explanation is correct but undersells it. Framing it as a gradient is what lets you boost *any*
+differentiable loss — log loss, ranking losses, Poisson, quantile regression — by fitting trees to whatever the
+negative gradient happens to be. It is gradient descent, where each "step" is a whole decision tree rather than
+a parameter update.`),
 
     viz('boosting'),
 
-    key(`**Bagging reduces variance; boosting reduces bias.** Random forests average many low-bias, high-variance trees.
-Boosting adds many high-bias, low-variance stumps until they collectively fit.
+    key(`**Bagging reduces variance. Boosting reduces bias.** Read that against the
+[decomposition](#/l/ml-overfitting) and everything else follows.
 
-The consequence is that boosting *can* overfit, and does — it needs early stopping on a validation set. Random forests
-mostly cannot.`),
+Random forests start from trees that are already accurate on average but wildly unstable — low bias, high
+variance — and average the instability away. Boosting starts from stumps that are barely better than guessing —
+high bias, low variance — and stacks them until they collectively fit.
+
+The consequence that matters in practice: **boosting can overfit and will.** Every added tree fits the residuals
+harder, so past some number of rounds you are fitting noise. Boosting needs early stopping on a validation set,
+always. Random forests essentially do not, which makes them the more forgiving choice when you have no time to
+tune.`),
+
+    diagram('Two ways to combine trees',
+`<svg viewBox="0 0 620 230" role="img" aria-label="Bagging trains trees in parallel, boosting trains them in sequence">
+  <text class="dtitle" x="20" y="24" style="fill: var(--s1)">BAGGING — in parallel, on different samples, then averaged</text>
+  <g>
+    <rect x="20" y="38" width="66" height="36" rx="4" style="fill: color-mix(in srgb, var(--s1) 14%, transparent); stroke: var(--s1)"/>
+    <text class="dmono" x="53" y="60" text-anchor="middle" style="fill: var(--s1)">tree 1</text>
+    <rect x="98" y="38" width="66" height="36" rx="4" style="fill: color-mix(in srgb, var(--s1) 14%, transparent); stroke: var(--s1)"/>
+    <text class="dmono" x="131" y="60" text-anchor="middle" style="fill: var(--s1)">tree 2</text>
+    <rect x="176" y="38" width="66" height="36" rx="4" style="fill: color-mix(in srgb, var(--s1) 14%, transparent); stroke: var(--s1)"/>
+    <text class="dmono" x="209" y="60" text-anchor="middle" style="fill: var(--s1)">tree 3</text>
+    <text class="dmono" x="262" y="60" style="fill: var(--text-faint)">...</text>
+    <path d="M53,78 L160,100 M131,78 L160,100 M209,78 L160,100" style="fill:none; stroke: var(--border)"/>
+    <rect x="112" y="100" width="96" height="30" rx="4" style="fill: color-mix(in srgb, var(--s3) 16%, transparent); stroke: var(--s3)"/>
+    <text class="dmono" x="160" y="118" text-anchor="middle" style="fill: var(--s3)">average</text>
+    <text class="dlabel" x="330" y="60">each tree sees a different resample,</text>
+    <text class="dlabel" x="330" y="78">so their errors are uncorrelated</text>
+    <text class="dlabel" x="330" y="102" style="fill: var(--s3)">→ cancels VARIANCE</text>
+  </g>
+  <text class="dtitle" x="20" y="168" style="fill: var(--s2)">BOOSTING — in sequence, each fixing the last one's mistakes</text>
+  <g>
+    <rect x="20" y="182" width="66" height="34" rx="4" style="fill: color-mix(in srgb, var(--s2) 14%, transparent); stroke: var(--s2)"/>
+    <text class="dmono" x="53" y="203" text-anchor="middle" style="fill: var(--s2)">stump 1</text>
+    <path d="M88,199 L96,199" style="stroke: var(--s2); stroke-width: 1.5"/>
+    <rect x="98" y="182" width="66" height="34" rx="4" style="fill: color-mix(in srgb, var(--s2) 14%, transparent); stroke: var(--s2)"/>
+    <text class="dmono" x="131" y="203" text-anchor="middle" style="fill: var(--s2)">stump 2</text>
+    <path d="M166,199 L174,199" style="stroke: var(--s2); stroke-width: 1.5"/>
+    <rect x="176" y="182" width="66" height="34" rx="4" style="fill: color-mix(in srgb, var(--s2) 14%, transparent); stroke: var(--s2)"/>
+    <text class="dmono" x="209" y="203" text-anchor="middle" style="fill: var(--s2)">stump 3</text>
+    <text class="dmono" x="262" y="203" style="fill: var(--text-faint)">...</text>
+    <text class="dlabel" x="330" y="192">each tree is fit to what is still wrong,</text>
+    <text class="dlabel" x="330" y="210">so it cannot be parallelised</text>
+    <text class="dlabel" x="330" y="226" style="fill: var(--s2)">→ grinds down BIAS</text>
+  </g>
+</svg>`,
+      `The structural difference has a practical consequence beyond accuracy: bagging parallelises perfectly
+across cores, while boosting is inherently sequential. LightGBM and XGBoost recover speed by parallelising
+*within* each tree's split search instead.`),
 
     t(`## Why gradient boosting still wins on tabular data
 
-XGBoost, LightGBM, and CatBoost remain the default for tabular problems, and neural networks have repeatedly failed to
-beat them convincingly. The reasons are structural:
+XGBoost, LightGBM, and CatBoost remain the default for tabular problems, and deep learning has repeatedly tried
+and failed to displace them. This is not inertia or a lack of effort — the reasons are structural, and each one
+is a mismatch between what MLPs assume and what tabular data is:
 
 - Tabular features are **heterogeneous** — different scales, types, meanings. Trees are invariant to monotone feature
   transformations; MLPs are not.
@@ -850,6 +1427,16 @@ print("(deep single trees overfit; averaging them does not)")`),
        'The features are unsuitable for trees'],
       0,
       'This is the standard pattern. Random forests are nearly hyperparameter-free and give you a strong baseline immediately; boosting reaches a higher ceiling but needs the learning rate, tree depth, and number of rounds tuned together, with early stopping. A sensible workflow is: forest first for the baseline, boosting second for the final model.'),
+
+    recap(`- Describe how a tree is grown, and what "impurity reduction" is choosing between.
+- Say why a single tree is high variance, and connect that to why ensembling works so well on trees
+  specifically.
+- Read the bagging variance formula and explain why decorrelating trees matters more than adding them.
+- Explain what random feature subsetting at each split is *for*.
+- State the one-line difference: bagging kills variance, boosting kills bias — and derive from it which one
+  needs early stopping.
+- Give three structural reasons boosted trees still beat neural networks on tabular data.
+- Name the failure mode of split-gain feature importance, and what to use instead.`),
   ],
   refs: [
     paper('Random Forests', 'Leo Breiman', 2001, 'https://link.springer.com/article/10.1023/A:1010933404324', 'The original. Still worth reading.'),
@@ -869,46 +1456,123 @@ print("(deep single trees overfit; averaging them does not)")`),
   prereq: ['ml-logistic'],
   tags: ['SVM', 'kernels', 'kNN'],
   sections: [
+    tldr(`Two ideas that were the state of the art for fifteen years, and are still worth knowing.
+
+**k-nearest neighbours** is the simplest algorithm that works: remember everything, and predict by looking up
+what happened to similar examples. There is no training step at all. It is also, structurally, what a vector
+database and a RAG pipeline do.
+
+**Support vector machines** ask for the separating boundary with the widest safety margin, then pull off a
+genuinely clever trick — the **kernel trick** — that lets a linear method draw curved boundaries by computing
+similarities in a space it never actually visits.`),
+
+    jargon([
+      ['kNN', 'k-Nearest Neighbours. Predict by majority vote among the $k$ most similar training examples.'],
+      ['non-parametric', 'A model with no fixed set of parameters — its complexity grows with the data. kNN stores the whole dataset.'],
+      ['hyperplane', 'The flat dividing surface a linear classifier draws. A line in 2-D, a plane in 3-D, a "hyperplane" in general.'],
+      ['margin', 'The width of the empty corridor between the decision boundary and the nearest data points on either side. Wider is safer.'],
+      ['support vector', 'A training point sitting on or inside the margin. These are the only points that affect the solution — delete any other and nothing changes.'],
+      ['hinge loss', '$\\max(0, 1 - y f(x))$ — zero once you are correct *and* outside the margin, growing linearly as you fall inside or misclassify.'],
+      ['slack', 'Allowance for points to violate the margin, so the method works on data that is not perfectly separable.'],
+      ['$C$', 'The SVM regularization knob. Large $C$ = punish violations hard = narrow margin, tight fit. Small $C$ = tolerant, wide margin.'],
+      ['feature map $\\phi$', 'A transformation to a higher-dimensional space where data that was tangled becomes linearly separable.'],
+      ['kernel $k(\\mathbf{x},\\mathbf{x}\')', 'A function computing the *inner product in the transformed space*, without ever performing the transformation.'],
+      ['RBF kernel', 'Radial Basis Function, $\\exp(-\\gamma\\|\\mathbf{x}-\\mathbf{x}\'\\|^2)$. Corresponds to an infinite-dimensional feature space. The usual default.'],
+      ['Gram matrix', 'The $n \\times n$ table of kernel values between every pair of training points.'],
+    ]),
+
     t(`## k-nearest neighbours
 
-Store the training data. To predict, find the $k$ closest points and vote. There is no training and no model —
-the data *is* the model.`),
+Store the training data. To predict, find the $k$ closest stored points and let them vote. That is the whole
+algorithm.
+
+There is no training phase, no loss function, and no parameters — **the data *is* the model**. This makes it
+the fastest baseline you can possibly stand up, and a useful sanity check: if an elaborate model cannot beat
+kNN, something is wrong.`),
 
     viz('knn-boundary'),
 
-    t(`It is a genuinely useful baseline and it exposes several ideas cleanly: $k$ directly controls the bias-variance
-tradeoff, training accuracy at $k=1$ is a meaningless 100%, and leave-one-out cross-validation is nearly free.
+    t(`It also demonstrates several ideas unusually cleanly:
 
-Its problems are also instructive. Prediction cost scales with the dataset. Distances require a metric, and in high
-dimensions every point is roughly equidistant from every other, so "nearest" stops carrying information. Modern vector
-databases are kNN with approximate search (HNSW, IVF-PQ) to make the first problem tractable — and RAG is, structurally,
-kNN in embedding space.`),
+- **$k$ is a direct bias-variance dial.** $k=1$ means every point gets its own territory — jagged boundary,
+  maximum variance. Large $k$ smooths everything into a blur — high bias. There is no other knob.
+- **Training accuracy at $k=1$ is exactly 100% and completely meaningless**, since each point is its own nearest
+  neighbour. A memorable demonstration that training accuracy tells you nothing on its own.
+- **Leave-one-out cross-validation is nearly free**, since there is no refitting to do.
+
+Its problems are equally instructive, and both come back later:
+
+- **Prediction cost scales with the dataset**, not the model. Every query compares against everything you
+  stored. That is backwards from every other method here.
+- **Distance has to mean something.** In high dimensions, [as we saw](#/l/math-vectors), every point is roughly
+  equidistant from every other, so "nearest" stops carrying information. kNN degrades badly as $d$ grows.
+
+Both problems have modern answers. Vector databases solve the first with approximate nearest-neighbour search
+(HNSW, IVF-PQ), trading exactness for speed. And the second is why you run kNN in a *learned embedding space*
+rather than on raw features — which is exactly what RAG is. **Retrieval-augmented generation is kNN over
+embeddings, with a language model reading the results.**`),
 
     t(`## Support vector machines
 
-A separating hyperplane is not enough; the SVM asks for the one with the **widest margin**. With labels $y_i\\in\\{-1,+1\\}$:
+Suppose your data *is* linearly separable. Then there are infinitely many lines that separate it, and most
+classifiers will happily return any of them. Which should you prefer?
 
-$$\\min_{\\mathbf{w},b}\\ \\tfrac12\\|\\mathbf{w}\\|^2 \\quad\\text{s.t.}\\quad y_i(\\mathbf{w}^{\\mathsf T}\\mathbf{x}_i+b)\\ge 1$$
+The SVM's answer: the one with the **widest margin** — the boundary that stays as far as possible from the
+nearest point of either class. The intuition is robustness. A boundary skimming past your data will misclassify
+the next slightly-shifted example; one running down the middle of the empty corridor has room to spare.
 
-The margin width is $2/\\|\\mathbf{w}\\|$, so minimizing $\\|\\mathbf{w}\\|$ maximizes it.`),
+Formally, with labels written as $y_i\\in\\{-1,+1\\}$ (a convention that makes the algebra clean):
+
+$$\\min_{\\mathbf{w},b}\\ \\tfrac12\\|\\mathbf{w}\\|^2 \\quad\\text{subject to}\\quad y_i(\\mathbf{w}^{\\mathsf T}\\mathbf{x}_i+b)\\ge 1 \\ \\text{ for every } i$$
+
+The constraint says every point must be correctly classified *and* at least a unit distance from the boundary.
+The margin width works out to $2/\\|\\mathbf{w}\\|$, so **minimising $\\|\\mathbf{w}\\|$ maximises the margin** —
+which is why the objective looks like a regularizer and is in fact the entire point.`),
 
     viz('svm-margin'),
 
-    t(`Real data is not separable, so introduce slack, which turns the problem into the equivalent unconstrained form:
+    t(`Real data is never perfectly separable, so the hard constraint has to soften. Allow points to violate the
+margin at a price, and the problem becomes an unconstrained one:
 
-$$\\min_{\\mathbf{w}}\\ \\underbrace{\\tfrac{1}{2}\\|\\mathbf{w}\\|^2}_{\\text{margin}} + C\\sum_i \\underbrace{\\max(0, 1-y_i f(\\mathbf{x}_i))}_{\\text{hinge loss}}$$
+$$\\min_{\\mathbf{w}}\\ \\underbrace{\\tfrac{1}{2}\\|\\mathbf{w}\\|^2}_{\\text{keep the margin wide}} + C\\sum_i \\underbrace{\\max(0, 1-y_i f(\\mathbf{x}_i))}_{\\text{hinge loss: penalty for violations}}$$
 
-which is just regularized ERM with hinge loss. Small $C$ = more regularization = wider, more forgiving margin.`),
+Which is worth recognising for what it is: **regularized ERM with a particular loss**, exactly the shape from
+[the regularization lesson](#/l/ml-regularization). The hinge loss is zero once a point is correct and beyond
+the margin — being *more* correct earns nothing — and grows linearly once it is not.
 
-    key(`Only points **on or inside the margin** have nonzero weight in the solution — the *support vectors*. Delete any
-other training point and the answer is unchanged. That sparsity is what makes the kernel trick affordable: prediction
-only requires kernel evaluations against the support vectors, not the whole dataset.`),
+$C$ sets the exchange rate. Small $C$ means violations are cheap, so the optimizer buys a wide forgiving margin
+and accepts some errors: more regularization. Large $C$ means violations are expensive, forcing a narrow margin
+that contorts to classify everything: less regularization.`),
+
+    key(`Look at the hinge loss again: it is exactly zero for any point that is correctly classified and outside
+the margin. Zero loss means zero gradient means **no influence on the solution**.
+
+So only the points on or inside the margin matter. Those are the **support vectors**, and you could delete every
+other training point and refit and get an identical answer. On a typical problem that might be a few percent of
+your data.
+
+That sparsity is not a curiosity — it is what makes the next section affordable. Prediction requires kernel
+evaluations only against the support vectors, not against the whole training set.`),
 
     t(`## The kernel trick
 
-The dual formulation of the SVM involves the data only through inner products $\\mathbf{x}_i^{\\mathsf T}\\mathbf{x}_j$.
-So replace them with $k(\\mathbf{x}_i,\\mathbf{x}_j) = \\phi(\\mathbf{x}_i)^{\\mathsf T}\\phi(\\mathbf{x}_j)$ for some feature
-map $\\phi$ — **and never compute $\\phi$ at all.**`),
+Here is the setup. Data that is hopelessly tangled in its original space often becomes trivially separable if
+you map it somewhere higher-dimensional. Two concentric rings cannot be split by any line in 2-D — but add a
+third coordinate $z = x^2 + y^2$ and the inner ring drops below the outer one, separable by a flat plane.
+
+So: define a feature map $\\phi$ that lifts your data somewhere useful, and run a linear SVM there. The obvious
+objection is cost. A good $\\phi$ might map to thousands of dimensions, or infinitely many, and you cannot store
+an infinite vector.
+
+The trick starts with an observation about the SVM's dual formulation: **the data appears only through inner
+products** $\\mathbf{x}_i^{\\mathsf T}\\mathbf{x}_j$. Never individual vectors — only pairwise inner products.
+
+Which means if you can compute $\\phi(\\mathbf{x}_i)^{\\mathsf T}\\phi(\\mathbf{x}_j)$ directly, by some shortcut,
+you never need $\\phi(\\mathbf{x})$ itself. Call that shortcut a **kernel**:
+
+$$k(\\mathbf{x}_i,\\mathbf{x}_j) = \\phi(\\mathbf{x}_i)^{\\mathsf T}\\phi(\\mathbf{x}_j)$$
+
+and compute it without ever visiting the high-dimensional space at all.`),
 
     viz('kernel-trick'),
 
@@ -918,8 +1582,14 @@ map $\\phi$ — **and never compute $\\phi$ at all.**`),
 | Polynomial | $(\\gamma\\,\\mathbf{x}^{\\mathsf T}\\mathbf{x}'+r)^d$ | all monomials up to degree $d$ |
 | RBF / Gaussian | $\\exp(-\\gamma\\|\\mathbf{x}-\\mathbf{x}'\\|^2)$ | **infinite-dimensional** |
 
-The RBF kernel computes an inner product in an infinite-dimensional space with one exponential. That is the trick in
-its purest form. Any function producing a positive semi-definite Gram matrix is a valid kernel (Mercer's condition).`),
+Read the last row slowly. **The RBF kernel computes an inner product in an infinite-dimensional space using one
+exponential of one distance.** You get all the separating power of an infinite feature map for the cost of a
+subtraction, a norm, and an \\\`exp\\\`. That is the trick in its purest form, and it is genuinely startling the
+first time.
+
+You are not restricted to this table: any function whose Gram matrix is always positive semi-definite is a valid
+kernel (Mercer's condition), which lets people design kernels for strings, graphs, and molecules where no
+natural vector representation exists.`),
 
     hist(`SVMs with RBF kernels were the state of the art from roughly 1995 to 2012, and there was a real intellectual
 argument that they were the *right* answer: convex, theoretically grounded, strong generalization bounds. Then AlexNet
@@ -978,6 +1648,14 @@ print("\\nA linear model scores ~0.5 here. The kernel does all the work.")`),
        'The model underfits'],
       0,
       '$\\gamma$ sets the width of the Gaussian bump around each support vector. Large $\\gamma$ = narrow bumps = the model can only "see" points essentially on top of each other, so it memorizes. Small $\\gamma$ = wide bumps = an almost-linear boundary. $\\gamma$ and $C$ must be tuned jointly, which is why grid search over both is the standard recipe.'),
+
+    recap(`- Explain why kNN has no training step, and what it costs you at prediction time instead.
+- Say what $k$ trades off, and why 100% training accuracy at $k=1$ is meaningless.
+- Describe RAG as kNN, and say which of kNN's two weaknesses embeddings fix.
+- Explain why maximising the margin is the same as minimising $\\|\\mathbf{w}\\|$.
+- Say what a support vector is and why deleting non-support points changes nothing.
+- State the kernel trick in one sentence: the algorithm only needs inner products, so replace them.
+- Give the structural reason kernel methods lost to deep learning, and name where they are still preferred.`),
   ],
   refs: [
     paper('Support-Vector Networks', 'Cortes & Vapnik', 1995, 'https://link.springer.com/article/10.1007/BF00994018', 'The paper.'),
@@ -997,34 +1675,105 @@ print("\\nA linear model scores ~0.5 here. The kernel does all the work.")`),
   prereq: ['math-eigen-svd', 'math-probability'],
   tags: ['unsupervised', 'clustering', 'PCA'],
   sections: [
+    tldr(`Everything so far needed labels. This lesson is about what you can do without them — which is a lot,
+because labels are expensive and raw data is not.
+
+Two families. **Clustering** (k-means, Gaussian mixtures) groups similar examples together. **Dimensionality
+reduction** (PCA, t-SNE, UMAP) squeezes high-dimensional data down to two or three dimensions so you can look
+at it.
+
+The lesson ends with a warning that is worth the price of admission on its own: those beautiful t-SNE scatter
+plots you have seen in papers are far less informative than they appear, and there is a specific list of what
+you may and may not conclude from one.`),
+
+    jargon([
+      ['unsupervised learning', 'Learning structure from data with no labels. Nobody tells you the right answer, so "right" has to be defined by the method itself.'],
+      ['cluster', 'A group of examples the algorithm judges similar. Note that the algorithm decides what "similar" means — that is a modelling choice, not a fact about the data.'],
+      ['centroid', 'The mean position of a cluster. The "centre" k-means moves around.'],
+      ['inertia', 'Total squared distance from every point to its cluster centre. What k-means minimises.'],
+      ['Voronoi diagram', 'Space carved into regions by "which centre is nearest". Always produces straight-line boundaries — which caps what k-means can express.'],
+      ['GMM', 'Gaussian Mixture Model. Assumes the data came from several overlapping Gaussian blobs and tries to recover them.'],
+      ['EM (expectation-maximization)', 'An alternating algorithm: guess which cluster each point belongs to, refit the clusters, repeat.'],
+      ['responsibility', 'In a GMM, the probability that point $i$ came from cluster $k$. A *soft* assignment — a point can be 70% one cluster and 30% another.'],
+      ['PCA', 'Principal Component Analysis. Finds the directions your data varies most along, and lets you keep only the top few.'],
+      ['principal component', 'One of those directions. PC1 is the direction of greatest variance, PC2 the greatest remaining, and so on.'],
+      ['explained variance', 'What fraction of the data\'s total spread a component accounts for. How you decide how many to keep.'],
+      ['manifold', 'A curved surface that the data lies on or near — like a sheet of paper crumpled up inside 3-D space.'],
+      ['t-SNE / UMAP', 'Nonlinear methods that squash data to 2-D for visualisation, preserving *who is near whom* rather than actual distances.'],
+    ]),
+
     t(`## k-means
 
-Minimize within-cluster squared distance by alternating two steps: assign each point to its nearest centre, then move
-each centre to the mean of its points.`),
+The most-used clustering algorithm, and one you could reinvent from scratch. You want to split the data into
+$k$ groups so that points within a group are close to each other. Formally: minimise the total squared distance
+from each point to its group's centre.
+
+Solving that exactly is NP-hard. So k-means alternates two easy steps instead:
+
+1. **Assign** — put each point with whichever centre is nearest.
+2. **Update** — move each centre to the mean of the points assigned to it.
+
+Repeat until nothing changes.`),
 
     viz('kmeans'),
 
-    t(`Both steps decrease the objective, so it always converges — but to a *local* optimum that depends on
-initialization. Press "new init" a few times on the same data and watch the answer change. Standard mitigations:
-**k-means++** initialization (choose seeds spread apart, with a provable approximation guarantee) and multiple restarts.
+    t(`Each step provably decreases the objective, so the algorithm always converges. But converges to *a* local
+optimum, not *the* optimum, and which one depends entirely on where the centres started. Press "new init" a few
+times on the same data and watch the answer change — that is not a bug, that is the algorithm.
 
-The deeper limitation is baked into the objective. Minimizing squared distance to a centre means the implied clusters
-are **spherical and equally sized**, with straight boundaries between them (a Voronoi diagram). Elongated, nested, or
-differently-sized clusters are simply outside what k-means can express.
+The standard mitigations: **k-means++** initialization, which places the initial centres spread far apart (and
+comes with a provable approximation guarantee), plus simply running the whole thing several times and keeping
+the best. Both are on by default in scikit-learn.`),
 
-Choosing $k$: the elbow method (plot inertia vs $k$, look for the bend) is subjective and often has no elbow. The
-silhouette score is better. Best of all is having an external reason to prefer a particular $k$.`),
+    warn(`**k-means cannot express most cluster shapes, and it will not tell you when it has failed.**
+
+The limitation is baked into the objective. "Minimise squared distance to a centre" means each cluster is
+implicitly a sphere, all the same size, with straight-line boundaries between them (a Voronoi diagram). Hand it
+two elongated parallel bands, or a ring around a blob, or one cluster ten times bigger than another, and it
+will return $k$ confident-looking spherical groups that carve straight through the real structure.
+
+There is no diagnostic in the output that says "the shape assumption was wrong". Always plot the result. If your
+clusters are non-spherical, look at DBSCAN (density-based, finds arbitrary shapes) or a Gaussian mixture (below,
+which at least allows ellipses).`),
+
+    t(`### Choosing $k$
+
+The uncomfortable truth is that there is often no right answer, because "how many clusters are in this data" is
+frequently not a well-posed question.
+
+- **The elbow method** — plot inertia against $k$, look for where the curve bends. Subjective, and real data
+  regularly produces a smooth curve with no elbow at all.
+- **Silhouette score** — measures how much closer each point is to its own cluster than to the next nearest.
+  Better behaved, gives an actual number to maximise.
+- **BIC / AIC** — only available if you fit a proper probabilistic model, which is one good reason to prefer a
+  GMM over k-means.
+- **An external reason.** By far the best option. "We have shelf space for 6 customer segments" is a stronger
+  justification for $k=6$ than any curve.`),
 
     t(`## Gaussian mixtures and EM
 
-Model the data as generated by a mixture of Gaussians:
+k-means makes a *hard* choice: this point belongs to cluster 3, full stop, even if it sits exactly between
+clusters 3 and 4. A Gaussian mixture makes a *soft* one, and gets a real probabilistic model in the bargain.
 
-$$p(\\mathbf{x}) = \\sum_{k=1}^K \\pi_k\\,\\mathcal{N}(\\mathbf{x}\\mid\\boldsymbol\\mu_k,\\Sigma_k)$$
+The story it tells is generative: each data point was produced by first picking a cluster (with probability
+$\\pi_k$), then drawing from that cluster's Gaussian. Written out:
 
-Fit by **expectation-maximization**:
+$$p(\\mathbf{x}) = \\sum_{k=1}^K \\underbrace{\\pi_k}_{\\text{how often cluster } k} \\underbrace{\\mathcal{N}(\\mathbf{x}\\mid\\boldsymbol\\mu_k,\\Sigma_k)}_{\\text{what cluster } k \\text{ looks like}}$$
 
-- **E-step**: compute each point's *responsibility* $\\gamma_{ik} = p(z_i=k\\mid\\mathbf{x}_i)$ — a soft assignment.
-- **M-step**: refit each Gaussian's mean and covariance, weighted by those responsibilities.`),
+Each $\\Sigma_k$ is a full covariance matrix, so a cluster can be an ellipse at any orientation rather than
+only a sphere.
+
+There is a chicken-and-egg problem in fitting this: if you knew which cluster each point came from you could
+fit the Gaussians easily, and if you knew the Gaussians you could assign the points easily. **Expectation-
+maximization** cuts the knot by alternating:
+
+- **E-step** — with the current Gaussians, compute each point's *responsibility* $\\gamma_{ik} =
+  p(z_i=k\\mid\\mathbf{x}_i)$: the probability it came from cluster $k$. A soft assignment; a boundary point
+  might be 0.6 and 0.4.
+- **M-step** — refit each Gaussian's mean and covariance, weighting every point by its responsibility. A point
+  that is 60% yours contributes 60% to your mean.
+
+Repeat. EM's guarantee is that the log-likelihood increases every iteration and never decreases.`),
 
     viz('gmm-em'),
 
@@ -1037,26 +1786,56 @@ see again in the VAE (where the E-step is replaced by an amortized encoder netwo
 
     t(`## PCA
 
-Find the orthogonal directions of greatest variance. Equivalently — and this equivalence is the heart of it — find the
-$k$-dimensional subspace minimizing reconstruction error.`),
+Now the other half of the lesson: not grouping the examples, but shrinking the *features*.
+
+PCA can be defined two ways, and the fact that they turn out to be the same thing is the heart of it:
+
+- **Maximise variance.** Find the direction along which the data spreads out most. Then the next such
+  direction, perpendicular to the first. And so on.
+- **Minimise reconstruction error.** Find the $k$-dimensional flat subspace that the data sits closest to, so
+  that projecting onto it loses as little as possible.
+
+These sound like different goals and are provably identical. The intuition: total spread is fixed, so whatever
+variance a subspace *captures* is variance the residual does not have to carry. Maximising one minimises the
+other.
+
+And it is the [projection picture](#/l/math-vectors) again — "explained by the subspace" plus "orthogonal
+residual" — with the subspace chosen to make the residual as small as possible.`),
 
     viz('pca'),
 
-    t(`The recipe: centre the data, take the SVD of $X$, keep the top $k$ right singular vectors. The eigenvalues of the
-covariance give the explained variance per component.
+    t(`The recipe is three lines: centre the data, take the [SVD](#/l/math-eigen-svd) of $X$, keep the top $k$
+right singular vectors. Those are your components. The squared singular values tell you how much variance each
+one captured, which is how you decide where to cut.
 
-Things to keep straight:
+This should look familiar — it is Eckart–Young truncation applied to the data matrix. PCA is low-rank
+approximation wearing a statistician's hat.
 
-- **Centring is mandatory.** Without it, PC1 just points at the mean.
-- **Scaling matters.** If features have different units, PCA finds whichever has the largest numerical variance.
-  Standardize unless the units are genuinely comparable.
-- PCA is **linear**. Data on a curved manifold (a spiral, a Swiss roll) will not unroll.
-- Components are orthogonal by construction, which makes them mathematically clean and often physically meaningless.`),
+Four things to keep straight, in decreasing order of how often they go wrong:
+
+- **Centring is mandatory.** Subtract the mean of every feature first. Skip it and PC1 will simply point from
+  the origin toward the centre of your data, capturing the mean rather than any variation. Libraries do this
+  for you; hand-rolled implementations often do not.
+- **Scaling matters, and silently.** PCA maximises *numerical* variance, so a feature measured in millimetres
+  swamps one measured in metres purely through units. Standardize every feature unless the units are genuinely
+  comparable (all pixel intensities, say).
+- **PCA is linear.** Data lying on a curved manifold — a spiral, a Swiss roll — will not unroll. PCA can only
+  ever rotate and drop axes; it cannot bend. That limitation is precisely what the next section's methods exist
+  to work around.
+- **Components are orthogonal by construction, and therefore often physically meaningless.** Nothing forces
+  reality's underlying factors to be perpendicular to each other, so "PC2 represents X" is usually a story you
+  are telling rather than something the method found. If you need interpretable factors, use a method that
+  targets them (ICA, NMF, sparse coding).`),
 
     t(`## t-SNE and UMAP: read the fine print
 
-Nonlinear methods that preserve *neighbourhoods* rather than distances. They make beautiful pictures and they are
-routinely over-interpreted. What is and is not trustworthy in one of these plots:
+PCA is linear, so it cannot unroll a curved manifold. t-SNE and UMAP can, by giving up on preserving distances
+and preserving **neighbourhoods** instead: they try to keep each point's nearest neighbours nearby in the 2-D
+picture, and are indifferent to everything else.
+
+That is a reasonable trade for visualisation, and it produces genuinely beautiful plots. It also means most of
+what people read off those plots is not supported by the method. The table below is the one to internalise —
+and it applies to every embedding plot you have seen in a paper.
 
 | Feature of the plot | Trustworthy? |
 |---|---|
@@ -1118,6 +1897,13 @@ print(f"1-component reconstruction MSE: {((Xc - recon)**2).mean():.4f}")`),
        'The data is three-dimensional'],
       0,
       't-SNE optimizes a KL objective over pairwise neighbour probabilities, which pins down local structure and leaves global layout largely arbitrary. Distances between clusters are an artifact of the optimization, not a property of your data. Run it at several perplexities: the global arrangement will move while local groupings stay put, which tells you exactly which parts to trust.'),
+
+    recap(`- Describe k-means as two alternating steps, and say why it converges but not to the best answer.
+- Name the cluster shapes k-means structurally cannot find, and say what to reach for instead.
+- Explain the difference between hard and soft assignment, and one concrete thing soft assignment buys you.
+- Give both definitions of PCA — maximise variance, minimise reconstruction error — and say why they coincide.
+- List the two preprocessing steps PCA requires and what goes wrong without each.
+- State, from the table, exactly which features of a t-SNE plot you are allowed to interpret.`),
   ],
   refs: [
     blog('How to Use t-SNE Effectively', 'Wattenberg, Viégas & Johnson', 2016, 'https://distill.pub/2016/misread-tsne/', 'Interactive, and required reading before you show anyone a t-SNE plot.'),
@@ -1136,36 +1922,101 @@ print(f"1-component reconstruction MSE: {((Xc - recon)**2).mean():.4f}")`),
   mins: 24, level: 'core',
   tags: ['evaluation', 'metrics'],
   sections: [
+    tldr(`This is the lesson people skim, and it is the reason most reported results do not survive contact
+with reality.
+
+Two themes. First, **accuracy is usually the wrong number** — on a problem with 1% positives, a model that
+always says "no" scores 99%. You need precision, recall, and an explicit decision about which errors you can
+afford. Second, **the ways you can accidentally lie to yourself are systematic and enumerable**, and they mostly
+come down to information from your test set leaking into a decision you made.
+
+Neither theme is technically difficult. Both are routinely got wrong in published work.`),
+
+    jargon([
+      ['confusion matrix', 'The 2×2 table of predicted-versus-actual counts. Every classification metric is a ratio computed from these four numbers.'],
+      ['TP / FP / TN / FN', 'True Positive (correctly flagged), False Positive (false alarm), True Negative, False Negative (a miss).'],
+      ['precision', 'Of everything you flagged, what fraction was right. Answers "can I trust an alert?"'],
+      ['recall (a.k.a. sensitivity, TPR)', 'Of everything that was really positive, what fraction you caught. Answers "how much am I missing?"'],
+      ['F1', 'The harmonic mean of precision and recall — a single number that summarises both, at the cost of hiding which one you sacrificed.'],
+      ['prevalence / base rate', 'How common the positive class actually is. Changes what precision means without changing the model at all.'],
+      ['ROC curve', 'Plots recall against false-alarm rate as you sweep the threshold. Shows every operating point at once.'],
+      ['AUC', 'Area under the ROC curve. Equals the probability a random positive scores higher than a random negative.'],
+      ['operating point', 'One particular threshold choice — one point on the curve. A model has one curve but infinitely many operating points.'],
+      ['cross-validation', 'Splitting the data into $k$ folds and training $k$ times, each time holding out a different fold. Gives you a spread, not just a number.'],
+      ['leakage', 'Information from outside the training fold sneaking in. Produces excellent validation scores and a model that fails in production.'],
+      ['baseline', 'The simplest thing that could work — majority class, a linear model. What your fancy model must beat to have earned anything.'],
+    ]),
+
     t(`## Accuracy is usually the wrong metric
 
-With 1% positives, predicting "negative" always gives 99% accuracy and zero value. Start from the confusion matrix:
+Start with the failure. You are building a fraud detector, and 1% of transactions are fraudulent. Here is a
+model:
+
+\\\`\\\`\\\`python
+def predict(transaction):
+    return "not fraud"
+\\\`\\\`\\\`
+
+It is 99% accurate. It is also worthless, and no amount of accuracy reporting will reveal that. Accuracy sums
+over both classes, so a rare class simply cannot move the number.
+
+Everything better starts from the **confusion matrix** — the four ways a binary prediction can turn out:
 
 | | Predicted + | Predicted − |
 |---|---|---|
-| **Actual +** | TP | FN |
-| **Actual −** | FP | TN |
+| **Actual +** | TP (caught it) | FN (missed it) |
+| **Actual −** | FP (false alarm) | TN (correctly ignored) |
 
-- **Precision** $= \\frac{TP}{TP+FP}$ — of the ones you flagged, how many were right? *Cost of false alarms.*
-- **Recall / TPR** $= \\frac{TP}{TP+FN}$ — of the real ones, how many did you catch? *Cost of misses.*
-- **F1** — harmonic mean of the two. Convenient, and it hides the tradeoff you should be making explicitly.
-- **Specificity / TNR** $= \\frac{TN}{TN+FP}$.
+From those four numbers:
 
-Which matters depends entirely on relative costs. Cancer screening wants recall. Spam filtering wants precision
-(a lost real email is worse than a spam that got through).`),
+- **Precision** $= \\frac{TP}{TP+FP}$ — of the ones you flagged, how many were real? *This is the cost of false
+  alarms.* Low precision means your alerts are noise and people stop reading them.
+- **Recall** $= \\frac{TP}{TP+FN}$ — of the real ones, how many did you catch? *This is the cost of misses.*
+  Low recall means things slip through.
+- **F1** — the harmonic mean of the two. Convenient for leaderboards, and it papers over exactly the tradeoff
+  you should be making on purpose.
+- **Specificity** $= \\frac{TN}{TN+FP}$ — the mirror image of recall, for the negative class.
+
+Notice that precision and recall trade off directly: lower your threshold and you catch more (recall up) at the
+cost of more false alarms (precision down). There is no setting that maximises both, so **which one matters is
+a question about your application, not your model**.
+
+Cancer screening wants recall — a missed tumour is catastrophic, a false alarm costs one follow-up scan. Spam
+filtering wants precision — a spam message reaching the inbox is an annoyance, a real email silently deleted is
+a disaster. Same mathematics, opposite answers.`),
 
     viz('roc-curve'),
 
     t(`## ROC vs precision-recall
 
-**ROC** plots TPR against FPR across all thresholds; AUC is the probability a random positive scores above a random
-negative. It is **prevalence-independent**, which is either a feature or a trap depending on what you are doing.
+Both are ways of showing a model's behaviour at *every* threshold at once, rather than committing to one. The
+difference between them is subtle and matters enormously on rare-event problems.
 
-**Precision-recall** curves *do* depend on prevalence, which makes them the honest choice for rare-event problems.
-Drag prevalence down to 2% in the figure: AUC barely moves while precision collapses. If your positive class is rare,
-report PR-AUC (average precision).
+**ROC** plots recall against false-alarm rate as the threshold sweeps from 0 to 1. **AUC** — the area under it
+— has a clean interpretation: the probability that a randomly chosen positive scores higher than a randomly
+chosen negative. It measures pure ranking ability.
 
-A model has one curve but infinitely many operating points. Reporting a single F1 without saying which threshold
-produced it is close to meaningless.`),
+Crucially, ROC-AUC is **prevalence-independent**. Both its axes are normalised within a class, so changing how
+rare the positive class is does not move the curve. That is a feature when comparing models across datasets and
+a trap when you want to know whether your alerts will be useful.
+
+**Precision-recall** curves *do* depend on prevalence, because precision has false positives from the (huge)
+negative class in its denominator. That dependence is exactly why they are the honest choice for rare events.`),
+
+    key(`Drag prevalence down to 2% in the figure and watch what happens: **AUC barely moves while precision
+collapses.**
+
+The arithmetic behind that: with 1% positives and a model at 90% recall and a 5% false-alarm rate, out of 10,000
+transactions you catch 90 of the 100 frauds — and also flag 495 legitimate ones. Precision is 90/585 = **15%**.
+Five out of six alerts are wrong, and your ROC-AUC still looks excellent.
+
+If your positive class is rare, **report PR-AUC (average precision)**, and report the precision at the recall
+you actually plan to operate at. Reporting ROC-AUC alone on an imbalanced problem is technically true and
+practically misleading.
+
+And a related discipline: a model has one curve but infinitely many operating points. **Reporting a single F1
+without saying which threshold produced it is close to meaningless** — someone else cannot reproduce it and you
+cannot tell whether it was tuned.`),
 
     t(`## Regression metrics
 
@@ -1264,6 +2115,14 @@ print("There is no signal. Any number above 0.5 here is pure leakage.")`),
        'Nothing — 99.5% is excellent'],
       0,
       'Predicting the majority class always gives 99.5% here. The model may have learned literally nothing. Ask for precision and recall at the operating threshold, PR-AUC across thresholds, and the confusion matrix in raw counts. Accuracy on an imbalanced problem is close to uninformative.'),
+
+    recap(`- Explain why accuracy fails on imbalanced data, with the one-line model that proves it.
+- Define precision and recall in words a non-specialist would follow, and say which one a given application
+  needs.
+- Say why ROC-AUC can look excellent while precision is terrible, and what to report instead.
+- Pick the right cross-validation scheme for grouped data, time-series data, and imbalanced data.
+- Name the six standard ways to fool yourself, and identify which one is present in a described workflow.
+- Put a rough confidence interval on an accuracy number, and use it to say whether two models actually differ.`),
   ],
   refs: [
     paper('The Relationship Between Precision-Recall and ROC Curves', 'Davis & Goadrich', 2006, 'https://www.biostat.wisc.edu/~page/rocpr.pdf', 'Why PR curves are the right choice for rare classes.'),
@@ -1283,17 +2142,50 @@ print("There is no signal. Any number above 0.5 here is pure leakage.")`),
   prereq: ['ml-logistic'],
   tags: ['naive bayes', 'theory'],
   sections: [
+    tldr(`Two philosophies for building a classifier.
+
+**Discriminative**: learn only what you need to tell the classes apart. Where is the boundary? Nothing else
+matters.
+
+**Generative**: learn what each class *looks like*, then classify by asking which class more plausibly produced
+this example.
+
+The classical version of this debate is a small technical point about sample efficiency. The modern version is
+the entire reason language models can do tasks nobody trained them on — a model that learned to generate text
+can be *asked* to classify, while a classifier can only ever classify.`),
+
+    jargon([
+      ['discriminative model', 'Models $p(y \\mid \\mathbf{x})$ — the answer given the input. Or sometimes just a boundary, with no probabilities at all.'],
+      ['generative model', 'Models $p(\\mathbf{x}, y)$ or $p(\\mathbf{x})$ — how the data itself is distributed. Can therefore *produce* new examples.'],
+      ['joint distribution $p(\\mathbf{x}, y)$', 'The probability of an input and its label occurring together. Contains strictly more information than $p(y\\mid\\mathbf{x})$.'],
+      ['class-conditional $p(\\mathbf{x} \\mid y)$', '"What do examples of class $y$ look like?" The thing a generative classifier learns.'],
+      ['naive Bayes', 'A generative classifier that assumes all features are independent given the class. The assumption is false and it works anyway.'],
+      ['asymptotic error', 'The error a method converges to given unlimited data. Its ceiling.'],
+      ['sample efficiency', 'How much data a method needs to reach its ceiling. A method can have a worse ceiling but reach it far sooner.'],
+      ['zero-shot / few-shot', 'Performing a task with no training examples, or a handful shown in the prompt. Only generative models can really do this.'],
+    ]),
+
     t(`## Two strategies
 
-**Discriminative** models learn $p(y\\mid\\mathbf{x})$ — or just a decision boundary — directly. Logistic regression,
-SVMs, and standard neural classifiers are discriminative.
+Suppose you want to tell cats from dogs. There are two fundamentally different ways to approach it.
 
-**Generative** models learn the joint $p(\\mathbf{x},y) = p(\\mathbf{x}\\mid y)p(y)$, then apply Bayes' rule:
+**The discriminative approach**: learn the *difference*. Find whatever feature separates them — ear shape, say
+— and draw a boundary. You need not know anything else about cats. Logistic regression, SVMs, and standard
+neural classifiers all do this, modelling $p(y\\mid\\mathbf{x})$ directly (or, for an SVM, not even that — just
+the boundary).
+
+**The generative approach**: learn what cats look like and what dogs look like, separately. Then for a new
+photo, ask which model finds it less surprising. Formally, learn the class-conditionals $p(\\mathbf{x}\\mid y)$
+and the class frequencies $p(y)$, then apply Bayes' rule:
 
 $$p(y\\mid\\mathbf{x}) \\propto p(\\mathbf{x}\\mid y)\\,p(y)$$
 
-Naive Bayes, LDA, and Gaussian mixture classifiers are generative — as are, in the modern sense, VAEs, diffusion
-models, and language models.`),
+Naive Bayes, LDA, and Gaussian mixture classifiers are the classical examples. VAEs, diffusion models, and
+language models are the modern ones.
+
+The generative approach is doing strictly more work — it learns enough to *generate* new cats, which
+classification never required. Whether that extra work is wasted effort or the whole point is what the rest of
+this lesson is about.`),
 
     viz('generative-discriminative'),
 
@@ -1323,7 +2215,8 @@ dimensions gracefully.`),
 
     t(`## The modern reading
 
-The distinction has become more interesting, not less:
+For decades this was a fairly dry technical debate about sample efficiency, and discriminative methods mostly
+won because data got cheap. Then the distinction became the most important idea in the field:
 
 - A **language model is a generative model** of text, $p(x_1,\\ldots,x_T)$. Its ability to do classification is a side
   effect ("Q: Is this positive or negative? A:") of having modeled the joint.
@@ -1382,6 +2275,15 @@ for n in [20, 50, 100, 300, 1000, 5000]:
        'It cannot — that requires fine-tuning'],
       0,
       'A generative model of $p(\\text{text})$ implicitly contains $p(\\text{label}\\mid\\text{review})$ for any labeling scheme that appears in natural language, because "This movie was great. Sentiment: positive" is itself text. Prompting is conditioning. This is the practical payoff of generative modeling and the reason the field moved decisively toward it.'),
+
+    recap(`- State the difference between modelling $p(y\\mid\\mathbf{x})$ and $p(\\mathbf{x}, y)$, and give an example
+  of each.
+- Explain why generative models win on small data and lose on large data, in terms of assumptions acting as a
+  prior.
+- Say why naive Bayes works despite its central assumption being false.
+- Explain, in one sentence, why a language model can do a task it was never trained on — and why a
+  discriminative sentiment classifier cannot.
+- Describe the "generative pretraining, discriminative fine-tuning" recipe and why it dominates every modality.`),
   ],
   refs: [
     paper('On Discriminative vs. Generative Classifiers', 'Ng & Jordan', 2001, 'https://papers.nips.cc/paper/2020-on-discriminative-vs-generative-classifiers-a-comparison-of-logistic-regression-and-naive-bayes', 'The paper that made the tradeoff precise.'),

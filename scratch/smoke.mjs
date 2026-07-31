@@ -74,15 +74,33 @@ for (const l of LESSONS) {
 let blocks = 0, chars = 0;
 for (const l of LESSONS) {
   for (const s of l.sections || []) {
-    for (const field of ['md', 'explain', 'q']) {
-      if (typeof s[field] === 'string') {
-        try {
-          const out = md(s[field]);
-          blocks++; chars += out.length;
-          if (out.includes('math-err')) warn.push(`${l.id}: KaTeX failed in a ${field} block`);
-        } catch (e) {
-          err.push(`${l.id}: md() threw on ${field}: ${e.message}`);
-        }
+    const mdFields = [];
+    for (const field of ['md', 'explain', 'q', 'caption']) {
+      if (typeof s[field] === 'string') mdFields.push([field, s[field]]);
+    }
+    if (s.t === 'jargon') {
+      for (const pair of s.items || []) mdFields.push(['jargon', pair[0]], ['jargon', pair[1]]);
+      if (!(s.items || []).length) err.push(`${l.id}: empty jargon block`);
+    }
+    if (s.t === 'steps') {
+      for (const it of s.items || []) {
+        mdFields.push(['steps', typeof it === 'string' ? it : it.md]);
+        if (typeof it === 'object' && it.h) mdFields.push(['steps', it.h]);
+      }
+      if (!(s.items || []).length) err.push(`${l.id}: empty steps block`);
+    }
+    if (s.t === 'diagram') {
+      if (!/<svg[\s>]/.test(s.svg || '')) err.push(`${l.id}: diagram "${s.title}" has no <svg> root`);
+      if (/[:="]\s*#[0-9a-fA-F]{3,6}\b/.test(s.svg || '')) warn.push(`${l.id}: diagram "${s.title}" hard-codes a hex colour (use var(--sN))`);
+    }
+    for (const [field, src] of mdFields) {
+      if (typeof src !== 'string') { err.push(`${l.id}: non-string ${field} block`); continue; }
+      try {
+        const out = md(src);
+        blocks++; chars += out.length;
+        if (out.includes('math-err')) warn.push(`${l.id}: KaTeX failed in a ${field} block`);
+      } catch (e) {
+        err.push(`${l.id}: md() threw on ${field}: ${e.message}`);
       }
     }
   }
