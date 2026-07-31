@@ -2,7 +2,8 @@
    Track 4 — Transformers and Large Language Models
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,9 +16,34 @@ export default [
   prereq: ['nn-embeddings'],
   tags: ['tokenization', 'BPE'],
   sections: [
+    tldr(`A language model cannot read text. It reads integers. **Tokenization** is the step that turns
+\\\`"hello world"\\\` into \\\`[15339, 1917]\\\` — and it happens before the model exists, using a fixed table built
+by counting character frequencies in a corpus.
+
+It sounds like plumbing and it is not. A startling number of LLM quirks — inability to count letters, patchy
+arithmetic, non-English text costing 3× more to process, entire words that make models behave bizarrely — are
+tokenization artefacts rather than reasoning failures. Knowing this changes what you conclude when a model fails
+at something.`),
+
+    jargon([
+      ['token', 'One unit of text the model sees. Usually a word fragment: "tokenization" might be `token` + `ization`. Roughly 0.75 words on average for English.'],
+      ['vocabulary', 'The fixed list of all tokens the model knows. Typically 50,000–200,000 entries. Set before training and unchangeable afterwards.'],
+      ['token id', 'The integer index of a token in the vocabulary. What actually gets fed to the model.'],
+      ['subword', 'A token smaller than a word. The compromise that makes everything work: common words stay whole, rare words split into pieces.'],
+      ['BPE', 'Byte-Pair Encoding. The dominant algorithm: repeatedly merge the most frequent adjacent pair of symbols.'],
+      ['merge', 'One learned rule, like "`t` followed by `h` → `th`". A vocabulary is built by applying tens of thousands of these in order.'],
+      ['`<UNK>`', 'The "unknown token" of older systems, used when a word was not in the vocabulary. Modern byte-level tokenizers never need it.'],
+      ['byte-level', 'Starting from the 256 possible bytes rather than characters, so *any* input — emoji, Chinese, binary — encodes without failure.'],
+      ['WordPiece / SentencePiece / Unigram', 'The main BPE alternatives. Used by BERT, T5, and Llama respectively.'],
+      ['glitch token', 'A token that appeared in the tokenizer\'s training data but almost never in the model\'s, leaving its embedding essentially untrained. Causes strange behaviour.'],
+    ]),
+
     t(`## The vocabulary problem
 
-A model needs a finite vocabulary. Two obvious choices, both bad:
+A model needs a **finite** vocabulary — a fixed list of symbols, because the output layer is a softmax with one
+slot per symbol and that layer's size is baked into the architecture.
+
+So: what should the symbols be? Two obvious choices, both bad:
 
 - **Words.** English has hundreds of thousands, plus every name, typo, and neologism. Anything unseen becomes
   \`<UNK>\` and its information is gone.
@@ -29,17 +55,27 @@ Nothing is ever unknown, and sequences stay short.`),
 
     t(`## Byte-pair encoding
 
-BPE starts from individual characters (or bytes) and repeatedly merges the most frequent adjacent pair, recording
-each merge. Apply $N$ merges and you have a vocabulary of $N$ + (base alphabet).`),
+BPE is the algorithm that finds the subwords for you, and it is simple enough to describe completely in four
+steps.`),
+
+    steps('How BPE builds a vocabulary', [
+      { h: 'Start from the smallest possible units', md: `Split all your training text into individual bytes. Your vocabulary is now 256 entries and can represent literally anything, but every word is many tokens long.` },
+      { h: 'Count every adjacent pair', md: `Across the whole corpus, count how often each pair of adjacent symbols occurs. In English text, \\\`t\\\` followed by \\\`h\\\` will be near the top.` },
+      { h: 'Merge the most frequent pair', md: `Add \\\`th\\\` to the vocabulary as a new single symbol, and rewrite the corpus using it. Record the merge rule — the ordered list of merges *is* the tokenizer.` },
+      { h: 'Repeat 50,000 times', md: `Each merge adds one vocabulary entry and shortens the corpus a little. Frequent sequences get absorbed into single tokens; rare ones never do and stay as fragments. Nobody decided that " the" should be one token — frequency decided.` },
+    ]),
+
+    t(`That is the entire algorithm: greedy, frequency-driven merging. No linguistics, no notion of what a
+morpheme is. And it is what GPT-2, GPT-4, Llama, and essentially every modern model use.`),
 
     viz('bpe-tokenizer'),
 
-    t(`Slide the merge count from 0 to 60 and watch " the" collapse from four tokens into one. That is the entire
-algorithm — greedy frequency-based merging — and it is what GPT-2, GPT-4, Llama, and essentially every modern model
-use, at around 50k–200k merges over **bytes** rather than characters.
+    t(`Slide the merge count from 0 to 60 in that figure and watch " the" collapse from four tokens into one.
+Real tokenizers run 50k–200k merges.
 
-Going over bytes matters: with a 256-byte base alphabet, *any* possible input encodes without an unknown token,
-including emoji, Chinese, and binary garbage.
+**Why bytes rather than characters?** With a 256-byte base alphabet, *any* possible input encodes without an
+unknown token — emoji, Chinese, Cyrillic, malformed UTF-8, raw binary. There is no such thing as an
+out-of-vocabulary input, which eliminates an entire class of failure that plagued earlier NLP systems.
 
 The main alternatives you will encounter: **WordPiece** (BERT) merges by likelihood gain rather than raw frequency;
 **Unigram/SentencePiece** (T5, Llama) starts from a large vocabulary and prunes, and handles whitespace as a regular
@@ -118,6 +154,14 @@ for w in ["cats", "splat"]:
        'The training data contains few examples of counting'],
       0,
       'A token like "berry" arrives as a single embedding vector. There is no representation of "b, e, r, r, y" as separate items to iterate over, so the model answers from memorized facts about the word rather than by inspection. Chain-of-thought helps because spelling the word out one letter at a time forces the characters into separate tokens, where they *can* be counted.'),
+
+    recap(`- Explain why neither words nor characters work as a vocabulary, and what subwords fix about each.
+- Describe the BPE algorithm in four steps, and say what a "merge" is.
+- Say why byte-level tokenization eliminates unknown tokens entirely.
+- Attribute a model failure to tokenization when appropriate — letter counting, arithmetic, non-English cost —
+  rather than to reasoning.
+- Explain what a glitch token is and why its embedding is untrained.
+- Know that a trailing space in your prompt changes the tokens and can degrade output.`),
   ],
   refs: [
     paper('Neural Machine Translation of Rare Words with Subword Units', 'Sennrich, Haddow & Birch', 2015, 'https://arxiv.org/abs/1508.07909', 'BPE applied to NMT — the paper that made subword tokenization standard.'),
@@ -137,26 +181,73 @@ for w in ["cats", "splat"]:
   prereq: ['nn-embeddings', 'math-jacobian'],
   tags: ['attention', 'transformers'],
   sections: [
+    tldr(`This is the mechanism everything else in the track is built on, so it is worth slowing down for.
+
+The problem: to understand "it" in a sentence, a token needs information from *some other* token — and which
+one depends on the content, not on any fixed position. A convolution cannot do that (it always looks at fixed
+neighbours). An RNN cannot do it well (information has to survive being squeezed through every intervening
+step).
+
+Attention's answer is a **soft dictionary lookup**. Every token broadcasts a "here is what I am" key and a
+"here is what I am looking for" query. Compare each query against every key, turn the match scores into
+weights, and take a weighted average. Because the weights are computed from content and are differentiable, the
+model can *learn what to look for*.`),
+
+    jargon([
+      ['query, key, value', 'Three vectors each token produces. Query = what I am looking for. Key = what I advertise about myself. Value = what I hand over if selected. Borrowed from database terminology.'],
+      ['attention score / logit', 'The raw match between one query and one key: their dot product. Higher means more relevant.'],
+      ['attention weights', 'The scores after softmax — non-negative and summing to 1 across a row. How much of each token to blend in.'],
+      ['soft lookup', 'Instead of picking one match (hard), take a weighted blend of everything (soft). Softness is what makes it differentiable and therefore learnable.'],
+      ['$d_k$', 'The dimension of the query and key vectors. Appears in the $\\sqrt{d_k}$ scaling for a specific and derivable reason.'],
+      ['causal mask', 'Blocking each position from seeing later positions, so the model cannot cheat while learning to predict the next token.'],
+      ['head', 'One independent attention operation. Models run many in parallel, each free to track a different kind of relationship.'],
+      ['multi-head attention (MHA)', 'Running $h$ heads in parallel on slices of the representation, then concatenating.'],
+      ['KV cache', 'Storing past keys and values during generation so they need not be recomputed for every new token. Dominates memory at long context.'],
+      ['GQA / MQA', 'Grouped-Query / Multi-Query Attention. Several query heads sharing one key/value head, shrinking the KV cache.'],
+      ['FlashAttention', 'An exact reimplementation of attention that never builds the full $n \\times n$ matrix in memory. Same numbers, far less memory, faster.'],
+      ['induction head', 'A learned two-head circuit that finds an earlier copy of the current token and predicts whatever followed it last time. Strongly linked to in-context learning.'],
+    ]),
+
     t(`## The idea
 
-Every token needs information from other tokens. Which ones depends on content, not position: "it" refers to
-something, and what it refers to varies by sentence.
+Every token needs information from other tokens, and *which* ones depends on content rather than position. In
+"the trophy did not fit in the suitcase because **it** was too big", resolving "it" requires reaching back to
+"trophy" — seven tokens away. Change one word to "small" and it refers to the suitcase instead. No fixed wiring
+can capture that.
 
-Attention solves this as a **lookup with soft keys**. Each token produces three vectors:
+Attention frames this as a **lookup with soft keys**. Each token produces three different vectors from its
+representation, each with a distinct job:
 
-- **Query** $\\mathbf{q}$ — what am I looking for?
-- **Key** $\\mathbf{k}$ — what do I offer?
-- **Value** $\\mathbf{v}$ — what do I actually pass along?
+- **Query** $\\mathbf{q}$ — *what am I looking for?* ("I am a pronoun; I need a noun to refer to.")
+- **Key** $\\mathbf{k}$ — *what do I offer?* ("I am a concrete singular noun.")
+- **Value** $\\mathbf{v}$ — *what do I actually pass along if selected?* (The content itself.)
 
-Score every query against every key, softmax the scores into weights, and return the weighted average of the values.`),
+Separating key from value is the subtle part and it is what makes the mechanism flexible: **what makes a token
+findable need not be what it contributes.** A token can advertise "I am a date" while handing over the actual
+date.
+
+The operation is then: score every query against every key, softmax the scores into weights that sum to 1, and
+return the weighted average of the values.`),
 
     viz('attention-basics'),
 
-    t(`In matrix form, for all positions at once:
+    t(`In matrix form, doing all positions at once:
 
 $$\\text{Attention}(Q,K,V) = \\text{softmax}\\!\\left(\\frac{QK^{\\mathsf T}}{\\sqrt{d_k}}\\right)V$$
 
-where $Q = XW_Q$, $K = XW_K$, $V = XW_V$ are linear projections of the input.`),
+Take that apart piece by piece — it is four steps you already know:
+
+| Piece | What it does |
+|---|---|
+| $Q = XW_Q,\\ K = XW_K,\\ V = XW_V$ | Three learned linear projections of the same input. The *only* parameters here. |
+| $QK^{\\mathsf T}$ | Every query dotted with every key — an $n \\times n$ grid of similarity scores. |
+| $/\\sqrt{d_k}$ | A scaling factor. Derived below; it is not arbitrary. |
+| $\\text{softmax}(\\cdot)$ | Turns each row of scores into weights that are positive and sum to 1. |
+| $\\times V$ | Weighted average of the values. The output. |
+
+Note what is *not* in that formula: nothing about position, and no learned parameters except the three
+projections. Attention is permutation-invariant by construction — which is exactly why transformers need
+positional encodings bolted on separately.`),
 
     deriv('Why divide by $\\sqrt{d_k}$', `Suppose the entries of $\\mathbf{q}$ and $\\mathbf{k}$ are independent with mean 0 and variance 1. Then
 
@@ -181,10 +272,21 @@ Row $i$ of the attention matrix is where token $i$ looks; it sums to 1.`),
 
     viz('attention-matrix'),
 
-    t(`The **causal mask** sets the upper triangle to $-\\infty$ before the softmax. During training the model predicts
-every position simultaneously, and position $i$ must never see position $j > i$ — otherwise predicting the next token
-would be trivial. Toggle it off and you have an *encoder* (BERT-style), which sees the whole sequence and is used for
-understanding rather than generation.
+    t(`### The causal mask
+
+The **causal mask** sets the upper triangle of the score matrix to $-\\infty$ *before* the softmax — and since
+$e^{-\\infty} = 0$, those positions get exactly zero weight.
+
+Why this is needed comes down to a training efficiency trick. During training the model predicts the next token
+at *every* position simultaneously, in one forward pass — otherwise you would need a separate pass per position
+and training would be hundreds of times slower. But that means position 5 is computing its prediction while
+tokens 6, 7, 8 are sitting right there in the same sequence. Without a mask, predicting "the next token" would
+be a lookup rather than a prediction, and the model would learn nothing and then fail completely at generation
+time when the future is genuinely absent.
+
+Toggle the mask off and you have an **encoder** (BERT-style): every position sees the whole sequence. That is
+the right choice for *understanding* tasks — classification, retrieval — where you have the full text in hand
+and no need to generate.
 
 The named patterns in that figure are idealized versions of heads that interpretability research actually finds inside
 trained models. **Induction heads** are the most consequential: a two-head circuit that finds a previous occurrence of
@@ -202,10 +304,24 @@ dimensions — so multi-head costs the same as single-head but can attend to sev
 
     viz('multi-head'),
 
-    t(`At inference the keys and values of every past token must be cached, and that cache dominates memory at long
-context. **GQA** (grouped-query attention) lets several query heads share one key/value head, cutting the cache by the
-sharing factor for a small quality cost. **MQA** takes it to the limit with a single KV head. Nearly every modern open
-model uses GQA.`),
+    t(`### The KV cache, and why GQA exists
+
+Generation is sequential: you produce one token, append it, and run the model again. Naively that recomputes the
+keys and values for every previous token at every step — enormously wasteful, since those tokens have not
+changed.
+
+So you cache them. The **KV cache** stores every past token's keys and values, and each new token only computes
+its own. This turns generation from quadratic to linear in total work, and it is why every inference server does
+it.
+
+The cost is memory, and at long context that cost dominates everything else — the cache grows with (batch ×
+sequence length × layers × heads × head dimension), and for a long conversation it can exceed the model weights
+themselves.
+
+**GQA** (grouped-query attention) attacks this directly: let several query heads *share* one key/value head. With
+8 query heads per KV head, the cache shrinks 8×. The quality cost is small, apparently because the queries
+carried most of the useful diversity anyway. **MQA** pushes it to a single shared KV head — maximum saving,
+slightly more quality loss. Nearly every modern open model uses GQA.`),
 
     t(`## The cost`),
 
@@ -261,6 +377,14 @@ print("\\nUnscaled, large d_k saturates the softmax -> no gradient -> no learnin
        'It is a convention with no functional consequence'],
       0,
       'The output is $\\sum_j a_{ij}\\mathbf v_j$ with $\\sum_j a_{ij}=1$ — a weighted average, so it stays in the same range as the values regardless of whether you attend over 10 tokens or 100,000. Without normalization the output magnitude would grow with sequence length and destabilize every downstream layer.'),
+
+    recap(`- Explain query, key, and value in plain language, and say why key and value are kept separate.
+- Walk through the attention formula one factor at a time and say what each does.
+- Derive the $\\sqrt{d_k}$ scaling from the variance of a dot product, and say what breaks without it.
+- Explain what the causal mask prevents and why training would otherwise be trivially easy and useless.
+- Say why multi-head attention costs the same as single-head despite running $h$ operations.
+- Explain what the KV cache stores, why it dominates long-context memory, and what GQA trades away.
+- State what FlashAttention changed — and, importantly, what it did *not* change (the maths).`),
   ],
   refs: [
     paper('Attention Is All You Need', 'Vaswani et al.', 2017, 'https://arxiv.org/abs/1706.03762', 'The transformer. Among the most consequential papers in the field.'),
@@ -280,6 +404,31 @@ print("\\nUnscaled, large d_k saturates the softmax -> no gradient -> no learnin
   prereq: ['llm-attention', 'nn-normalization'],
   tags: ['transformers', 'architecture'],
   sections: [
+    tldr(`A transformer is one small block, repeated. That is genuinely the whole architecture — GPT-4 and a
+tutorial implementation differ in size and detail, not in structure.
+
+The block has exactly two moving parts. **Attention** lets tokens exchange information with each other. An
+**MLP** processes each token on its own. Both are wrapped in residual connections, so nothing overwrites the
+running state — layers only ever *add* to it.
+
+The single most useful mental model: think of the flowing representation as a **shared bus** that every layer
+reads from and writes to, rather than a pipeline that transforms and hands along. Interpretability research is
+built on that picture and it explains a lot of otherwise-strange behaviour.`),
+
+    jargon([
+      ['block / layer', 'One attention sublayer plus one MLP sublayer, with residuals and normalization. A "40-layer model" means 40 of these stacked.'],
+      ['sublayer', 'One of the two components inside a block.'],
+      ['MLP / FFN', 'The position-wise feed-forward network: two linear layers with a nonlinearity between. "Feed-forward network" is the same thing.'],
+      ['position-wise', 'Applied to each token independently, with the same weights. The MLP has no idea other tokens exist.'],
+      ['residual stream', 'The running vector carried through the network by the residual connections. The "bus" every layer reads and writes.'],
+      ['$d_{\\text{model}}$', 'The width of the residual stream — how many numbers represent each token. 768 for GPT-2 small, 4096+ for large models.'],
+      ['permutation-equivariant', 'Shuffle the inputs and the outputs shuffle identically. True of attention, which is why position must be added separately.'],
+      ['positional encoding', 'Information about *where* a token sits, injected because attention cannot tell.'],
+      ['RoPE', 'Rotary Position Embedding. Encodes position by rotating query and key vectors, so only relative distance matters. The current default.'],
+      ['ALiBi', 'Adding a distance-based penalty directly to attention scores. Extrapolates to longer sequences than trained on.'],
+      ['pre-norm / post-norm', 'Whether normalization comes before a sublayer or after the residual add. Pre-norm is what makes very deep models trainable.'],
+    ]),
+
     t(`## The block
 
 A transformer is one block repeated $L$ times. Modern (pre-norm) form:
@@ -297,13 +446,30 @@ $$\\text{MLP}(\\mathbf{x}) = W_2\\,\\phi(W_1\\mathbf{x})$$
 
 with a hidden dimension typically $4\\times d_{\\text{model}}$.`),
 
-    intuition(`A useful division of labour: **attention moves information between positions; the MLP processes it
-within a position.** Attention is the only place tokens talk to each other. Everything else in the block operates on
-each token in isolation.
+    key(`**Attention moves information between positions. The MLP processes it within a position.**
 
-The residual stream is the other half of the picture. Think of $\\mathbf{x}$ as a shared bus that every layer reads
-from and writes to, rather than a pipeline that transforms and passes along. Layers can specialize, communicate across
-long distances by writing to a subspace another layer reads, and skip contributing entirely.`),
+That division of labour is worth memorising, because it tells you where to look when reasoning about a model.
+Attention is the *only* place in the entire architecture where tokens exchange information — remove it and each
+token is processed in complete isolation, as if the others did not exist. Everything else operates per-token.`),
+
+    intuition(`The residual stream is the other half of the picture, and reframing it is worth doing
+deliberately.
+
+The naive reading of $\\mathbf{x} \\leftarrow \\mathbf{x} + \\text{MHA}(\\ldots)$ is "a layer transforms the
+representation and passes it on". A better reading: $\\mathbf{x}$ is a **shared bus**. Each layer *reads* from
+it, computes something, and *adds* its contribution back. Nothing is ever overwritten.
+
+Three consequences that this picture explains and the pipeline picture does not:
+
+- **Layers can communicate at a distance.** Layer 3 can write into some subspace that layer 27 reads from,
+  with the twenty-three layers in between neither knowing nor caring.
+- **Layers can abstain.** Contributing approximately zero is a perfectly good option, and analysis shows many
+  layers do exactly that on many inputs. This is why you can often prune or skip layers with little damage.
+- **The stream grows.** Since everything adds, the magnitude of $\\mathbf{x}$ increases with depth — which is
+  why a final normalization before the output head is standard.
+
+This "residual stream" framing is the foundation of mechanistic interpretability, and it is the reason people
+talk about models as having *circuits* spread across layers rather than a sequence of processing stages.`),
 
     t(`## Where the parameters go
 
@@ -323,8 +489,12 @@ that is where factual knowledge lives.`),
 
     t(`## Positional information
 
-Attention is permutation-equivariant: shuffle the tokens and the outputs shuffle identically. Order must be injected
-explicitly.`),
+Go back and look at the attention formula: there is nothing in it that refers to position. Every token is
+compared against every other by *content only*. So attention is **permutation-equivariant** — shuffle the input
+tokens and the outputs shuffle identically, with no other change.
+
+Which means, on its own, a transformer cannot distinguish "dog bites man" from "man bites dog". Order has to be
+injected explicitly, and how to do it well took the field several attempts.`),
 
     viz('positional-encoding'),
 
@@ -433,6 +603,13 @@ print("the output head is standard in pre-norm architectures.")`),
        'It is optional and mostly historical'],
       0,
       'Pre-norm normalizes the *input* to each sublayer, but the residual stream itself is only ever added to — nothing rescales it. Its magnitude therefore grows roughly with $\\sqrt L$. Without a final norm, the output head would see inputs whose scale depends on depth. You can watch this in the code above.'),
+
+    recap(`- Write out a transformer block from memory and name what each of the two sublayers is responsible for.
+- Explain the residual stream as a shared bus, and give two things that picture predicts.
+- Say where two-thirds of a transformer's parameters live, and why that is surprising given what gets discussed.
+- Explain why positional information must be added separately, from the structure of the attention formula.
+- Say what RoPE encodes and why rotation makes the result depend only on relative distance.
+- List three changes between the 2017 transformer and a current one, and say what each fixed.`),
   ],
   refs: [
     paper('Attention Is All You Need', 'Vaswani et al.', 2017, 'https://arxiv.org/abs/1706.03762', ''),
@@ -453,17 +630,51 @@ print("the output head is standard in pre-norm architectures.")`),
   prereq: ['llm-transformer', 'math-information'],
   tags: ['pretraining', 'language modeling'],
   sections: [
+    tldr(`The training objective for every large language model is one sentence: **predict the next token.** No
+labels, no task definitions, no human annotation — just text, and the question "what comes after this?"
+
+The surprising part is not that it works, but what falls out of it. To predict text well you have to model
+whatever produced that text, and text was produced by people reasoning, computing, remembering, and arguing. So
+a system optimised purely for compression ends up doing all of those things as a side effect.
+
+Whether that constitutes understanding is genuinely contested. That it produces capability is not.`),
+
+    jargon([
+      ['pretraining', 'The initial, enormous training run on raw text. Everything afterwards — instruction tuning, RLHF — is comparatively tiny.'],
+      ['next-token prediction', 'The objective: given all previous tokens, put a probability on each possible next one.'],
+      ['self-supervised', 'Learning from labels the data supplies itself. The "label" here is just the next token, which is free.'],
+      ['chain rule (of probability)', 'Factoring $p(\\text{whole sequence})$ into a product of one-token-at-a-time conditionals. Different from calculus\' chain rule.'],
+      ['$x_{<t}$', 'All tokens before position $t$. The context the model conditions on.'],
+      ['corpus', 'The body of training text. Frontier runs use roughly $10^{13}$ tokens.'],
+      ['Common Crawl', 'A free periodic scrape of the public web. The bulk of most pretraining corpora, and mostly junk before filtering.'],
+      ['deduplication', 'Removing repeated documents and passages. Duplicated text causes memorization and wastes compute.'],
+      ['decontamination', 'Removing benchmark test sets from training data, so evaluation scores mean something. Done imperfectly by everyone.'],
+      ['data mixture', 'The proportions of code, web text, books, and languages. Tuned empirically, and models are sensitive to it.'],
+      ['emergent capability', 'A skill absent in smaller models that appears above some scale. Real, though partly an artefact of how the metric is measured.'],
+      ['model collapse', 'Degradation from training on the outputs of other models, round after round, until diversity is lost.'],
+    ]),
+
     t(`## The objective
 
-Factor the probability of a sequence by the chain rule:
+Start with what we want: a probability for an entire sequence, $p(x_1,\\ldots,x_T)$. That is a distribution over
+every possible document, which is not something you can write down directly.
 
-$$p(x_1,\\ldots,x_T) = \\prod_{t=1}^{T}p(x_t\\mid x_{<t})$$
+The chain rule of probability breaks it into pieces that are individually manageable:
 
-and maximize its log — which is cross-entropy against the observed next token, averaged over every position:
+$$p(x_1,\\ldots,x_T) = p(x_1)\\cdot p(x_2\\mid x_1)\\cdot p(x_3 \\mid x_1,x_2)\\cdots = \\prod_{t=1}^{T}p(x_t\\mid x_{<t})$$
+
+This is exact, not an approximation — it is just "the probability of the whole thing equals the probability of
+the first bit, times the probability of the next given the first, and so on." Each factor is a much smaller
+question: *given everything so far, what comes next?*
+
+Maximising the log of that product (logs, for the [same reasons as always](#/l/math-probability)) gives the
+training loss — which is exactly cross-entropy against the token that actually occurred, averaged over every
+position:
 
 $$\\mathcal{L} = -\\frac{1}{T}\\sum_{t=1}^{T}\\log p_\\theta(x_t\\mid x_{<t})$$
 
-That is the entire pretraining objective. No labels, no task, no human input. Just: what comes next.`),
+That is the entire pretraining objective. Every frontier model costing hundreds of millions of dollars is
+minimising this one expression. No labels, no task, no human input — just: what comes next.`),
 
     viz('language-model'),
 
@@ -579,6 +790,12 @@ print("\\ngenerated:", out)`,
        'They are fine-tuned in afterwards'],
       0,
       'The training text contains arithmetic, translations, code, and arguments. Minimizing prediction loss on that text is only possible by modeling the processes that produced it. The objective is narrow; the data is not, and capability comes from the data. This is the core insight — sometimes phrased as "compression is understanding."'),
+
+    recap(`- Write the pretraining objective and explain the chain-rule factorization it comes from.
+- Explain why a narrow objective produces broad capability, in terms of what the *data* contains.
+- Name the five stages of a data pipeline and say what each is protecting against.
+- Explain why decontamination failures make published benchmark numbers hard to interpret.
+- State the data-supply problem and name the three responses the field is trying.`),
   ],
   refs: [
     paper('Language Models are Unsupervised Multitask Learners', 'Radford et al.', 2019, 'https://cdn.openai.com/better-language-models/language_models_are_unsupervised_multitask_learners.pdf', 'GPT-2. The argument that task-specific training is unnecessary.'),
@@ -598,19 +815,51 @@ print("\\ngenerated:", out)`,
   prereq: ['llm-pretraining'],
   tags: ['scaling', 'Chinchilla'],
   sections: [
+    tldr(`Here is the finding that made the last five years possible: **model loss is predictable.** Not roughly,
+not qualitatively — it follows a clean power law in model size, data size, and compute, holding over many orders
+of magnitude.
+
+That predictability is the entire reason anyone was willing to spend a hundred million dollars on a single
+training run. You can train a series of small cheap models, fit a curve, and know what the enormous one will
+achieve before you start it. Without scaling laws, frontier AI would be gambling; with them, it is capital
+allocation.
+
+The second half of the lesson is about **how to spend** a fixed budget: more parameters or more data? The
+field's first answer was wrong, and correcting it in 2022 changed how every model since has been trained.`),
+
+    jargon([
+      ['scaling law', 'An empirical formula predicting model loss from size, data, and compute. Discovered by measurement, not derived from theory.'],
+      ['power law', 'A relationship of the form $y = x^{-\\alpha}$ — a straight line on a log-log plot. Means steady proportional returns, never a cliff.'],
+      ['$N$, $D$, $C$', 'Number of parameters, number of training tokens, total compute. The three quantities everything is expressed in.'],
+      ['FLOPs', 'Floating-point operations — the unit of compute. Training a frontier model is roughly $10^{25}$ of them.'],
+      ['irreducible loss $E$', 'The floor: language\'s own entropy. A perfect model still pays it, because text is not deterministic.'],
+      ['compute-optimal', 'The allocation of a fixed compute budget between model size and data that minimises loss. What "Chinchilla-optimal" refers to.'],
+      ['Chinchilla', 'The 2022 DeepMind paper that corrected the scaling recipe to roughly 20 tokens per parameter.'],
+      ['tokens per parameter', 'The ratio $D/N$. Chinchilla says ~20 for training-optimal; deployment often justifies far more.'],
+      ['emergence', 'A capability appearing abruptly above some scale rather than improving gradually. Partly real, partly a measurement artefact.'],
+      ['overtraining', 'Deliberately training past the compute-optimal point to get a smaller model of the same quality. Standard practice for models that will be served a lot.'],
+    ]),
+
     t(`## The empirical finding
 
-Test loss falls as a **power law** in model size $N$, dataset size $D$, and compute $C$, over many orders of magnitude:
+Test loss falls as a **power law** in model size $N$, dataset size $D$, and compute $C$, and does so over many
+orders of magnitude with no sign of a cliff:
 
-$$L(N, D) = E + \\frac{A}{N^{\\alpha}} + \\frac{B}{D^{\\beta}}$$
+$$L(N, D) = \\underbrace{E}_{\\text{the floor}} + \\underbrace{\\frac{A}{N^{\\alpha}}}_{\\text{model too small}} + \\underbrace{\\frac{B}{D^{\\beta}}}_{\\text{data too little}}$$
 
-$E$ is the irreducible entropy of language itself. The other terms are the penalties for a finite model and finite
-data. Fitted exponents are small — around $0.34$ and $0.28$ — meaning progress is steady but expensive: each halving
-of the reducible loss costs roughly $8\\times$ the compute.
+Three terms, each with a clean interpretation. $E$ is the **irreducible entropy of language itself** — no model
+beats it, because text genuinely is not deterministic ([the same $H(p)$](#/l/math-information) from the
+information lesson). The other two are the penalties for having a finite model and finite data, and both shrink
+toward zero as you scale.
 
-The practical significance is enormous: **you can extrapolate.** Train a series of small models, fit the curve,
-and predict what a run 1000× larger will achieve before committing to it. That is what made frontier-scale investment
-rational rather than reckless.`),
+Now look at the exponents, which are fitted from experiments: around $\\alpha = 0.34$ and $\\beta = 0.28$. Those
+are *small*, and small exponents mean expensive progress — halving the reducible loss costs roughly **8× the
+compute**. There is no shortcut hiding in the curve.
+
+But the practical significance is not the rate, it is the **reliability**. Because the relationship is a clean
+power law, you can train a ladder of small models, fit the curve, and extrapolate 1000× beyond anything you have
+run. Being able to predict the outcome of a $100M experiment before running it is what turned frontier-scale
+spending from a gamble into an investment case.`),
 
     viz('scaling-laws'),
 
@@ -703,6 +952,13 @@ for name, N, D in [("GPT-3", 175e9, 300e9), ("Chinchilla", 70e9, 1.4e12),
        'Split the budget across an ensemble'],
       0,
       'Chinchilla optimizes training loss per training FLOP and ignores serving entirely. At 100B requests, inference dominates total cost by orders of magnitude, so a 3B model trained on 5× the tokens — worse loss, 3× cheaper per request — usually wins on total cost. This is exactly the reasoning behind the Llama-3 token counts.'),
+
+    recap(`- Explain the three terms of the scaling law and say what the irreducible term corresponds to.
+- Say why predictability, rather than the rate of improvement, is what mattered commercially.
+- State the Chinchilla ratio and what Kaplan et al. got wrong.
+- Argue for deliberately "overtraining" a model, using total cost of ownership rather than training FLOPs.
+- Give the strongest version of the argument that emergence is a measurement artefact — and say what it does
+  not settle.`),
   ],
   refs: [
     paper('Scaling Laws for Neural Language Models', 'Kaplan et al.', 2020, 'https://arxiv.org/abs/2001.08361', 'The original. Set the field\'s direction for two years.'),
@@ -722,6 +978,32 @@ for name, N, D in [("GPT-3", 175e9, 300e9), ("Chinchilla", 70e9, 1.4e12),
   prereq: ['llm-pretraining'],
   tags: ['fine-tuning', 'LoRA', 'SFT'],
   sections: [
+    tldr(`Pretraining produces a model with enormous capability and no manners. It completes text; it does not
+answer questions, because nothing ever asked it to.
+
+**Post-training** fixes the behaviour. It costs under 1% of pretraining's compute and accounts for most of what
+users experience as quality. Two stages: **supervised fine-tuning** (show it thousands of good answers and have
+it imitate) and then preference optimization like RLHF, which gets past imitation's ceiling.
+
+The other half of this lesson is **PEFT** — how to fine-tune a model without the GPUs to hold its gradients.
+LoRA, derived back in [the matrices lesson](#/l/math-matrices), is the answer, and it is why fine-tuning is
+something you can do on a single consumer GPU.`),
+
+    jargon([
+      ['base model', 'The raw output of pretraining. Completes text, does not follow instructions.'],
+      ['post-training', 'Everything after pretraining: SFT, preference optimization, safety tuning. Cheap in compute, decisive for quality.'],
+      ['SFT', 'Supervised Fine-Tuning. Continue training on (prompt, ideal response) pairs.'],
+      ['instruction tuning', 'SFT specifically aimed at making the model follow instructions rather than continue text.'],
+      ['loss masking', 'Computing the loss only on the response tokens, not the prompt. You want it to learn to *answer*, not to predict questions.'],
+      ['chat template', 'The special-token format marking who said what. Model-specific, and getting it wrong silently degrades quality.'],
+      ['RLHF', 'Reinforcement Learning from Human Feedback. Training against a learned model of human preference rather than fixed examples.'],
+      ['PEFT', 'Parameter-Efficient Fine-Tuning. Training a small number of extra parameters and freezing the rest.'],
+      ['LoRA', 'Low-Rank Adaptation. Represent the weight update as a product of two skinny matrices. The dominant PEFT method.'],
+      ['rank $r$', 'The width of LoRA\'s bottleneck. 8–64 typically. Higher = more capacity and more parameters.'],
+      ['QLoRA', 'LoRA on top of a 4-bit quantized base model. Lets a 70B model be fine-tuned on one consumer GPU.'],
+      ['catastrophic forgetting', 'Losing previously-learned abilities while fine-tuning on something new.'],
+    ]),
+
     t(`## The problem with a base model
 
 A pretrained model completes text. Ask it "What is the capital of France?" and a plausible completion is:
@@ -742,8 +1024,16 @@ you want the model to learn to produce answers, not to predict prompts.
 Data is the whole game here. Quality dominates quantity, sometimes dramatically: LIMA achieved strong results with
 1,000 carefully written examples. Typical volumes are 10k–1M, increasingly generated or filtered by other models.
 
-The ceiling of SFT is the quality of its demonstrations — the model imitates, so it cannot exceed what it is shown.
-That limitation is the reason RLHF exists.`),
+**The ceiling of SFT is the quality of its demonstrations.** Imitation cannot exceed what it imitates: if your
+annotators write mediocre answers, you get a model that writes mediocre answers, and no amount of additional
+data changes that.
+
+Worse, there is a subtler failure. Training the model to confidently produce answers a *human expert* would give
+teaches it to sound like it knows things — including on questions where it does not. Imitating the *form* of
+expertise is easier than acquiring the substance, and SFT cannot tell the difference.
+
+That ceiling is the reason RLHF exists: instead of showing the model what to say, you let it generate and score
+it, so it can find answers better than any single demonstration.`),
 
     t(`## Chat templates
 
@@ -841,6 +1131,14 @@ print("-> adapters can be folded into W after training, so inference costs nothi
        'The frozen weights are being implicitly updated too'],
       0,
       'Full fine-tuning finds some $\\Delta W$; the empirical observation behind LoRA is that a good $\\Delta W$ can be approximated well by a rank-8 matrix. You are constraining the *change*, not the model. It follows that harder tasks — and especially learning genuinely new knowledge rather than new behavior — need higher rank, and full fine-tuning still wins there.'),
+
+    recap(`- Explain why a base model answers a question with more questions, and why that is correct behaviour
+  rather than a bug.
+- Say what loss masking does during SFT and why the prompt is excluded.
+- State the ceiling of supervised fine-tuning, and why imitation cannot pass it.
+- Explain LoRA's parameter count and the empirical bet underneath it — and when that bet fails.
+- Say when to prefer prompting, RAG, LoRA, or full fine-tuning, given a described problem.
+- Recognise "wrong chat template" as a cause of mysteriously poor output.`),
   ],
   refs: [
     paper('LoRA: Low-Rank Adaptation of Large Language Models', 'Hu et al.', 2021, 'https://arxiv.org/abs/2106.09685', ''),
@@ -860,10 +1158,38 @@ print("-> adapters can be folded into W after training, so inference costs nothi
   prereq: ['llm-pretraining'],
   tags: ['decoding', 'sampling'],
   sections: [
+    tldr(`A language model does not output text. It outputs a **probability for every token in the
+vocabulary**, and something else has to pick one. That picking is *decoding*, it happens outside the model, and
+it changes the output enormously.
+
+This is genuinely under-appreciated: the difference between a model that seems creative and one that seems
+robotic is often not the model at all, but the \\\`temperature\\\` and \\\`top_p\\\` values in the API call.
+
+One tension runs through the whole lesson. Sampling from the low-probability tail is where creativity comes
+from, and it is also where hallucination comes from. They are the *same mechanism*, and no decoding setting
+separates them.`),
+
+    jargon([
+      ['decoding', 'The process of turning the model\'s probability distribution into actual output tokens. Not part of the model.'],
+      ['logits', 'The raw unnormalized scores the model outputs, one per vocabulary token. Any real number.'],
+      ['greedy decoding', 'Always take the single highest-probability token. Deterministic, and prone to loops.'],
+      ['temperature $T$', 'Divides the logits before softmax. Below 1 sharpens the distribution (more predictable); above 1 flattens it (more random). $T = 0$ is greedy.'],
+      ['top-k', 'Consider only the $k$ most likely tokens, discard the rest, renormalize.'],
+      ['top-p / nucleus', 'Consider the smallest set of tokens whose probabilities add up to $p$. Adapts its size to how confident the model is.'],
+      ['beam search', 'Keeping several candidate *sequences* alive and returning the most probable complete one.'],
+      ['degeneration', 'The failure mode where output collapses into repetitive loops. What greedy and beam search do on open-ended text.'],
+      ['repetition penalty', 'Reducing the score of tokens already used, to discourage loops. A blunt instrument.'],
+      ['speculative decoding', 'A small fast model drafts several tokens; the big model verifies them all in one pass. Same output, several times faster.'],
+      ['constrained decoding', 'Forcing output to match a grammar or JSON schema by zeroing out invalid tokens before sampling.'],
+    ]),
+
     t(`## The choice
 
-At each step the model produces logits over the vocabulary. Which token you emit is a decoding decision, and the model
-does not make it for you.`),
+At each step, the model produces a vector of **logits** — one score per vocabulary token, typically 50,000 to
+200,000 of them. Softmax turns those into probabilities. And then... something has to choose.
+
+That choice is not part of the model, and the model has no opinion about it. It is a separate algorithm you
+control, and it is why the same model can be dull or wild depending on two numbers in your API call.`),
 
     viz('sampling-strategies'),
 
@@ -876,9 +1202,15 @@ is greedy; $T\\to\\infty$ is uniform.
 **Top-k** keeps the $k$ highest-probability tokens and renormalizes. Simple, but $k$ is fixed regardless of how
 confident the model is.
 
-**Top-p (nucleus)** keeps the smallest set whose cumulative probability reaches $p$. **This adapts**: after "The capital
-of France is" the nucleus is one token; after "She opened the door and saw" it is hundreds. That adaptivity is why
-top-p became the default.
+**Top-p (nucleus)** keeps the smallest set of tokens whose cumulative probability reaches $p$ (typically 0.9 or
+0.95), and renormalizes over those.
+
+The word doing the work is **adaptive**. After "The capital of France is" the model is nearly certain, so the
+nucleus contains one token and sampling is effectively deterministic. After "She opened the door and saw" there
+are hundreds of reasonable continuations, so the nucleus expands to include them all. Top-k cannot do this — a
+fixed $k=40$ either injects nonsense into the confident case or truncates the creative one.
+
+That single property is why top-p became the default everywhere.
 
 **Min-p** keeps tokens with probability at least $p \\cdot p_{\\max}$ — a newer variant that behaves better at high
 temperature.
@@ -967,6 +1299,14 @@ for desc, lg in [("confident", np.array([8.,1.,0.,0.,0.,0.,0.,0.,0.,0.])),
        'It always produces grammatical errors'],
       0,
       'Beam search approximates the *mode* of the sequence distribution. But human text is not modal — its per-token surprisal fluctuates, and the globally most-likely continuation is a generic, repetitive one. Nucleus sampling was introduced on exactly this observation: match the distribution rather than maximize it. Beam search remains right where the answer is nearly unique, as in translation.'),
+
+    recap(`- Explain that decoding is separate from the model, and name the two parameters that change output most.
+- Say what temperature does to the logits, and what $T=0$ and $T\\to\\infty$ correspond to.
+- Explain why top-p adapts where top-k cannot, with an example of each regime.
+- Say why maximising sequence probability produces *worse* open-ended text, and where beam search is still
+  right.
+- State the creativity/hallucination tension in one sentence and say why no temperature setting resolves it.
+- Explain how speculative decoding is faster without changing the output distribution.`),
   ],
   refs: [
     paper('The Curious Case of Neural Text Degeneration', 'Holtzman et al.', 2019, 'https://arxiv.org/abs/1904.09751', 'Nucleus sampling, and the clearest analysis of why likelihood maximization fails for open-ended text.'),
@@ -985,11 +1325,36 @@ for desc, lg in [("confident", np.array([8.,1.,0.,0.,0.,0.,0.,0.,0.,0.])),
   prereq: ['llm-finetuning'],
   tags: ['prompting', 'chain-of-thought', 'ICL'],
   sections: [
+    tldr(`Show a model three worked examples in the prompt and it will do the fourth — **with no weight updates
+at all**. Nothing is trained; the "learning" happens entirely inside one forward pass and is forgotten
+immediately after.
+
+This is strange enough that it took the field several years to get a partial explanation, and the current best
+one involves a specific learned circuit called an induction head.
+
+The second half of the lesson is **chain-of-thought**, whose mechanism is less mysterious than it sounds: a
+transformer does a fixed amount of computation per token, so making it emit more tokens literally buys it more
+computation. Thinking out loud converts *depth* into *length*.`),
+
+    jargon([
+      ['in-context learning (ICL)', 'Performing a task from examples given in the prompt, with no weight changes. Also called few-shot prompting.'],
+      ['zero-shot / few-shot', 'No examples in the prompt / a handful of examples in the prompt.'],
+      ['induction head', 'A learned two-head circuit that finds an earlier occurrence of the current token and predicts what followed it. The main known mechanism behind ICL.'],
+      ['chain-of-thought (CoT)', 'Prompting the model to write out intermediate reasoning steps before its answer.'],
+      ['serial computation', 'Steps that must happen one after another because each needs the previous result. A transformer\'s depth caps how many fit in one forward pass.'],
+      ['self-consistency', 'Sampling several chains of thought and taking a majority vote on the final answer.'],
+      ['system prompt', 'Standing instructions placed before the conversation, in a privileged role the model is trained to weight heavily.'],
+      ['prompt injection', 'Untrusted input containing instructions that the model follows. A structural security problem, not a bug to patch.'],
+    ]),
+
     t(`## The surprise
 
-Put a few worked examples in the prompt and the model does the task — with **no weight updates at all**. GPT-3 made
-this famous, and it remains genuinely strange: something functionally like learning is happening inside a single
-forward pass.`),
+Put a few worked examples in the prompt and the model does the task. No fine-tuning, no gradient steps, **no
+weight updates at all** — the parameters are frozen and identical before and after.
+
+GPT-3 made this famous in 2020, and it is worth preserving how odd it is. Everything else in this atlas
+describes learning as changing weights. Here, something functionally like learning happens inside a single
+forward pass, in the activations, and vanishes the moment the context is cleared.`),
 
     viz('in-context-learning'),
 
@@ -1075,6 +1440,12 @@ print("and only one way to be right. A systematically biased model gains nothing
        'It reduces the temperature'],
       0,
       'A transformer performs a fixed amount of serial computation per token, bounded by its layer count. A problem requiring more serial steps than that cannot be solved in one pass. Emitting intermediate tokens buys additional passes and externalizes state into the context. Depth becomes length — which also explains why CoT helps little on single-step recall.'),
+
+    recap(`- State what makes in-context learning surprising, in terms of what does and does not change.
+- Describe what an induction head does, and why that operation is what few-shot prompting needs.
+- Explain chain-of-thought as converting depth into length, and use it to predict which tasks it helps.
+- Say why chain-of-thought hurts small models.
+- Explain why prompt injection is a structural problem rather than a bug that can be patched.`),
   ],
   refs: [
     paper('Language Models are Few-Shot Learners', 'Brown et al.', 2020, 'https://arxiv.org/abs/2005.14165', 'GPT-3. In-context learning as a headline result.'),
@@ -1094,12 +1465,41 @@ print("and only one way to be right. A systematically biased model gains nothing
   prereq: ['nn-embeddings', 'llm-prompting'],
   tags: ['RAG', 'retrieval'],
   sections: [
+    tldr(`A model only knows what was in its training data, frozen at a cutoff date, with no citations and no
+access to your company's documents. **Retrieval-augmented generation** works around all of that without
+retraining anything: look up relevant text at query time, paste it into the prompt, and let the model read it.
+
+Structurally it is [kNN](#/l/ml-svm-knn) over embeddings with a language model reading the neighbours — which
+means RAG failures are usually *retrieval* failures, not model failures. If the right passage never made it into
+the context, no amount of prompt engineering will save you.`),
+
+    jargon([
+      ['RAG', 'Retrieval-Augmented Generation. Fetch relevant documents, put them in the prompt, generate an answer grounded in them.'],
+      ['parametric knowledge', 'What the model knows from its weights. Frozen, uncitable, and impossible to update without retraining.'],
+      ['chunk', 'A passage a document is split into for indexing. Chunk size and boundaries matter more than people expect.'],
+      ['vector index', 'A data structure for fast approximate nearest-neighbour search over millions of embeddings. HNSW and IVF-PQ are the common ones.'],
+      ['bi-encoder', 'Embeds query and document *separately*, so documents can be embedded once, offline. Fast, less accurate.'],
+      ['cross-encoder', 'Scores a (query, document) pair *jointly*. Far more accurate, far too slow to run over a whole corpus — so it is used to rerank a shortlist.'],
+      ['reranking', 'Re-scoring the top ~50 retrieved candidates with a cross-encoder to pick the best few.'],
+      ['hybrid search', 'Combining dense (embedding) retrieval with keyword search like BM25. Catches exact terms embeddings miss.'],
+      ['grounding', 'Requiring the answer to be supported by the retrieved text, ideally with citations.'],
+      ['lost in the middle', 'The observed tendency of models to attend well to the start and end of a long context and poorly to the middle.'],
+    ]),
+
     t(`## Why retrieve
 
-Parametric knowledge — what is in the weights — has hard limits. It is frozen at the training cutoff, cannot include
-your private documents, cannot be updated without retraining, and provides no citations.
+Everything a model knows lives in its weights — its **parametric knowledge** — and that has four hard limits,
+none of which more training fixes:
 
-RAG addresses all four: retrieve relevant text at query time, put it in the context, and let the model read it.`),
+- **Frozen at the cutoff.** It cannot know about anything after training ended.
+- **Cannot include private data.** Your company's wiki was not on the internet.
+- **Cannot be updated cheaply.** Correcting one fact means retraining or fine-tuning, with no guarantee the
+  edit sticks or stays local.
+- **No citations.** The model cannot tell you where it learned something, because "where" is smeared across
+  billions of weights.
+
+RAG addresses all four with the same move: retrieve relevant text at query time, put it in the context window,
+and let the model read it. The knowledge lives in a database you control rather than in weights you do not.`),
 
     t(`## The pipeline
 
@@ -1235,6 +1635,12 @@ for q in ["how many tokens per parameter should I train on?",
        'Increase the temperature'],
       0,
       'With recall@5 at 55%, 45% of queries have no chance regardless of the model. Work the retrieval side: add hybrid BM25+dense search, add a cross-encoder reranker, revisit chunking, and consider query rewriting. Only tune generation once retrieval recall is high — otherwise you are optimizing a component that is not the bottleneck.'),
+
+    recap(`- Name the four limits of parametric knowledge that RAG works around.
+- Describe the pipeline end to end, and say why a cross-encoder reranks rather than retrieves.
+- Explain why retrieval recall is the first thing to measure when a RAG system answers badly.
+- Say what hybrid search adds over pure embedding retrieval, and give a query where it matters.
+- Explain "lost in the middle" and how it should change the way you order retrieved chunks.`),
   ],
   refs: [
     paper('Retrieval-Augmented Generation for Knowledge-Intensive NLP', 'Lewis et al.', 2020, 'https://arxiv.org/abs/2005.11401', 'The paper that named it.'),
@@ -1254,13 +1660,45 @@ for q in ["how many tokens per parameter should I train on?",
   prereq: ['llm-transformer'],
   tags: ['MoE', 'architecture'],
   sections: [
+    tldr(`A normal ("dense") model runs *every* parameter for *every* token. That is wasteful — a token in
+Python code and a token in French plausibly want different machinery.
+
+**Mixture of Experts** replaces each feed-forward layer with many parallel copies and a small **router** that
+sends each token to just one or two of them. Total parameters grow enormously; compute per token barely moves.
+
+The result is the trick behind most frontier models: hundreds of billions of parameters' worth of knowledge, at
+the inference cost of a much smaller model. The catch is that everything about MoE is a systems problem — the
+mathematics is easy, and making the routing balanced and the memory affordable is where the difficulty lives.`),
+
+    jargon([
+      ['dense model', 'A normal transformer, where every parameter participates in every token\'s computation.'],
+      ['sparse / MoE model', 'A model where only a fraction of parameters are used per token.'],
+      ['expert', 'One of the parallel feed-forward networks. Despite the name, experts rarely specialise in anything a human would name.'],
+      ['router / gate', 'A small learned layer deciding which experts each token goes to.'],
+      ['top-$k$ routing', 'Sending each token to its $k$ best-scoring experts. $k$ is 1 or 2 in practice.'],
+      ['active parameters', 'How many parameters actually run per token. The number that determines inference speed — as opposed to total parameters, which determines memory.'],
+      ['load balancing', 'Keeping tokens spread evenly across experts. Does not happen by itself.'],
+      ['expert collapse', 'The failure where the router picks a few favourites, those improve from all the gradient, and the rest atrophy. A rich-get-richer loop.'],
+      ['capacity factor', 'How many tokens each expert will accept per batch before overflow tokens get dropped.'],
+      ['token dropping', 'Discarding tokens routed to an over-full expert. They skip the layer via the residual connection.'],
+    ]),
+
     t(`## The idea
 
-A dense model runs every parameter for every token. But not every token needs the same processing — a token in Python
-code and a token in a French sentence plausibly want different machinery.
+A dense model runs every parameter for every token, and that is the observation MoE attacks. Not every token
+needs the same processing — so why pay for all of it every time?
 
-MoE replaces the feed-forward layer with $E$ parallel expert FFNs and a **router** that sends each token to the top-$k$
-experts (usually $k=1$ or $2$). Total parameters grow $E\\times$; compute per token grows only $k\\times$.`),
+MoE replaces the feed-forward layer with $E$ parallel expert FFNs plus a small **router** that sends each token
+to its top-$k$ experts, usually $k = 1$ or $2$.
+
+Now count the two things that used to move together:
+
+- **Total parameters** grow by roughly $E\\times$. That is capacity — knowledge the model can store.
+- **Compute per token** grows only by $k\\times$. That is cost — what you pay per token generated.
+
+Decoupling those two is the entire point. A model can have 400B parameters of stored knowledge while doing 30B
+parameters' worth of arithmetic per token. You still need memory for all 400B, which is why MoE is a win for
+large-scale serving and not for running a model on your laptop.`),
 
     viz('moe-routing'),
 
@@ -1360,6 +1798,12 @@ print(f"MoE params per token  : {moe_active:,}  ({k}x)  <- compute grows by k, n
        'The same parameters, distributed differently'],
       0,
       'All 8 experts exist and must be held in memory; only 2 run per token. That is the entire proposition — parameter count (which correlates with capability) is decoupled from per-token FLOPs. The cost is memory and serving complexity, which is why MoE suits large distributed inference and not single-GPU deployment.'),
+
+    recap(`- Distinguish **total** from **active** parameters, and say which one governs memory and which governs speed.
+- Explain what the router does and why routing is per-token *and* per-layer.
+- Describe expert collapse as a rich-get-richer loop, and name the two ways it is prevented.
+- Say why MoE suits large distributed serving and not a single GPU.
+- Explain why "experts" rarely correspond to anything a human would name.`),
   ],
   refs: [
     paper('Outrageously Large Neural Networks: The Sparsely-Gated MoE Layer', 'Shazeer et al.', 2017, 'https://arxiv.org/abs/1701.06538', 'The modern MoE formulation.'),
@@ -1378,11 +1822,41 @@ print(f"MoE params per token  : {moe_active:,}  ({k}x)  <- compute grows by k, n
   prereq: ['ml-evaluation', 'llm-prompting'],
   tags: ['evaluation', 'benchmarks'],
   sections: [
+    tldr(`Evaluating a classifier is easy: compare the prediction to the label, count. Evaluating a language
+model is the hardest unsolved problem in applied LLM work, because there *is* no label — a good answer to
+"explain recursion" is not one string, it is a vast set of them.
+
+Everything the field does about this is a workaround. Multiple-choice benchmarks are measurable but
+contaminated and narrow. Human evaluation is the gold standard and does not scale. LLM-as-judge scales and has
+known biases. Arena rankings measure what people prefer, which is not the same as what is correct.
+
+The practical conclusion is unglamorous: **build a small gold set for your own task** and trust it over any
+public leaderboard.`),
+
+    jargon([
+      ['benchmark', 'A fixed dataset of questions with known answers, used to compare models. MMLU, GSM8K, HumanEval.'],
+      ['MMLU', 'Massive Multitask Language Understanding — 16,000 multiple-choice questions across 57 subjects. The most-cited general benchmark, and heavily contaminated.'],
+      ['contamination', 'The benchmark appearing in the training data. Turns a test into a memory check, and is nearly impossible to rule out for anything public.'],
+      ['LLM-as-judge', 'Using a strong model to grade another model\'s output. Scalable, correlates decently with humans, carries systematic biases.'],
+      ['position bias', 'A judge preferring whichever answer it sees first. Corrected by running both orderings.'],
+      ['arena / Elo', 'Ranking models by head-to-head human preference votes, scored like chess ratings.'],
+      ['gold set', 'A small set of examples from *your* actual task with answers you trust. The most useful evaluation most teams never build.'],
+      ['red-teaming', 'Deliberately trying to make a model fail or misbehave, to find problems before users do.'],
+      ['Goodhart\'s law', '"When a measure becomes a target, it ceases to be a good measure." The governing dynamic of every public benchmark.'],
+    ]),
+
     t(`## Why this is hard
 
-Classical ML evaluation compares a prediction to a label. For open-ended generation there is no single right answer,
-the output space is enormous, quality is multidimensional, and the thing you care about (is this a *good* answer?) is
-exactly what you lack a metric for.`),
+Classical ML evaluation compares a prediction to a label and counts. That works because the answer is a single
+value from a small set.
+
+Open-ended generation breaks every part of that. There is no single right answer — a good explanation of
+recursion is any of a huge family of strings. The output space is effectively infinite. Quality is
+multidimensional (correct, clear, appropriately hedged, well-formatted, safe) and those dimensions trade against
+each other. And the thing you actually care about — *is this a good answer?* — is precisely the judgement you
+have no metric for.
+
+So every method below is a compromise, and the useful skill is knowing which compromise each one makes.`),
 
     t(`## The tiers
 
@@ -1476,6 +1950,12 @@ for n in [30, 100, 300, 1000]:
        'Wait for the perplexity number instead'],
       0,
       'Three points on MMLU is within the range that prompt formatting, few-shot example choice, answer-order handling, and contamination can produce on their own. It is not nothing, but it is not a capability claim either. Look for consistency across several benchmarks, performance on freshly-written held-out sets, and — for your own use — results on your own gold set.'),
+
+    recap(`- Say why evaluating an open-ended generator is harder than evaluating a classifier.
+- Explain contamination and why it is nearly impossible to rule out for a public benchmark.
+- Read a benchmark improvement sceptically, and list what else you would want to see.
+- Describe the known biases of LLM-as-judge, and what to do about each.
+- Argue for building your own small gold set over trusting public leaderboards for your use case.`),
   ],
   refs: [
     paper('Holistic Evaluation of Language Models (HELM)', 'Liang et al.', 2022, 'https://arxiv.org/abs/2211.09110', 'Multi-metric, multi-scenario evaluation done seriously.'),
