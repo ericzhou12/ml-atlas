@@ -2,7 +2,8 @@
    Track 5 — Training and Inference Systems
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,32 @@ export default [
   prereq: ['math-numerics'],
   tags: ['GPU', 'performance'],
   sections: [
+    tldr(`Almost everything you assume about why models are slow is wrong. The bottleneck is essentially never
+arithmetic — GPUs have far more compute than they can feed. **It is moving data between memory and the
+processor.**
+
+One ratio explains nearly all of it. An H100 can do about 1000 trillion operations per second but can only read
+about 3.35 terabytes per second from its main memory. Divide: roughly **300 arithmetic operations per byte
+read**. Anything doing less than that leaves the arithmetic units idle, waiting.
+
+Generating text from a language model does about *2* operations per byte. It is memory-bound by a factor of
+150, which sets a hard speed limit no amount of extra compute can lift — and explains why batching, quantization,
+and speculative decoding all work.`),
+
+    jargon([
+      ['FLOP / FLOPs', 'Floating-point operation(s). The unit of arithmetic work.'],
+      ['HBM', 'High Bandwidth Memory — the GPU\'s main memory. Large (80 GB) and, relatively speaking, slow.'],
+      ['SRAM', 'Tiny on-chip memory. Tens of megabytes, roughly 10× faster than HBM. Using it well is what FlashAttention does.'],
+      ['bandwidth', 'How many bytes per second you can read from memory. The scarce resource, almost always.'],
+      ['arithmetic intensity', 'FLOPs performed per byte read. The single number that decides whether an operation is compute-bound or memory-bound.'],
+      ['memory-bound', 'Limited by how fast data arrives. The processor is idle. Most deep learning operations are here.'],
+      ['compute-bound', 'Limited by arithmetic. What you want, and what large matrix multiplies achieve.'],
+      ['roofline', 'A plot of achievable performance against arithmetic intensity. Flat where memory-bound, sloped where compute-bound.'],
+      ['kernel', 'One GPU function. "Kernel fusion" means combining several into one so intermediate results never leave the chip.'],
+      ['tensor core', 'Specialised hardware doing small matrix multiplies extremely fast. The source of the enormous FLOP numbers.'],
+      ['prefill / decode', 'Processing the prompt (parallel, compute-bound) versus generating tokens one at a time (sequential, memory-bound). Two completely different performance regimes.'],
+    ]),
+
     t(`## The hardware, in one paragraph
 
 A modern GPU has thousands of arithmetic units and a memory hierarchy: fast on-chip SRAM (tens of MB, ~20 TB/s) and
@@ -123,6 +150,13 @@ for B in [1, 8, 32, 128]:
        'It doubles'],
       0,
       'Decoding is memory-bound: the cost is dominated by streaming all 140 GB of weights from HBM, which happens once per step regardless of batch size. Adding sequences adds arithmetic the GPU has spare capacity for. Per-user latency is nearly flat until you become compute-bound or run out of KV cache memory — which is exactly why continuous batching is the central technique in every serving stack.'),
+
+    recap(`- State the arithmetic-intensity ratio for a modern GPU and use it to classify an operation as
+  compute- or memory-bound.
+- Compute the hard token-per-second ceiling for a model of given size from bandwidth alone.
+- Explain why prefill and decode have completely different bottlenecks.
+- Say why kernel fusion helps, in terms of round trips to HBM.
+- Explain what FlashAttention optimized, and why it is faster despite doing *more* arithmetic.`),
   ],
   refs: [
     blog('Making Deep Learning Go Brrrr From First Principles', 'Horace He', 2022, 'https://horace.io/brrr_intro.html', 'The best explanation of compute-bound vs memory-bound vs overhead-bound. Read this one.'),
@@ -142,6 +176,29 @@ for B in [1, 8, 32, 128]:
   prereq: ['sys-gpu', 'math-optimization'],
   tags: ['distributed', 'FSDP', 'parallelism'],
   sections: [
+    tldr(`"How much memory do I need to train this?" has a formula, and knowing it saves a lot of guessing.
+
+With Adam in mixed precision it is roughly **16 bytes per parameter** before you have stored a single
+activation. So a 7B model needs 112 GB of state and does not fit on an 80 GB card — which is why distributed
+training is not an advanced topic but a basic requirement.
+
+The second half is the four ways to split a model across GPUs. They are not alternatives: large runs use three
+or four simultaneously, and knowing which axis each one splits is what makes the configuration files legible.`),
+
+    jargon([
+      ['optimizer state', 'Adam\'s two running averages per parameter. Eight bytes each parameter, and usually the largest single term.'],
+      ['master weights', 'The fp32 copy kept so tiny updates are not lost to rounding. Four more bytes per parameter.'],
+      ['activations', 'Intermediate values saved during the forward pass for use in the backward pass. Scale with batch size and sequence length, and often exceed the model itself.'],
+      ['gradient accumulation', 'Processing several small batches and summing gradients before stepping. Simulates a large batch at small-batch memory cost.'],
+      ['data parallel (DP)', 'Every GPU has a full model copy and a different slice of the batch. Gradients are averaged across GPUs.'],
+      ['ZeRO / FSDP', 'Sharding the optimizer state, gradients, and weights across data-parallel GPUs instead of replicating them. Three stages of increasing savings.'],
+      ['tensor parallel (TP)', 'Splitting individual weight matrices across GPUs. Needs very fast interconnect — used within a node, not across.'],
+      ['pipeline parallel (PP)', 'Giving different GPUs different layers. Cheap on bandwidth; introduces idle time called the "bubble".'],
+      ['bubble', 'GPUs sitting idle in a pipeline waiting for work from the previous stage.'],
+      ['all-reduce', 'The collective operation summing a tensor across all GPUs and giving everyone the result. The main communication cost of data parallelism.'],
+      ['3D parallelism', 'Using data, tensor, and pipeline parallelism together. Standard at frontier scale.'],
+    ]),
+
     t(`## The memory budget
 
 Full fine-tuning with Adam costs roughly **16 bytes per parameter** before you store a single activation:
@@ -253,6 +310,12 @@ print(f"  tensor-parallel  : {2 * 32 * 4096 * 4096 * 2 * 2 / 1e9:.1f} GB (per la
        'Inference uses quantization'],
       0,
       'Inference needs weights only: 7B × 2 bytes = 14 GB, plus KV cache. Training adds gradients (2), fp32 master weights (4), and Adam\'s two moments (4+4) — 16 bytes/param, so 112 GB, plus activations. The fixes are ZeRO/FSDP sharding, 8-bit optimizers, or LoRA, which trains so few parameters that the optimizer state becomes negligible.'),
+
+    recap(`- Recite the 16 bytes/parameter breakdown and say which term is largest.
+- Estimate whether a given model will fit on a given card, before launching anything.
+- Say what activations scale with, and name the two levers for reducing them.
+- Describe what each of the four parallelism strategies splits, and which needs the fastest interconnect.
+- Explain what ZeRO/FSDP removes that plain data parallelism duplicates.`),
   ],
   refs: [
     paper('ZeRO: Memory Optimizations Toward Training Trillion Parameter Models', 'Rajbhandari et al.', 2019, 'https://arxiv.org/abs/1910.02054', 'The sharding scheme behind DeepSpeed and FSDP.'),
@@ -272,6 +335,32 @@ print(f"  tensor-parallel  : {2 * 32 * 4096 * 4096 * 2 * 2 / 1e9:.1f} GB (per la
   prereq: ['sys-gpu', 'math-numerics'],
   tags: ['quantization', 'compression'],
   sections: [
+    tldr(`Three ways to make a trained model cheaper without retraining it from scratch.
+
+**Quantization** stores weights in fewer bits — 4 instead of 16. Because decoding is memory-bound, 4-bit
+weights are read four times faster, so this is a *speed* optimization at least as much as a memory one. It is
+the one that works best and is nearly free.
+
+**Pruning** deletes weights. Straightforward in theory; unstructured sparsity does not actually make GPUs
+faster, which limits it severely in practice.
+
+**Distillation** trains a small model to imitate a large one, and works better than training the small model
+directly — for reasons that are interesting and not fully settled.`),
+
+    jargon([
+      ['quantization', 'Storing numbers in fewer bits by mapping a float range onto a small set of integers.'],
+      ['int8 / int4', '8-bit and 4-bit integer formats. int4 gives 4× compression over bf16.'],
+      ['scale / zero-point', 'The two numbers mapping the integer grid back to real values.'],
+      ['per-group scales', 'Using a separate scale for every 64 or 128 weights instead of one for the whole tensor. The `g=64` in checkpoint names.'],
+      ['outlier', 'An activation channel with values ~100× the typical magnitude. Ruins naive quantization by stretching the grid.'],
+      ['GPTQ / AWQ', 'The two standard post-training quantization methods. GPTQ adjusts remaining weights to compensate; AWQ protects the channels that matter most.'],
+      ['PTQ / QAT', 'Post-Training Quantization (apply it to a finished model) versus Quantization-Aware Training (train with it simulated).'],
+      ['pruning', 'Removing weights entirely — setting them to zero.'],
+      ['structured / unstructured sparsity', 'Removing whole rows or channels (actually faster) versus scattered individual weights (compresses, but does not speed up standard hardware).'],
+      ['distillation', 'Training a small "student" to match a large "teacher" model\'s outputs.'],
+      ['soft targets / dark knowledge', 'The teacher\'s full probability distribution, not just its top answer. Carries information about which wrong answers are plausible, which is what makes distillation work.'],
+    ]),
+
     t(`## Quantization
 
 Store weights in fewer bits. Since decoding is memory-bandwidth-bound, 4-bit weights are read 4× faster than bf16 —
@@ -396,6 +485,12 @@ print("    That similarity structure is the 'dark knowledge' the student learns.
        'Weight quantization is applied after training'],
       0,
       'Transformer activations develop systematic outlier channels with magnitudes ~100× the typical value, and the effect strengthens with scale. Those outliers wreck a shared quantization grid. Weights have no comparable structure. Hence W4A16 is standard, and getting activations down requires outlier-specific machinery — SmoothQuant, LLM.int8(), or keeping outlier channels in higher precision.'),
+
+    recap(`- Explain why quantization speeds up decoding, not just shrinks the file.
+- Describe the outlier problem and why per-group scales contain it.
+- Say why unstructured pruning compresses a model without making it faster on a GPU.
+- Explain "dark knowledge" — why a teacher's full distribution teaches more than its top answer.
+- Choose between quantization, pruning, and distillation for a stated deployment constraint.`),
   ],
   refs: [
     paper('GPTQ: Accurate Post-Training Quantization for Generative Transformers', 'Frantar et al.', 2022, 'https://arxiv.org/abs/2210.17323', ''),
@@ -415,6 +510,30 @@ print("    That similarity structure is the 'dark knowledge' the student learns.
   prereq: ['sys-gpu', 'llm-attention'],
   tags: ['inference', 'serving', 'KV cache'],
   sections: [
+    tldr(`Serving a model well is a different discipline from training one, and the gap between a naive
+implementation and a good one is roughly **20×** throughput.
+
+Four techniques do most of that. The **KV cache** avoids recomputing the past. **Continuous batching** stops
+short requests waiting behind long ones. **PagedAttention** eliminates the memory fragmentation that otherwise
+wastes most of your cache. **Speculative decoding** uses a small model to guess ahead, exploiting the fact that
+verifying several tokens costs almost the same as generating one.
+
+Every one of them is an attack on the memory-bandwidth bottleneck from [the GPU lesson](#/l/sys-gpu).`),
+
+    jargon([
+      ['throughput vs latency', 'Total tokens per second across all users, versus how fast one user sees a response. These trade off, and which you optimize is a product decision.'],
+      ['time to first token (TTFT)', 'How long before output starts appearing. Dominated by prefill.'],
+      ['prefill / decode', 'Processing the prompt in parallel, then generating one token at a time. Different bottlenecks entirely.'],
+      ['KV cache', 'Stored keys and values from previous tokens, so they need not be recomputed each step.'],
+      ['static batching', 'Grouping requests and waiting for all to finish. Simple, and wastes enormous capacity on mismatched lengths.'],
+      ['continuous / in-flight batching', 'Swapping a finished sequence out and a queued one in immediately, at every step. The single biggest serving win.'],
+      ['PagedAttention', 'Managing the KV cache in fixed blocks like virtual memory, so nothing is reserved that is not used.'],
+      ['fragmentation', 'Memory reserved but unusable. Early systems wasted 60–80% of the KV cache to it.'],
+      ['speculative decoding', 'A small draft model proposes several tokens; the large model verifies them all in one pass. Provably preserves the output distribution.'],
+      ['acceptance rate', 'What fraction of the draft model\'s guesses survive verification. Determines the speedup.'],
+      ['tokens/second/GPU', 'The metric that actually matters for serving cost.'],
+    ]),
+
     t(`## The KV cache
 
 Generating token $n$ needs the keys and values of all previous tokens. Those never change, so cache them.`),
@@ -529,6 +648,12 @@ print(f"  paged (block=16): wasted {1 - lengths.sum()/(np.ceil(lengths/16).sum()
        'It is not free — it trades a small amount of quality for speed'],
       0,
       'The target model scores all $k$ draft tokens in a single parallel forward pass — the same cost as generating one token, because decoding is memory-bound. The accept/reject rule (accept with probability $\\min(1, p_{\\text{target}}/p_{\\text{draft}})$, else resample from the adjusted residual) provably preserves the target distribution. The only cost is wasted draft compute on rejections.'),
+
+    recap(`- Explain what the KV cache stores and how it changes generation from quadratic to linear.
+- Compute KV cache size for a given model, context length, and batch size.
+- Say why continuous batching beats static batching, in terms of what GPUs do while waiting.
+- Explain the fragmentation problem PagedAttention solves, and the analogy it borrows from.
+- Explain why speculative decoding is faster *and* gives identical output to the large model alone.`),
   ],
   refs: [
     paper('Efficient Memory Management for LLM Serving with PagedAttention', 'Kwon et al.', 2023, 'https://arxiv.org/abs/2309.06180', 'vLLM. Virtual memory for the KV cache.'),

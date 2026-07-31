@@ -2,7 +2,8 @@
    Track 9 — Frontier Topics
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,31 @@ export default [
   prereq: ['llm-transformer', 'math-vectors'],
   tags: ['interpretability', 'superposition', 'SAE'],
   sections: [
+    tldr(`Most "explainable AI" tells you *which inputs mattered*. Mechanistic interpretability asks something
+much harder: **what algorithm is this network actually running?** The ambition is closer to decompiling a binary
+than to correlating inputs with outputs.
+
+It has genuinely worked in places — researchers have found curve detectors in vision models and reverse-engineered
+complete circuits inside GPT-2, verified by intervening on them.
+
+The main obstacle is **superposition**: individual neurons do not correspond to individual concepts, because
+packing more features than dimensions is the mathematically optimal thing for the network to do. Sparse
+autoencoders are the current best tool for unpacking them, and they are a partial fix rather than a solution.`),
+
+    jargon([
+      ['mechanistic interpretability', 'Reverse-engineering the specific computation a network performs, in terms a human can verify.'],
+      ['feature', 'A concept the network represents — "this text is in French", "this is a curve at 30°". Not the same as a neuron.'],
+      ['circuit', 'A small set of components working together to implement one identifiable behaviour.'],
+      ['polysemantic', 'A neuron that fires for several unrelated concepts. The normal case, not a defect.'],
+      ['superposition', 'Storing more features than there are dimensions, as non-orthogonal directions. Possible because features are sparse and rarely collide.'],
+      ['sparse', 'Rarely active. Most features are off for most inputs, which is precisely what makes superposition viable.'],
+      ['sparse autoencoder (SAE)', 'A wide autoencoder with a sparsity penalty, trained to decompose activations into interpretable single-concept directions.'],
+      ['overcomplete', 'Having more output dimensions than input dimensions. Deliberate here — it gives each feature room for its own unit.'],
+      ['activation patching', 'Copying an activation from one run into another to test whether that component causes a behaviour. The main causal tool.'],
+      ['induction head', 'A learned circuit that finds an earlier copy of the current token and predicts what followed it.'],
+      ['probing', 'Training a small classifier on internal activations to test whether some information is present. Correlational, not causal — a common confusion.'],
+    ]),
+
     t(`## The ambition
 
 Not "which input pixels mattered" (saliency maps) but "**what algorithm is this network running, expressed in terms a
@@ -135,6 +161,12 @@ print("The model is choosing compression over fidelity, and it is right to.")`),
        'To match the transformer\'s FFN dimension'],
       0,
       'Superposition means the layer holds more features than dimensions, packed as non-orthogonal directions. An autoencoder with a bottleneck could not represent them separately. Going 8–64× wider, plus an L1 penalty forcing only a few to activate at once, gives each feature room to claim its own unit. Overcompleteness is the entire point.'),
+
+    recap(`- State what mechanistic interpretability aims at, and how it differs from saliency maps.
+- Explain superposition, and why packing features non-orthogonally is *optimal* rather than sloppy.
+- Say why sparsity is the precondition that makes superposition viable.
+- Describe what a sparse autoencoder does and why it must be overcomplete.
+- Explain why probing is correlational and activation patching is causal.`),
   ],
   refs: [
     paper('Toy Models of Superposition', 'Elhage et al.', 2022, 'https://transformer-circuits.pub/2022/toy_model/index.html', 'The clearest possible treatment. The code above reproduces its central experiment.'),
@@ -154,6 +186,29 @@ print("The model is choosing compression over fidelity, and it is right to.")`),
   prereq: ['llm-prompting', 'rl-rlhf'],
   tags: ['reasoning', 'test-time compute'],
   sections: [
+    tldr(`For a decade, "better" meant "bigger" — more parameters, more pretraining data. Reasoning models
+opened a second axis: **spend more compute at inference time on a single hard problem.**
+
+The observation underneath is that models often *can* produce the right answer; the difficulty is knowing which
+of their attempts is correct. Sample a problem twenty times and one attempt is frequently right — the gap
+between "some sample is correct" and "the answer I returned is correct" is where all the technique lives.
+
+The 2024–25 answer was **RL with verifiable rewards**: train on problems where correctness can be checked
+automatically, reward getting it right, and let the model discover long deliberate reasoning on its own. It
+does, and that is genuinely striking.`),
+
+    jargon([
+      ['test-time compute', 'Work done at inference rather than training. Thinking longer instead of being bigger.'],
+      ['pass@n', 'The chance that at least one of $n$ samples is correct. Usually far higher than single-sample accuracy — that gap is the opportunity.'],
+      ['self-consistency', 'Sampling several answers and taking the majority. Works because there are many ways to be wrong and usually one way to be right.'],
+      ['verifier / reward model', 'A model scoring whether an answer is correct, used to pick among samples.'],
+      ['best-of-n', 'Generate $n$ candidates, keep the one the verifier likes most. Degrades at large $n$ as you start selecting for whatever fools the verifier.'],
+      ['RLVR', 'RL from Verifiable Rewards. Training on problems with automatically checkable answers — maths, code with tests — so no learned reward model is needed.'],
+      ['long chain-of-thought', 'Extended reasoning traces, often thousands of tokens, including backtracking and self-correction. Learned, not prompted.'],
+      ['inference scaling law', 'The empirical relationship between compute spent per problem and accuracy achieved.'],
+      ['process supervision', 'Rewarding each reasoning step rather than only the final answer.'],
+    ]),
+
     t(`## A second scaling axis
 
 For a decade, better meant bigger — more parameters, more pretraining data. Reasoning models opened a second axis:
@@ -265,6 +320,12 @@ for p in [0.90, 0.95, 0.99, 0.999]:
        'This cannot happen'],
       0,
       'Classic Goodhart. Each sample is a draw; picking the max of $n$ verifier scores means picking the maximum of $n$ noisy estimates, and as $n$ grows you are increasingly sampling the verifier\'s error tail rather than genuine correctness. Gao et al. quantified exactly this for reward models. Mitigations: a stronger verifier, ensembling verifiers, or capping $n$.'),
+
+    recap(`- Explain the second scaling axis and how it differs from making a model bigger.
+- Say what the gap between pass@n and single-sample accuracy represents, and why it is an opportunity.
+- Explain why best-of-n degrades at large $n$, in terms of Goodhart's law.
+- Describe RLVR and say why verifiable rewards avoid the usual reward-hacking failure.
+- Say what is qualitatively new about long chain-of-thought trained with RL, versus prompting for it.`),
   ],
   refs: [
     paper('DeepSeek-R1: Incentivizing Reasoning Capability in LLMs via RL', 'DeepSeek-AI', 2025, 'https://arxiv.org/abs/2501.12948', 'Reasoning emerging from pure RL. Unusually transparent about method.'),
@@ -284,6 +345,31 @@ for p in [0.90, 0.95, 0.99, 0.999]:
   prereq: ['nn-rnn', 'llm-attention'],
   tags: ['SSM', 'Mamba', 'architecture'],
   sections: [
+    tldr(`Attention costs $O(n^2)$ and needs a cache that grows with context. An RNN costs $O(n)$ with constant
+memory — but cannot be parallelized across the sequence during training, which is exactly why transformers won.
+
+**Can you get both?** State-space models are the most serious attempt. The trick is that a *linear* recurrence
+can be rewritten as a convolution, so it trains in parallel like a transformer while running as a recurrence
+like an RNN.
+
+They work well, they are genuinely faster at long context, and they have **not** replaced transformers. The
+reason is worth understanding: a fixed-size state cannot store everything, so anything requiring exact recall of
+arbitrary earlier tokens degrades. Current practice is hybrids — mostly SSM layers with a few attention layers
+retained for exactly that.`),
+
+    jargon([
+      ['SSM', 'State-Space Model. A learned linear recurrence carrying a fixed-size hidden state through the sequence.'],
+      ['linear recurrence', '$h_t = Ah_{t-1} + Bx_t$ — no nonlinearity between steps. Linearity is what makes the parallel training trick possible.'],
+      ['parallel scan', 'An algorithm computing all prefix results of an associative operation in $O(\\log n)$ depth. How Mamba trains fast.'],
+      ['S4 / HiPPO', 'The structured initialization for $A$ that makes an SSM remember over long horizons rather than forgetting immediately.'],
+      ['Mamba', 'The SSM variant that made $B$, $C$, and the timestep input-dependent — "selective" — so the model chooses what to keep.'],
+      ['selectivity', 'Making the recurrence parameters depend on the input. Breaks the convolution equivalence, hence the parallel scan.'],
+      ['linear attention', 'Reordering the attention computation to avoid the $n \\times n$ matrix. Cheap, and empirically worse.'],
+      ['sliding window attention', 'Attending only to the last $k$ tokens. Used in Mistral and Gemma, usually mixed with full-attention layers.'],
+      ['hybrid', 'An architecture mixing SSM and attention layers. What actually ships.'],
+      ['associative recall', 'Retrieving a specific earlier fact from context. The task fixed-state models fail, and the reason attention layers survive.'],
+    ]),
+
     t(`## The target
 
 Attention is $O(n^2)$ in compute and needs a KV cache growing linearly with context. An RNN is $O(n)$ with $O(1)$
@@ -391,6 +477,12 @@ for n in [2**k for k in (10, 13, 16, 19)]:
        'To reduce the parameter count'],
       0,
       'The SSM\'s constant-size state is exactly what makes it cheap and exactly what limits it — you cannot compress an unbounded past into a fixed number of bits without loss. Tasks needing verbatim recall (copying, retrieval, precise in-context lookup) suffer. A small number of attention layers provides exact lookup where it is needed, while the SSM layers carry the bulk of the sequence processing at $O(1)$ per-token cost.'),
+
+    recap(`- State the trilemma: attention parallelizes but is quadratic; RNNs are linear but serial.
+- Explain how linearity lets an SSM be trained as a convolution and run as a recurrence.
+- Say what HiPPO initialization fixes and what selectivity added.
+- Explain why a fixed-size state fails at associative recall, and why that is not an implementation detail.
+- Say what a hybrid architecture keeps attention layers *for*.`),
   ],
   refs: [
     paper('Mamba: Linear-Time Sequence Modeling with Selective State Spaces', 'Gu & Dao', 2023, 'https://arxiv.org/abs/2312.00752', 'Selectivity, and the hardware-aware scan.'),
@@ -410,6 +502,31 @@ for n in [2**k for k in (10, 13, 16, 19)]:
   prereq: ['llm-evaluation', 'rl-rlhf'],
   tags: ['hallucination', 'safety', 'open problems'],
   sections: [
+    tldr(`This lesson is about what these systems reliably get wrong, and it is deliberately the last one.
+
+**Hallucination is not a bug.** It is the predictable consequence of four structural facts about how these
+models are built — most fundamentally, that next-token prediction has no "abstain" action. The model must emit
+something, and the most probable something is fluent and plausible whether or not it is true.
+
+**Calibration** — whether a model's stated confidence matches its actual accuracy — is the related problem, and
+the uncomfortable finding is that base models are often well calibrated and **RLHF systematically damages it**.
+Optimizing for human approval optimizes for sounding confident.
+
+Neither is solved. Knowing the mechanism is what lets you build around them.`),
+
+    jargon([
+      ['hallucination', 'Confidently stating something false. A structural consequence of the objective, not a fixable defect.'],
+      ['calibration', 'Whether stated confidence matches actual accuracy. A calibrated model saying "70%" is right about 70% of the time.'],
+      ['overconfidence', 'Systematically claiming more certainty than warranted. What RLHF induces.'],
+      ['abstention', 'Declining to answer. There is no mechanism for this in next-token prediction — it has to be trained in.'],
+      ['grounding', 'Tying claims to a retrievable source so they can be checked.'],
+      ['sycophancy', 'Agreeing with the user regardless of correctness. Directly caused by optimizing for approval.'],
+      ['jailbreak', 'A prompt that circumvents safety training.'],
+      ['prompt injection', 'Untrusted content containing instructions the model follows. Structural: the model cannot distinguish data from instructions.'],
+      ['distribution shift', 'Deployment inputs differing from training data. Where confident failure is most likely.'],
+      ['scalable oversight', 'The open problem of supervising a system on tasks where verifying the answer is harder than producing it.'],
+    ]),
+
     t(`## Hallucination is not one bug
 
 It is the confluence of several structural facts:
@@ -538,6 +655,13 @@ print(f"\\ntemperature scaling: T={best_T:.2f} reduces ECE "
        'Calibration is not affected by RLHF'],
       0,
       'Base models are trained purely on next-token likelihood, which rewards honest probabilities. RLHF optimizes for human preference, and humans reliably prefer decisive answers — a preference uncorrelated with truth. The optimizer finds that confidence scores well, so it produces confidence. This is measured, not speculative, and it is a clean example of an objective producing a side effect nobody asked for.'),
+
+    recap(`- Give the four structural causes of hallucination, and explain why "there is no abstain action" is
+  the deepest one.
+- Explain what calibration means and why base models often have it while RLHF'd models do not.
+- Name three practical mitigations and what each actually buys.
+- Explain why prompt injection cannot be patched away, in terms of data versus instructions.
+- Name an open problem in the field and say honestly what is and is not known about it.`),
   ],
   refs: [
     paper('Language Models (Mostly) Know What They Know', 'Kadavath et al.', 2022, 'https://arxiv.org/abs/2207.05221', 'Models have usable internal uncertainty signals even when their outputs do not express it.'),
