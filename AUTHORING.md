@@ -72,17 +72,47 @@ orphans a user's completion mark and breaks any inbound link.
 
 | Helper | Renders as |
 |---|---|
+| `tldr(md)` | Blue "◎ The short version" callout. **Required, and must be the first section.** |
+| `jargon([[term, gloss], …])` | The "⌘ Words you will need first" decoder table. **Required.** |
 | `t(md)` | Body prose. Markdown + `$inline$` / `$$display$$` TeX. |
 | `key(md)` | Purple "★ Key idea" callout. |
 | `intuition(md)` | Green "◈ Intuition" callout. |
 | `warn(md)` | Orange "⚠ Watch out" callout. |
 | `hist(md)` | Grey "⏱ History" callout. |
 | `mathnote(md)` | Cyan "∑ Math note" callout. |
+| `steps(title, items)` | Numbered walkthrough. `items` is `['md', …]` or `[{h, md}, …]`. |
+| `diagram(title, svg, caption)` | A static inline-SVG figure. |
 | `deriv(title, md)` | Collapsed `<details>` block. Put the algebra here. |
 | `viz(id, params?)` | An interactive figure from the `VIZ` registry. |
 | `code(title, src, explain?, lang?)` | Syntax-highlighted block with **copy** and **open in lab** buttons. `lang` defaults to `'python'`. |
 | `quiz(q, options, answerIdx, explain)` | Multiple choice, 3–4 options, reveals on click. |
 | `refs(items)` | An inline reference list mid-lesson (rare — normally use the lesson-level `refs`). |
+| `recap(md)` | Green "✓ You can now say" checklist. **Required, and must be the last section.** |
+
+### The three required blocks
+
+`smoke.mjs` warns if any lesson is missing `tldr`, `jargon`, or `recap`, or if the first/last section is wrong.
+They exist because the atlas is read by people who do not already know the vocabulary:
+
+- **`tldr`** — the whole lesson in three or four short paragraphs, in plain language, before any notation. If a
+  reader stops here they should still have gained something true.
+- **`jargon`** — every term the lesson uses that a CS-literate beginner would not already know, glossed in one
+  sentence each, in the order they appear. Put it **before** the notation that uses the words, not after.
+  Gloss the *symbols* too: `$\mathbf{x} \in \mathbb{R}^d$` is jargon, and reading it aloud is a skill.
+- **`recap`** — what the reader can now *do* or *say*, as a checklist of verbs. Not a summary of the content;
+  a list of capabilities they can test themselves against.
+
+### Diagrams
+
+`diagram()` takes raw inline SVG, so it lives in the content file and needs no viz registration. Two rules:
+
+1. **Never a hex colour.** Use `style="fill: var(--s1)"` — a *style attribute*, not `fill="var(--s1)"`, which
+   browsers do not resolve. `smoke.mjs` warns on hex literals.
+2. Use the shared classes: `dtitle` (bold label), `dlabel` (dim caption), `dmono` (monospace). Set a `viewBox`
+   and no width/height so it scales.
+
+Use a diagram where a *static* picture carries the idea (a shape, a comparison, a decomposition) and a `viz()`
+where the reader needs to change something and watch it respond.
 
 ### Markdown notes
 

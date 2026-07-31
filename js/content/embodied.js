@@ -2,7 +2,8 @@
    Track 11 — Physical & Embodied Intelligence
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,34 @@ export default [
   prereq: ['ml-framing', 'nn-losses-training'],
   tags: ['robotics', 'embodied AI', 'imitation learning'],
   sections: [
+    tldr(`Everything that made language models work is missing in robotics, and it is worth being precise about
+why rather than assuming scale will eventually sort it out.
+
+Text can be scraped; robot episodes must be physically performed in real time on hardware that breaks. A wrong
+token is a typo; a wrong torque destroys a gripper. And the i.i.d. assumption fails *structurally* — what the
+robot sees next is caused by what it just did.
+
+That last point creates **compounding error**, the central problem of the field: a policy trained only on
+expert demonstrations has never seen its own mistakes, so its first small error puts it somewhere it has no
+idea how to handle.
+
+The whole field is organised around **borrowing** representations from data that *can* be scraped — which is
+why the following lessons are largely about attaching robots to vision-language models.`),
+
+    jargon([
+      ['embodied AI', 'AI that acts in the physical world through a body — a robot arm, a mobile base, a humanoid.'],
+      ['policy', 'The function mapping what the robot senses to what it does. The thing being learned.'],
+      ['episode / demonstration', 'One recorded attempt at a task. The unit of robot data, and expensive: minutes of human time each.'],
+      ['teleoperation', 'A human driving the robot directly to produce demonstrations. How most robot data is made.'],
+      ['imitation learning', 'Learning a policy by copying demonstrations. Supervised learning applied to control.'],
+      ['behaviour cloning', 'The simplest form: supervised regression from observation to action.'],
+      ['compounding error', 'Small mistakes moving the robot into states not in the training data, where it errs worse. The characteristic failure of imitation learning.'],
+      ['covariate shift', 'The formal name for that: the distribution of states visited differs from the distribution trained on.'],
+      ['DAgger', 'Dataset Aggregation. Run the policy, have an expert label the states it actually reaches, retrain. Directly attacks covariate shift.'],
+      ['embodiment', 'The specific robot — its kinematics, sensors, and limits. Policies transfer poorly across embodiments.'],
+      ['action space', 'What the policy outputs: joint positions, end-effector poses, velocities. The choice matters more than it looks.'],
+    ]),
+
     t(`## The premise fails
 
 Language models work because the internet is a free, enormous, pre-labeled dataset. Every assumption behind that
@@ -146,6 +175,11 @@ for h in [10, 20, 40, 75]:
        'The policy is overfitting to the training set'],
       0,
       'Per-step accuracy is measured on the *expert\'s* state distribution. The moment the policy deviates, it is evaluating on states it was never trained on, and its accuracy there is unknown and worse. That is the covariate shift problem, and it is why the error bound is $O(\\epsilon T^2)$ rather than $O(\\epsilon T)$. Recovery demonstrations and DAgger both attack it by making the training distribution match the visited one.'),
+
+    recap(`- List the five ways robotics breaks the assumptions that made language models work.
+- Explain compounding error, and why it follows from the policy influencing its own data distribution.
+- Say what DAgger does and why it directly targets covariate shift.
+- Explain why the field borrows representations from web data rather than collecting more robot data.`),
   ],
   refs: [
     paper('A Reduction of Imitation Learning and Structured Prediction to No-Regret Online Learning', 'Ross, Gordon & Bagnell', 2011, 'https://arxiv.org/abs/1011.0686', 'DAgger, and the $O(\\epsilon T^2)$ analysis. The foundational result for this track.'),
@@ -165,6 +199,30 @@ for h in [10, 20, 40, 75]:
   prereq: ['emb-why-robots', 'gen-diffusion'],
   tags: ['diffusion policy', 'ACT', 'flow matching'],
   sections: [
+    tldr(`For years robot policies were mediocre for a reason that turns out to be sharp, fixable, and a
+genuinely good lesson about loss functions.
+
+Human demonstrations are **multimodal**: asked to avoid an obstacle, one demonstrator goes left, another goes
+right, and both are correct. Train with mean squared error and you learn the conditional *mean* of the
+demonstrations — which here is "straight into the obstacle".
+
+This is not underfitting. A *perfect* MSE-optimal predictor does this, because the mean of a bimodal
+distribution sits between the modes. The fix is to output a **distribution** over actions and sample from it,
+and the three architectures that did so — ACT, Diffusion Policy, and flow matching — are what made imitation
+learning work.`),
+
+    jargon([
+      ['multimodal (distribution)', 'Having several distinct peaks. Several genuinely different correct answers. Not the same as "multimodal" meaning images-plus-text.'],
+      ['conditional mean', 'The average action given the observation. What MSE regression converges to, and often not a valid action at all.'],
+      ['action chunking', 'Predicting a *sequence* of future actions from one observation instead of just the next one.'],
+      ['ACT', 'Action Chunking Transformer. Predicts a chunk of actions with a transformer plus a small VAE for multimodality.'],
+      ['Diffusion Policy', 'Generating actions with a diffusion model, which represents multimodal distributions naturally.'],
+      ['flow matching', 'A diffusion-like generative method needing far fewer sampling steps. Important when you must act at 50 Hz.'],
+      ['temporal ensembling', 'Averaging overlapping predicted action chunks for smoother motion.'],
+      ['end-effector', 'The business end of the arm — the gripper or tool.'],
+      ['horizon', 'How many decision steps until the task ends. Shorter effective horizons mean less compounding.'],
+    ]),
+
     t(`## The regression trap
 
 For years the standard policy was a CNN feeding an MLP that regressed to an action, trained with mean squared error.
@@ -267,6 +325,12 @@ print("\\nChunking shortens the effective horizon, which attacks the quadratic t
        'It trains for longer'],
       0,
       'The demonstrations are multimodal — several distinct action sequences complete the task. MSE regression is provably driven to the conditional mean, which for a multimodal distribution is often an action that is not merely suboptimal but invalid (straight into the obstacle). A diffusion or flow head represents $p(a\\mid o)$ and samples from it, committing to one mode. Same data, same encoder — the loss function was the problem.'),
+
+    recap(`- Explain why MSE regression fails on multimodal demonstrations, and why a *perfect* MSE model still
+  fails.
+- Say what action chunking is and name the three separate problems it helps with.
+- Explain why a generative action head fixes what regression could not.
+- Say why flow matching is preferred over diffusion when the robot must act at high frequency.`),
   ],
   refs: [
     paper('Diffusion Policy: Visuomotor Policy Learning via Action Diffusion', 'Chi et al.', 2023, 'https://arxiv.org/abs/2303.04137', 'Columbia/Stanford/TRI. The paper that changed the default policy class. Very readable.'),
@@ -286,6 +350,29 @@ print("\\nChunking shortens the effective horizon, which attacks the quadratic t
   prereq: ['emb-policies', 'vis-vlm'],
   tags: ['VLA', 'pi-zero', 'RT-2', 'OpenVLA'],
   sections: [
+    tldr(`A policy trained only on robot data can do the tasks it was shown, with the objects it was shown. It
+cannot generalize to a new object or a new phrasing, because a few hundred thousand episodes contain almost no
+semantic diversity.
+
+A vision-language model trained on the web already has that semantics. So: **start from a pretrained VLM and
+attach an action output.** The robot data then only has to teach control — not what a mug is, or what "the
+extinct animal" means.
+
+This is currently the dominant paradigm in robot learning, and the results include genuine emergent
+generalization: instructions the model was never trained on, working because the underlying VLM understood
+them.`),
+
+    jargon([
+      ['VLA', 'Vision-Language-Action model. A VLM with an action output, fine-tuned on robot data.'],
+      ['co-training', 'Continuing to train on web data while fine-tuning on robot data, so semantic knowledge is not forgotten.'],
+      ['action tokens', 'Expressing continuous actions as discrete tokens, so a language model can emit them directly.'],
+      ['action expert / head', 'A separate module generating continuous actions, attached to the VLM\'s representation.'],
+      ['cross-embodiment', 'Training one policy across data from many different robots. Open X-Embodiment is the standard dataset.'],
+      ['emergent generalization', 'Handling instructions or objects absent from robot training data, because the VLM supplied the understanding.'],
+      ['inference latency', 'How long a forward pass takes. A hard constraint: a 7B VLM cannot run at 50 Hz on a robot.'],
+      ['open-loop / closed-loop', 'Executing a planned sequence blindly versus re-sensing and re-deciding continuously.'],
+    ]),
+
     t(`## The bet
 
 A policy trained only on robot data can execute the tasks it was shown. It cannot generalize to an object it has never
@@ -401,6 +488,11 @@ print("the difference between 5 Hz and 50 Hz control.")`),
        'Robot data is too noisy to train on alone'],
       0,
       'The reason to start from a VLM is its semantics — it knows what a mug is, what "extinct animal" means. Robot datasets contain almost no semantic diversity, so fine-tuning exclusively on them causes catastrophic forgetting of exactly the capability you wanted. Keeping web data in the mixture throughout preserves it. RT-2 demonstrated this directly: co-training produced emergent instruction generalization that robot-only fine-tuning did not.'),
+
+    recap(`- State the bet a VLA makes: the web supplies semantics, robot data supplies control.
+- Explain what co-training preserves and what happens without it.
+- Give an example of emergent generalization and say where the understanding came from.
+- Name the practical constraint that limits how large a VLA can be, and the usual architectural response.`),
   ],
   refs: [
     paper('RT-2: Vision-Language-Action Models Transfer Web Knowledge to Robotic Control', 'Brohan et al.', 2023, 'https://arxiv.org/abs/2307.15818', 'Google DeepMind. The co-training insight, and the emergent generalization results.'),
@@ -421,6 +513,29 @@ print("the difference between 5 Hz and 50 Hz control.")`),
   prereq: ['rl-model-free', 'gen-diffusion'],
   tags: ['world models', 'Dreamer', 'model-based RL'],
   sections: [
+    tldr(`Model-free RL needs millions of environment steps. On a real robot at 10 Hz that is over a day of
+flawless continuous operation — and it needs far more than a million.
+
+A **world model** learns to predict the environment's dynamics. Then you train the policy *inside* the learned
+model, where a step costs a forward pass instead of a second of real time. Real interaction is spent learning
+the model; policy optimization becomes nearly free.
+
+The key engineering insight is that the imagination happens **in latent space**, never in pixels. Predicting
+the next 64×64 image is much harder than predicting the next compact latent, and the policy never needed pixels
+anyway.`),
+
+    jargon([
+      ['world model', 'A learned model of environment dynamics: given a state and an action, predict what happens next.'],
+      ['model-based RL', 'RL that uses such a model, as opposed to learning purely from real experience.'],
+      ['imagination / rollout', 'Simulating a trajectory inside the learned model rather than in the real world.'],
+      ['latent space', 'The compact learned representation the model operates in, instead of raw pixels.'],
+      ['RSSM', 'Recurrent State-Space Model. The Dreamer line\'s architecture: a latent state carried forward and predicted.'],
+      ['actor / critic', 'The policy and the value estimator, both trained on imagined trajectories.'],
+      ['model exploitation', 'The policy finding and exploiting flaws in the learned model — high imagined reward, real-world failure. The characteristic failure mode.'],
+      ['imagination horizon', 'How many steps forward you trust the model before compounding prediction error makes it useless.'],
+      ['sample efficiency', 'How much real-world interaction is needed. The entire point of this approach.'],
+    ]),
+
     t(`## The motivation
 
 Model-free RL needs millions of environment steps. On a real robot at 10 Hz, a million steps is over a day of
@@ -541,6 +656,11 @@ print(f"  speedup: {1e6/5e3:.0f}x fewer real interactions")`),
        'Fifteen steps is enough to complete most tasks'],
       0,
       'Any learned model has one-step error, and it compounds. Past a modest horizon the imagined trajectory has little to do with reality, and the optimizer — which is very good at finding whatever maximizes its objective — will discover the model\'s failure modes instead of a good policy. Short horizons keep the imagination trustworthy; a learned value function supplies the return beyond them. It is the same structure as the KL leash in RLHF: constrain the optimizer to where the proxy is still valid.'),
+
+    recap(`- Explain why a learned world model changes the economics of RL on real hardware.
+- Say why imagination happens in latent space rather than in pixels.
+- Describe model exploitation, and connect it to reward hacking in RLHF.
+- Say what limits the imagination horizon.`),
   ],
   refs: [
     paper('Mastering Diverse Domains through World Models (DreamerV3)', 'Hafner et al.', 2023, 'https://arxiv.org/abs/2301.04104', 'One hyperparameter set across 150+ tasks, including Minecraft diamonds from scratch.'),
@@ -561,6 +681,28 @@ print(f"  speedup: {1e6/5e3:.0f}x fewer real interactions")`),
   prereq: ['emb-why-robots', 'ml-evaluation'],
   tags: ['BEHAVIOR', 'sim2real', 'benchmarks'],
   sections: [
+    tldr(`Simulation gives you unlimited data, instant resets, ground-truth state, and no broken hardware. It
+also gives you a policy that works in a world that does not exist.
+
+**Domain randomization** is the standard bridge, and its logic is worth appreciating: rather than trying to model
+reality accurately, randomize the simulator's parameters so widely that *reality is one sample* from your
+training distribution. The policy learns robustness instead of optimality.
+
+The lesson closes on evaluation, which in robotics is genuinely harder than the modelling. Success rates are
+reported on a handful of trials with unstated reset protocols, and results across papers are frequently not
+comparable at all. Knowing how to read them sceptically is a real skill.`),
+
+    jargon([
+      ['sim-to-real gap', 'The performance drop when a policy trained in simulation meets the physical world.'],
+      ['domain randomization', 'Randomizing simulator parameters — friction, mass, lighting, latency — so the policy must be robust rather than tuned to one setting.'],
+      ['system identification', 'The opposite strategy: measuring reality carefully and matching the simulator to it.'],
+      ['photorealism', 'Rendering fidelity. Matters less than physics fidelity for most manipulation.'],
+      ['reset protocol', 'How the scene is restored between trials. Rarely stated, and it changes reported success rates substantially.'],
+      ['success rate', 'The headline robotics metric. Nearly meaningless without a trial count and a confidence interval.'],
+      ['BEHAVIOR', 'A large simulated benchmark of household activities, built for realistic long-horizon tasks.'],
+      ['generalization axis', 'What is being varied at test time — new object, new position, new instruction, new scene. Papers often blur these.'],
+    ]),
+
     t(`## Why simulate
 
 Simulation gives you unlimited data, resettable environments, ground-truth state, parallelism, and no broken hardware.
@@ -694,6 +836,11 @@ for n in range(10, 600, 10):
        'It is better than a policy reporting 75% on the same task'],
       0,
       '17 of 20 successes gives a Wilson interval of about [64%, 95%]. That is compatible with a genuinely strong policy and with a fairly weak one, and it certainly does not separate 85% from another paper\'s 75%. Combined with different hardware, scenes, objects, and reset protocols, cross-paper comparison in robotics is mostly not meaningful. Look for trial counts, confidence intervals, and a stated reset protocol.'),
+
+    recap(`- Explain domain randomization as "make reality one sample from the training distribution".
+- Describe the tradeoff as randomization width increases, in both simulated and real performance.
+- Say why 50 real episodes can outweigh a great deal of randomization.
+- Read a robotics result sceptically: name three things you would ask for before believing a success rate.`),
   ],
   refs: [
     paper('BEHAVIOR-1K: A Human-Centered, Embodied AI Benchmark', 'Li et al. (Stanford Vision and Learning Lab)', 2022, 'https://arxiv.org/abs/2403.09227', '1,000 household activities chosen by surveying what people actually want, in full-physics interactive scenes.'),

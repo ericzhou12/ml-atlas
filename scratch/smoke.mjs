@@ -62,12 +62,21 @@ for (const l of LESSONS) {
   }
 }
 
-// 8. every lesson has refs, a summary, and at least one figure
+// 8. every lesson has refs, a summary, at least one figure, and the beginner scaffolding
 for (const l of LESSONS) {
   if (!l.sub) warn.push(`${l.id}: no sub-heading`);
   if (!(l.refs || []).length) warn.push(`${l.id}: no references`);
   const nviz = (l.sections || []).filter((s) => s.t === 'viz').length;
   if (!nviz) warn.push(`${l.id}: no interactive figure`);
+  const kinds = new Set((l.sections || []).map((s) => (s.t === 'note' ? s.kind : s.t)));
+  for (const need of ['tldr', 'jargon', 'recap']) {
+    if (!kinds.has(need)) warn.push(`${l.id}: no ${need} block`);
+  }
+  // the tldr should open the lesson and the recap should close it
+  const secs = l.sections || [];
+  const first = secs[0], last = secs[secs.length - 1];
+  if (first && !(first.t === 'note' && first.kind === 'tldr')) warn.push(`${l.id}: tldr is not the first section`);
+  if (last && !(last.t === 'note' && last.kind === 'recap')) warn.push(`${l.id}: recap is not the last section`);
 }
 
 // 9. render every markdown block — catches TeX/parse crashes

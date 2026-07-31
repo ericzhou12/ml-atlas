@@ -2,7 +2,8 @@
    Track 10 — Practice
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,27 @@ export default [
   prereq: ['nn-losses-training'],
   tags: ['debugging', 'practice'],
   sections: [
+    tldr(`Your model does not work. This is the normal state of affairs, and there is a procedure — do these
+steps **in order**, because each is cheap and eliminates a whole class of causes.
+
+The single highest-value step is the first: **try to overfit eight examples.** If a model cannot memorise eight
+examples with regularization disabled, you have a bug, not a tuning problem, and no amount of hyperparameter
+search will save you. This one test takes a minute and catches more real defects than everything else combined.
+
+The general principle underneath: **separate "is it broken?" from "is it tuned?" before doing anything else.**
+Almost all wasted time in applied ML comes from tuning a system that was broken.`),
+
+    jargon([
+      ['overfit a single batch', 'Deliberately memorising a handful of examples as a *test*. Success proves the machinery works end to end; failure proves a bug.'],
+      ['sanity check', 'A cheap test whose expected result you know in advance. The initial loss is the best one available.'],
+      ['learning rate sweep', 'Running a few dozen steps at each of several learning rates to find where it diverges.'],
+      ['gradient norm', 'The magnitude of the whole gradient vector. Logging it every step is the cheapest early-warning signal there is.'],
+      ['detached gradient', 'A tensor accidentally cut off from the computation graph, so its parameters silently never update.'],
+      ['label misalignment', 'Inputs and labels shuffled out of correspondence. Trains happily, learns nothing, and looks like an ordinary underfitting problem.'],
+      ['data leakage', 'Test information reaching the model. Produces implausibly good validation scores.'],
+      ['train/eval mode', 'The switch controlling dropout and BatchNorm behaviour. Forgetting it changes what the model computes.'],
+    ]),
+
     t(`## The procedure
 
 Do these in order. Each step is cheap and eliminates a large class of causes. Skipping ahead is how people lose days.
@@ -162,6 +184,12 @@ print(f"\\nCHECK 5  analytic {g[0][0][i,j]:.8f}  numeric {num:.8f}  "
        'The model needs regularization'],
       0,
       'Eight examples is trivially memorizable by almost any network. Failure means something is structurally broken: gradients not reaching some parameters, labels misaligned with inputs, the loss computed on the wrong tensor, a detached graph, or a frozen layer. This is the single most valuable test in ML debugging precisely because it separates "bug" from "tuning" in about a minute.'),
+
+    recap(`- Run the overfit-one-batch test and say what a failure proves.
+- Compute the expected initial loss for your task and use it as a configuration check.
+- Sweep the learning rate before tuning anything else, and explain why order matters.
+- Diagnose from symptoms: loss NaN, loss flat, train good and val bad, val suspiciously good.
+- Name three bugs that train happily while learning nothing.`),
   ],
   refs: [
     blog('A Recipe for Training Neural Networks', 'Andrej Karpathy', 2019, 'http://karpathy.github.io/2019/04/25/recipe/', 'The best practical guide written. This lesson is largely a structured version of it.'),
@@ -179,6 +207,27 @@ print(f"\\nCHECK 5  analytic {g[0][0][i,j]:.8f}  numeric {num:.8f}  "
   prereq: ['ml-evaluation'],
   tags: ['methodology', 'reproducibility'],
   sections: [
+    tldr(`Most reported improvements in machine learning are not real, and the reason is rarely dishonesty. It
+is that the comparison was unfair in ways nobody noticed.
+
+The dominant failure is the **tuning-effort asymmetry**: three weeks spent on your method, an afternoon on the
+baseline. Your method wins. It would have won regardless.
+
+The remedies are procedural rather than clever — tune the baseline as hard as you tune your method, report
+variance across seeds, run ablations that remove one thing at a time, and preregister what you expect before
+you look. None of this is difficult; all of it is routinely skipped.`),
+
+    jargon([
+      ['baseline', 'The simpler method you must beat for your result to mean anything.'],
+      ['ablation', 'Removing one component to see how much it contributed. Says which part of your method actually works.'],
+      ['seed variance', 'How much results change from random initialization alone. Frequently larger than the improvement being claimed.'],
+      ['compute-matched', 'Comparing methods given equal compute rather than equal step counts. Often changes the conclusion.'],
+      ['hyperparameter budget', 'How many configurations you tried. Must be equal across methods for a comparison to mean anything, and should be reported.'],
+      ['reproducibility', 'Whether the same code and data produce the same numbers. Harder than it sounds — GPU nondeterminism alone can shift results.'],
+      ['preregistration', 'Writing down what you expect before running the experiment, so you cannot retrofit the hypothesis to the result.'],
+      ['p-hacking', 'Trying variations until something looks significant. Usually accidental.'],
+    ]),
+
     t(`## Baselines first
 
 Before anything clever, establish:
@@ -293,6 +342,12 @@ print("\\nWith one seed you cannot distinguish a 1% effect from noise.")`),
        'You should have used grid search'],
       0,
       'Selecting the maximum over 200 noisy evaluations gives an optimistically biased estimate — this is the multiple-comparisons problem. The validation score of your chosen configuration is a *selection* statistic, not an unbiased performance estimate. Report the test-set number for the single chosen configuration, and expect it to be meaningfully lower.'),
+
+    recap(`- Name the three baselines to establish before doing anything clever.
+- Explain the tuning-effort asymmetry and the procedural fix for it.
+- Say why an improvement smaller than seed variance is not an improvement.
+- Design an ablation that isolates one component's contribution.
+- Explain why selecting on the test set inflates your reported number, and by roughly how much.`),
   ],
   refs: [
     paper('Random Search for Hyper-Parameter Optimization', 'Bergstra & Bengio', 2012, 'https://www.jmlr.org/papers/v13/bergstra12a.html', 'Why random beats grid. Short and convincing.'),
@@ -311,6 +366,28 @@ print("\\nWith one seed you cannot distinguish a 1% effect from noise.")`),
   mins: 16, level: 'core',
   tags: ['practice', 'papers'],
   sections: [
+    tldr(`Thousands of ML papers appear every month. The two skills that matter are reading one efficiently and
+ignoring most of them without guilt.
+
+For reading: the **three-pass method**. Ten minutes to decide whether to continue, an hour to understand the
+method, several hours only for papers you will actually build on. Most papers should stop at pass one, and that
+is the correct outcome rather than a failure of diligence.
+
+For filtering: **wait**. Almost nothing needs to be read the week it appears. Ideas that matter get replicated,
+explained, and implemented, and reading them three months later costs a fraction of the effort for a better
+understanding.`),
+
+    jargon([
+      ['arXiv', 'The preprint server where nearly all ML work appears first, without peer review.'],
+      ['preprint', 'A paper posted before (or instead of) peer review. The norm in ML.'],
+      ['three-pass method', 'Keshav\'s approach: skim to triage, read to understand, reconstruct to master.'],
+      ['ablation table', 'The table showing what happens when each component is removed. Usually the most informative part of a paper.'],
+      ['compute-matched comparison', 'Whether the baselines got the same compute. The first thing to check in a results table.'],
+      ['error bars / std', 'Reported variation across runs. Their absence is itself information.'],
+      ['reproduction', 'Someone independently getting the same result. Worth more than the original claim.'],
+      ['SOTA', 'State of the art. A weaker signal than it sounds, given how many benchmarks exist to be topped.'],
+    ]),
+
     t(`## The three-pass method
 
 From Keshav's widely-circulated note, and it works.
@@ -387,6 +464,11 @@ If you read nothing else from the [reference library](#/library), read these, in
        'Whether the related work section is complete'],
       0,
       'A 2% gain is well within the range that a better-tuned baseline, a different seed, or extra training can produce. If the baseline got an afternoon and the method got three weeks, the comparison is uninformative regardless of how correct the mathematics is. Tuning effort and seed variance are the two things that most often explain away a small reported improvement.'),
+
+    recap(`- Run the three passes and stop at the right one for your purpose.
+- Read a results table before the prose, and list what you check in it.
+- Say why waiting three months usually costs nothing and saves a great deal.
+- Name the two things that most often explain away a small reported improvement.`),
   ],
   refs: [
     blog('How to Read a Paper', 'S. Keshav', 2007, 'https://web.stanford.edu/class/ee384m/Handouts/HowtoReadPaper.pdf', 'Two pages. The three-pass method above.'),
