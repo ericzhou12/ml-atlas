@@ -2,7 +2,8 @@
    Track 6 — Generative Models
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,32 @@ export default [
   prereq: ['nn-backprop', 'math-information'],
   tags: ['VAE', 'latent variables'],
   sections: [
+    tldr(`An **autoencoder** squeezes data through a narrow bottleneck and back out again. To reconstruct the
+input from a 32-number summary, the network has to learn what actually matters — so the bottleneck becomes a
+compressed representation.
+
+That gives you a compressor, not a generator. Nothing organises the space of codes, so most points in it decode
+to garbage and you cannot sample.
+
+The **VAE** fixes this with one change: make the encoder output a *distribution* instead of a point, and push
+those distributions toward a standard Gaussian. Now the code space is filled rather than pocked with holes, so
+you can draw a random point, decode it, and get something plausible. The price is blurry samples, for a reason
+this lesson makes precise.`),
+
+    jargon([
+      ['autoencoder', 'A network trained to reproduce its own input through a narrow bottleneck.'],
+      ['encoder / decoder', 'The two halves: input → compressed code, and code → reconstruction.'],
+      ['latent / code $\\mathbf{z}$', 'The compressed representation in the middle. "Latent" means hidden — it is not observed, only inferred.'],
+      ['bottleneck', 'The deliberately small middle layer. Forcing information through it is what makes the network learn rather than copy.'],
+      ['reconstruction loss', 'How far the output is from the input. Usually squared error.'],
+      ['prior $p(\\mathbf{z})$', 'The distribution you *want* the codes to follow — a standard Gaussian, so you can sample from it.'],
+      ['posterior $q(\\mathbf{z}\\mid\\mathbf{x})$', 'The distribution the encoder outputs for a particular input.'],
+      ['ELBO', 'Evidence Lower BOund. The VAE objective: reconstruction quality minus a KL penalty for straying from the prior.'],
+      ['reparameterization trick', 'Writing $\\mathbf{z} = \\mu + \\sigma\\odot\\epsilon$ so randomness enters as an input, letting gradients flow through a sampling step.'],
+      ['posterior collapse', 'The failure where the encoder ignores the input entirely and outputs the prior, because the KL term won.'],
+      ['VQ-VAE', 'A VAE with a *discrete* latent space, snapping codes to a learned codebook. What most modern image generators use as their compressor.'],
+    ]),
+
     t(`## The autoencoder
 
 An encoder maps $\\mathbf{x}$ to a low-dimensional code $\\mathbf{z}$; a decoder maps it back. Train to minimize
@@ -159,6 +186,13 @@ print("\\nThey land on the data manifold — that is what the KL term bought.")`
        'A model that will not train'],
       0,
       'Without the KL term nothing organizes the latent space. Each example gets a tight posterior somewhere arbitrary, so reconstruction is excellent while the prior $\\mathcal N(0,I)$ mostly covers regions no encoder ever mapped to — decode those and you get nothing meaningful. The KL term is precisely what makes the model *generative* rather than merely compressive.'),
+
+    recap(`- Explain what a bottleneck forces a network to do, and why a linear autoencoder is just PCA.
+- Say precisely why a plain autoencoder cannot generate, in terms of the geometry of its latent space.
+- Read the ELBO as two competing terms and say what each one is buying.
+- Explain the reparameterization trick and the problem it solves (gradients through randomness).
+- Say why VAE samples are blurry, and connect it to the loss.
+- Explain what VQ-VAE changed and why almost every modern image generator contains one.`),
   ],
   refs: [
     paper('Auto-Encoding Variational Bayes', 'Kingma & Welling', 2013, 'https://arxiv.org/abs/1312.6114', 'The VAE, and the reparameterization trick.'),
@@ -177,6 +211,29 @@ print("\\nThey land on the data manifold — that is what the KL term bought.")`
   prereq: ['nn-backprop'],
   tags: ['GAN'],
   sections: [
+    tldr(`A GAN pits two networks against each other. A **generator** makes fake images from noise. A
+**discriminator** tries to spot the fakes. Each gets better because the other does.
+
+The genuinely elegant part: **the loss function is learned.** Nobody has to specify what makes an image look
+real — an impossible thing to write down — because the discriminator works it out and its gradient tells the
+generator where to go.
+
+The genuinely painful part: this is a two-player game, not a minimisation, and games do not converge the way
+minimisation does. GANs produced the first photorealistic faces and were then largely displaced by diffusion,
+almost entirely because diffusion is *stable to train* rather than because it is better in principle.`),
+
+    jargon([
+      ['generator $G$', 'Maps a random noise vector to a fake sample.'],
+      ['discriminator $D$', 'A classifier trying to distinguish real data from the generator\'s output.'],
+      ['adversarial', 'The two networks have directly opposed objectives — one\'s gain is the other\'s loss.'],
+      ['minimax', 'An optimization where one player minimises what the other maximises. Its solution is an *equilibrium*, not a minimum.'],
+      ['equilibrium', 'The point where neither player can improve unilaterally. For a GAN: the discriminator is reduced to guessing.'],
+      ['mode collapse', 'The generator producing only a few kinds of output, having found something that reliably fools the discriminator.'],
+      ['non-saturating loss', 'A reformulation of the generator loss that gives useful gradients when the discriminator is winning.'],
+      ['Wasserstein / WGAN', 'A GAN variant using a different distance between distributions, giving gradients that do not vanish.'],
+      ['FID', 'Fréchet Inception Distance. The standard image-generation metric. Measures distribution similarity, and is insensitive to mode collapse in ways worth knowing.'],
+    ]),
+
     t(`## The setup
 
 A **generator** maps noise to samples. A **discriminator** tries to tell real from fake. They optimize opposite
@@ -269,6 +326,12 @@ print("The non-saturating loss is what makes early training work at all.")`),
        'Diffusion models need less training data'],
       0,
       'Diffusion is *slower* at inference — that was its main drawback. It won on trainability: a simple MSE-style loss, a monotone objective, no min-max game, no mode collapse, predictable scaling, and easy conditioning. In deep learning, "trains reliably at scale" beats "elegant" nearly every time.'),
+
+    recap(`- Explain what it means for the loss function to be *learned*, and why that is the appealing part.
+- Say why a minimax game does not converge the way ordinary minimisation does.
+- Describe mode collapse and why the objective does not penalise it.
+- Explain when the generator's gradient vanishes and what the non-saturating loss changes.
+- Give the honest reason diffusion displaced GANs, and say what GANs are still preferred for.`),
   ],
   refs: [
     paper('Generative Adversarial Networks', 'Goodfellow et al.', 2014, 'https://arxiv.org/abs/1406.2661', 'The original.'),
@@ -287,6 +350,30 @@ print("The non-saturating loss is what makes early training work at all.")`),
   prereq: ['math-probability', 'nn-backprop'],
   tags: ['diffusion', 'score matching'],
   sections: [
+    tldr(`Generating an image from nothing is hard. Removing a *small* amount of noise from a slightly noisy
+image is easy. Diffusion's entire idea is to replace the first problem with a thousand instances of the second.
+
+Training could not be simpler: take a real image, add a known amount of noise, and train a network to **predict
+the noise you added**. That is a plain mean-squared-error regression — no adversary, no equilibrium, no
+instability.
+
+To generate, start from pure noise and repeatedly subtract a little of the predicted noise. After enough steps,
+an image. Diffusion won over GANs not by being cleverer but by being *trainable*: a monotone loss that goes
+down and stays down.`),
+
+    jargon([
+      ['forward process', 'Progressively adding noise to data until nothing is left but static. Fixed, with no learning involved.'],
+      ['reverse process', 'The learned journey back: from pure noise to a sample, one denoising step at a time.'],
+      ['timestep $t$', 'How far along the noising schedule you are. $t=0$ is a clean image; $t=T$ is pure noise.'],
+      ['noise schedule', 'How much noise is added at each timestep. A design choice that materially affects quality.'],
+      ['$\\epsilon$-prediction', 'Training the network to output the noise that was added, rather than the clean image. The standard parameterization.'],
+      ['score', '$\\nabla_{\\mathbf{x}}\\log p(\\mathbf{x})$ — the direction of increasing probability density. Predicting noise turns out to be equivalent to estimating this.'],
+      ['sampler', 'The algorithm running the reverse process. DDPM, DDIM, DPM-Solver — they trade steps against quality.'],
+      ['classifier-free guidance', 'Running the model with and without the text prompt and amplifying the difference. How text-to-image models are made to obey their prompts.'],
+      ['guidance scale', 'How much to amplify that difference. High values give prompt-faithful but less diverse images.'],
+      ['latent diffusion', 'Running diffusion in a compressed latent space instead of on pixels. Roughly 50× cheaper; what Stable Diffusion is.'],
+    ]),
+
     t(`## The idea
 
 Generating an image directly is hard. But *removing a little noise* from a slightly noisy image is easy. Diffusion
@@ -461,6 +548,13 @@ for steps in [5, 20, 100]:
        'To prevent overfitting'],
       0,
       'At small $\\sigma$ the score is accurate but essentially zero away from the data manifold — a random starting point gets no gradient to follow. At large $\\sigma$ every point gets a signal, but it only points at the overall mean. Learning all levels and annealing from high to low gives you a usable signal everywhere: coarse structure first, then detail. This was the key insight of Song & Ermon 2019.'),
+
+    recap(`- State the core reframing: one hard generation problem becomes many easy denoising problems.
+- Write the training objective and say why "predict the noise" is a plain regression.
+- Explain why the closed-form forward process is what makes training practical.
+- Say what classifier-free guidance does and what raising the guidance scale trades away.
+- Explain why latent diffusion is ~50× cheaper, and what component makes it possible.
+- Compare diffusion and GANs on training stability, sample diversity, and inference cost.`),
   ],
   refs: [
     paper('Denoising Diffusion Probabilistic Models', 'Ho, Jain & Abbeel', 2020, 'https://arxiv.org/abs/2006.11239', 'DDPM. The paper that made diffusion work.'),

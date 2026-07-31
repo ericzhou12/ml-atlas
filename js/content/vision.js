@@ -2,7 +2,8 @@
    Track 8 — Vision and Vision-Language Models
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,27 @@ export default [
   prereq: ['nn-cnn', 'llm-transformer'],
   tags: ['ViT', 'vision'],
   sections: [
+    tldr(`A Vision Transformer does something almost insultingly simple: **chop the image into squares and
+pretend they are words.** Cut a 224×224 image into 16×16 patches, flatten each into a vector, and feed the
+resulting 196 "tokens" to an ordinary transformer. That is the whole architecture.
+
+What makes it interesting is what it *throws away*. Every convolutional inductive bias — locality, translation
+equivariance, hierarchy — is gone. The model has to learn from data that adjacent patches are related.
+
+The result is a clean crossover that is worth internalising as a general pattern: **ViTs lose to CNNs on small
+datasets and win on large ones.** Hand-designed structure is a gift when data is scarce and a ceiling when it is
+not.`),
+
+    jargon([
+      ['patch', 'One square tile of the image, typically 16×16 pixels. The ViT equivalent of a token.'],
+      ['patch embedding', 'Flattening a patch and projecting it to $d_{\\text{model}}$ with a learned linear layer. Mathematically identical to a convolution with stride equal to kernel size.'],
+      ['`[CLS]` token', 'An extra learnable token prepended to the sequence, whose final representation is used for classification. Borrowed from BERT.'],
+      ['inductive bias', 'Assumptions baked into an architecture before training. CNNs assume locality; ViTs assume almost nothing.'],
+      ['Swin', 'A hierarchical ViT that restricts attention to local windows and shifts them between layers, making cost linear rather than quadratic in image size.'],
+      ['register token', 'A dedicated extra token added so the model has scratch space, instead of hijacking background patches for it.'],
+      ['DINOv2', 'A self-supervised ViT trained without labels, producing general-purpose features widely used as a frozen backbone.'],
+    ]),
+
     t(`## The recipe
 
 A Vision Transformer does something almost insultingly simple: cut the image into fixed squares, flatten each,
@@ -105,6 +127,12 @@ print("This is why Swin's windowed attention exists.")`),
        'The ViT, because it has more parameters'],
       0,
       'The ViT has strictly more expressive power and strictly less prior. With 5,000 images it cannot learn that neighbouring pixels are related, so it wastes capacity rediscovering what a convolution assumes for free. The ordering flips somewhere around 10–100M images. More inductive bias means less data needed but a lower ceiling — the central tradeoff from the [framing lesson](#/l/ml-framing).'),
+
+    recap(`- Describe the ViT recipe in one sentence, and say what a "patch" corresponds to.
+- List the convolutional inductive biases a ViT discards, and say what it must learn instead.
+- Predict which of a CNN and a ViT wins at a given dataset size, and justify it.
+- Explain why halving the patch size costs 16× more attention, not 4×.
+- Say what Swin restores and why that matters for detection and segmentation.`),
   ],
   refs: [
     paper('An Image is Worth 16x16 Words', 'Dosovitskiy et al.', 2020, 'https://arxiv.org/abs/2010.11929', 'The ViT paper, including the data-scale crossover.'),
@@ -124,6 +152,28 @@ print("This is why Swin's windowed attention exists.")`),
   prereq: ['vis-vit', 'nn-embeddings'],
   tags: ['CLIP', 'contrastive', 'multimodal'],
   sections: [
+    tldr(`Labelled image datasets are small because humans have to label them. The internet has *billions* of
+image–caption pairs already, for free, in unlimited vocabulary.
+
+CLIP's idea is to learn from those instead. Train two encoders — one for images, one for text — so that
+matching pairs land near each other in a shared space and mismatched pairs land far apart. Nothing ever tells
+the model what a dog *is*; the only signal is "these two go together".
+
+The payoff is **zero-shot classification**. To classify an image into categories the model never saw, write the
+category names as sentences, embed them, and pick the nearest. The classifier is built at inference time, out of
+words.`),
+
+    jargon([
+      ['contrastive learning', 'Training on *pairs*: pull matching things together in embedding space, push non-matching apart.'],
+      ['shared embedding space', 'One space that both images and text map into, so a picture of a dog and the word "dog" land in the same neighbourhood.'],
+      ['positive / negative pair', 'A genuinely matching image–caption pair / any non-matching combination.'],
+      ['in-batch negatives', 'Using the other examples in the same batch as the negatives. Free, and the reason batch size matters so much here.'],
+      ['temperature $\\tau$', 'A learned scalar dividing the similarities before softmax. Controls how sharply the model must discriminate.'],
+      ['zero-shot', 'Classifying into categories the model was never trained on, by describing them in text.'],
+      ['prompt template', 'The sentence frame class names are placed in, like "a photo of a {}". Affects accuracy by several points, which is uncomfortable.'],
+      ['SigLIP', 'A CLIP variant using a pairwise sigmoid loss instead of softmax, so it does not need enormous batches.'],
+    ]),
+
     t(`## The insight
 
 ImageNet has 1.2M images across 1,000 fixed classes, and every label was placed by a human. The internet has
@@ -218,6 +268,13 @@ for c, s, pp in zip(classes, sims, p):
        'It uses the ImageNet class hierarchy'],
       0,
       'CLIP learned to match images with arbitrary natural-language descriptions. At test time you write each class as a caption and pick the best match, so the label set is defined at inference rather than at training. A conventional classifier has 1,000 fixed output neurons and cannot be asked about a class it has no neuron for. (Contamination is a legitimate concern for the exact number, and the CLIP paper does address overlap analysis — but the mechanism is real.)'),
+
+    recap(`- Explain what CLIP is supervised by, and why that supervision is available at internet scale.
+- Read the contrastive objective as "pick the caption out of the batch, and vice versa".
+- Say why batch size is a capability lever for contrastive training specifically.
+- Explain zero-shot classification, and why a fixed-head classifier structurally cannot do it.
+- Name a limitation of CLIP embeddings — counting, spatial relations, fine-grained detail — and why the
+  objective causes it.`),
   ],
   refs: [
     paper('Learning Transferable Visual Models From Natural Language Supervision', 'Radford et al.', 2021, 'https://arxiv.org/abs/2103.00020', 'CLIP. Long, thorough, and unusually honest about limitations.'),
@@ -236,6 +293,28 @@ for c, s, pp in zip(classes, sims, p):
   prereq: ['vis-clip', 'llm-finetuning'],
   tags: ['VLM', 'multimodal'],
   sections: [
+    tldr(`You have a language model that reads token embeddings, and an image that is a grid of pixels. Every
+vision-language model is an answer to one question: **how do you turn pixels into something the LLM can read?**
+
+There are four answers, and they trade off cost against ceiling. The cheapest — train a two-layer MLP to map
+image features into the LLM's embedding space, and freeze everything else — works startlingly well and is why
+this area became accessible to small teams in 2023.
+
+The recurring practical problem is **resolution**. A 336×336 encoder physically cannot read a document or a
+dense chart, and every fix for that multiplies your token count.`),
+
+    jargon([
+      ['VLM', 'Vision-Language Model. A language model that can also take images as input.'],
+      ['vision encoder', 'The network turning an image into feature vectors. Usually a frozen pretrained CLIP or SigLIP ViT.'],
+      ['projector / adapter', 'A small trained network mapping vision features into the LLM\'s embedding space, so they can sit in the prompt like tokens.'],
+      ['cross-attention', 'Attention where queries come from one stream and keys/values from another — the mechanism for letting text attend to image features without merging the streams.'],
+      ['gated', 'Multiplied by a learned scalar starting at zero, so a new component begins as a no-op and the model chooses to switch it on.'],
+      ['perceiver resampler', 'A module compressing any number of image features into a fixed small number of tokens, using learned queries.'],
+      ['native multimodality', 'Training on images and text together from the start, with no separate encoder or bridge.'],
+      ['tiling / AnyRes', 'Splitting a high-resolution image into crops, encoding each, and concatenating. The standard fix for resolution, at the cost of many more tokens.'],
+      ['catastrophic forgetting', 'Losing text ability while training on images. The main risk when the LLM is unfrozen.'],
+    ]),
+
     t(`## The bridging problem
 
 A language model consumes token embeddings. An image is a grid of pixels. Every VLM architecture is an answer to the
@@ -336,6 +415,12 @@ print("\\nHigh resolution is expensive quadratically. Hence resamplers and pooli
        'The image resolution is too high'],
       0,
       'This is object hallucination, and it is the characteristic VLM failure. The LLM is vastly stronger than the visual signal reaching it, so when visual evidence is ambiguous the language prior fills the gap with what *usually* co-occurs. It is measured directly by POPE. Mitigations include stronger visual grounding in training, higher resolution, and decoding methods that contrast conditioned against unconditioned outputs.'),
+
+    recap(`- State the bridging problem in one sentence.
+- Compare the four bridging strategies on cost, ceiling, and whether they preserve text ability.
+- Explain why zero-initialized gates let you add cross-attention without damaging the base model.
+- Say why resolution is the practical battleground, and what tiling costs you.
+- Recognise object hallucination and explain it as the language prior overpowering a weak visual signal.`),
   ],
   refs: [
     paper('Visual Instruction Tuning (LLaVA)', 'Liu et al.', 2023, 'https://arxiv.org/abs/2304.08485', 'The projector recipe that democratized VLMs.'),

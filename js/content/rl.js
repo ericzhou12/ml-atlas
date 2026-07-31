@@ -2,7 +2,8 @@
    Track 7 — Reinforcement Learning and Alignment
    ============================================================ */
 
-import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef } from './_helpers.js';
+import { t, key, intuition, warn, hist, mathnote, viz, deriv, code, quiz, paper, book, course, blog, video, demo, codeRef,
+         tldr, recap, jargon, steps, diagram } from './_helpers.js';
 
 export default [
 
@@ -15,6 +16,34 @@ export default [
   prereq: ['math-probability'],
   tags: ['RL', 'MDP', 'dynamic programming'],
   sections: [
+    tldr(`Every other lesson in this atlas assumed someone tells you the right answer. Reinforcement learning
+drops that assumption: you act, and eventually a number arrives saying how well things went — with no
+indication of *which* action was responsible.
+
+That one change makes the problem far harder and introduces three difficulties that recur throughout the track:
+**credit assignment** (which of the last 200 moves lost the game?), **exploration** (you only learn about
+actions you actually take), and **non-stationarity** (your data depends on your current policy, which keeps
+changing).
+
+The mathematical backbone is the **Bellman equation**, which says something almost obvious and turns out to be
+enormously powerful: *the value of being somewhere equals the immediate reward plus the discounted value of
+wherever you end up next.*`),
+
+    jargon([
+      ['agent / environment', 'The thing making decisions / everything else. The agent acts, the environment responds with a new state and a reward.'],
+      ['state $s$', 'The situation the agent is in. In chess, the board; for a robot, joint angles and camera images.'],
+      ['action $a$', 'What the agent can do.'],
+      ['reward $r$', 'A single number the environment emits saying how good that was. Often zero for long stretches, which is what makes credit assignment hard.'],
+      ['policy $\\pi(a\\mid s)$', 'The agent\'s behaviour: a distribution over actions for each state. This is what gets learned.'],
+      ['return $G_t$', 'Total future reward from now on, with later rewards discounted. What we actually want to maximise — not the immediate reward.'],
+      ['discount factor $\\gamma$', 'How much future rewards are worth relative to immediate ones. 0.99 typically. Does double duty: encodes impatience *and* keeps an infinite sum finite.'],
+      ['MDP', 'Markov Decision Process. The formal setting: states, actions, transition probabilities, rewards, discount.'],
+      ['Markov property', 'The future depends only on the current state, not on how you got there. Makes everything tractable, and is frequently false.'],
+      ['value function $V(s)$', 'Expected return from state $s$. "How good is it to be here?"'],
+      ['Q-function $Q(s,a)$', 'Expected return from taking action $a$ in state $s$. "How good is it to do this from here?" More useful than $V$, because it directly suggests what to do.'],
+      ['Bellman equation', 'The recursive relationship: value now = reward now + discounted value next. The foundation of nearly every RL algorithm.'],
+    ]),
+
     t(`## A different learning problem
 
 Supervised learning gives you the right answer for each input. RL gives you a **reward** — a scalar saying how well
@@ -141,6 +170,12 @@ for g in [0.5, 0.9, 0.95, 0.99]:
        'Value iteration has not converged'],
       0,
       'The Bellman backup takes an expectation over the transition distribution. Standing next to the trap with a 20% chance of slipping sideways means a 10% chance of falling in, which drags down that state\'s value. The policy is not "cautious" as a design choice — it is maximizing expected return, and expected return already prices in the agent\'s own unreliability.'),
+
+    recap(`- Name the three difficulties that separate RL from supervised learning, and give an example of each.
+- Say what the Markov property assumes, and why practical RL is largely about engineering states that satisfy it.
+- Explain the two jobs the discount factor $\\gamma$ does.
+- State the Bellman equation in words, and explain why the recursion is what makes RL computable.
+- Say why $Q(s,a)$ is more directly useful than $V(s)$.`),
   ],
   refs: [
     book('Reinforcement Learning: An Introduction', 'Sutton & Barto', 2018, 'http://incompleteideas.net/book/the-book-2nd.html', 'Free PDF. The textbook — clear, complete, and still the right place to start.'),
@@ -159,6 +194,31 @@ for g in [0.5, 0.9, 0.95, 0.99]:
   prereq: ['rl-mdp'],
   tags: ['Q-learning', 'DQN', 'exploration'],
   sections: [
+    tldr(`The Bellman equation tells you what value *should* satisfy, but computing it requires knowing the
+environment's dynamics — which transitions happen with what probability. In any real problem you do not.
+
+**Temporal-difference learning** is the fix, and it is beautifully simple: you cannot compute the expectation,
+so *sample* it. Take an action, see what happened, and nudge your estimate toward what you observed. The size of
+the nudge is the **TD error** — literally, how surprised you were.
+
+The rest of the lesson is about the two things that make this work in practice: **exploration** (you have to
+sometimes act badly to learn anything) and the pile of engineering that made it work with neural networks.`),
+
+    jargon([
+      ['model-free', 'Learning without knowing or building the environment\'s dynamics. Learn from experience alone.'],
+      ['TD (temporal difference) learning', 'Updating an estimate toward a slightly-better estimate built from one observed step.'],
+      ['TD error', 'The gap between what you expected and what you got. The learning signal. Matches dopamine responses in the brain remarkably closely.'],
+      ['bootstrapping', 'Using your own current estimate as part of the target you learn toward. Efficient, and a source of instability.'],
+      ['Q-learning', 'The canonical model-free algorithm: learn $Q(s,a)$ by TD updates using the *best* next action.'],
+      ['on-policy / off-policy', 'Learning about the policy you are following / learning about a different (usually optimal) one while following an exploratory policy.'],
+      ['$\\epsilon$-greedy', 'Act greedily most of the time, randomly with probability $\\epsilon$. The simplest workable exploration scheme.'],
+      ['exploration vs exploitation', 'The tension between trying new things and cashing in on what you know works.'],
+      ['DQN', 'Deep Q-Network. Q-learning with a neural network, plus the two tricks (replay buffer, target network) that made it stable.'],
+      ['replay buffer', 'A store of past experiences to sample from, breaking the correlation between consecutive samples.'],
+      ['target network', 'A frozen copy of the network used to compute learning targets, so you are not chasing a moving goalpost.'],
+      ['deadly triad', 'Function approximation + bootstrapping + off-policy learning. Any two are fine; all three can diverge.'],
+    ]),
+
     t(`## Temporal difference learning
 
 Without $P$ and $R$ you cannot compute the Bellman backup — but you can *sample* it. Take an action, observe
@@ -287,6 +347,12 @@ for st in ["greedy", "eps", "ucb", "thompson"]:
        'To handle continuous action spaces'],
       0,
       'The target $r + \\gamma\\max_{a\'}Q(s\',a\')$ is computed with the same network being updated. Changing the weights changes the target, which changes the gradient, which changes the weights — an unstable feedback loop. Freezing a copy for $N$ steps gives a stationary regression target within each window, turning the problem into something like supervised learning.'),
+
+    recap(`- Explain TD learning as "sample the Bellman backup instead of computing it".
+- Read the TD error as surprise, and say why learning is proportional to it.
+- State the difference between Q-learning and SARSA, and predict which is more cautious near a cliff.
+- Explain the exploration/exploitation tension and what $\\epsilon$-greedy does about it.
+- Name the deadly triad and say what each of DQN's two tricks defuses.`),
   ],
   refs: [
     paper('Human-level control through deep reinforcement learning', 'Mnih et al.', 2015, 'https://www.nature.com/articles/nature14236', 'DQN on Atari. The paper that started deep RL.'),
@@ -305,6 +371,32 @@ for st in ["greedy", "eps", "ucb", "thompson"]:
   prereq: ['rl-model-free'],
   tags: ['policy gradient', 'PPO', 'actor-critic'],
   sections: [
+    tldr(`Q-learning learns *values* and then acts greedily. That works when you can enumerate the actions and
+take a max over them — fine for chess moves, hopeless for a robot arm's continuous joint torques.
+
+**Policy gradient** methods skip the middleman: parameterise the policy directly and do gradient ascent on
+expected reward. The surprising result that makes this possible is the **policy gradient theorem**, which gives
+you a usable gradient *without ever knowing the environment's dynamics* — they cancel out of the derivation
+entirely.
+
+The practical problem is variance: the estimate is correct on average but extremely noisy. **PPO** — the
+algorithm behind RLHF — is essentially a collection of fixes for that noise, and its central trick is refusing
+to let the policy change too much in one update.`),
+
+    jargon([
+      ['policy gradient', 'Directly adjusting the policy\'s parameters to increase expected reward.'],
+      ['trajectory $\\tau$', 'One complete episode: the sequence of states, actions, and rewards.'],
+      ['REINFORCE', 'The basic policy gradient algorithm. Correct, and far too high-variance to use directly.'],
+      ['baseline', 'A value subtracted from the return to reduce variance. Provably does not bias the gradient — one of the genuinely elegant results here.'],
+      ['advantage $A(s,a)$', 'How much better this action was than average from this state. Return minus baseline.'],
+      ['actor-critic', 'Running two networks: an actor (the policy) and a critic (a value estimate used as the baseline).'],
+      ['GAE', 'Generalized Advantage Estimation. Interpolates between low-bias/high-variance and high-bias/low-variance advantage estimates.'],
+      ['importance sampling ratio', '$\\pi_{\\text{new}}/\\pi_{\\text{old}}$ — lets you reuse data collected under an older policy.'],
+      ['trust region', 'A constraint keeping the updated policy close to the old one, so the data you collected stays relevant.'],
+      ['PPO', 'Proximal Policy Optimization. Enforces the trust region by simply *clipping* the ratio. Crude, effective, and the field standard.'],
+      ['clipping', 'Capping the importance ratio to $[1-\\epsilon, 1+\\epsilon]$, removing the incentive to move too far.'],
+    ]),
+
     t(`## Why not just optimize the policy?
 
 Value methods learn $Q$ and act greedily. That struggles with continuous or very large action spaces (the $\\max$ is
@@ -419,6 +511,12 @@ for r in [0.5, 0.8, 1.0, 1.2, 1.5, 2.0]:
        'Because the baseline is learned alongside the policy'],
       0,
       '$\\mathbb{E}_{a\\sim\\pi}[\\nabla\\log\\pi(a|s)] = \\int \\pi \\nabla\\log\\pi = \\int \\nabla\\pi = \\nabla\\int\\pi = \\nabla 1 = 0$. So $\\mathbb{E}[\\nabla\\log\\pi \\cdot b(s)] = b(s)\\cdot 0 = 0$ for any $b$ that does not depend on the action. You get a free variance reduction with no bias — one of the genuinely elegant results in RL.'),
+
+    recap(`- Say why value-based methods struggle with continuous action spaces.
+- Explain the key step of the policy gradient theorem: why the environment's dynamics drop out.
+- Explain why subtracting a baseline reduces variance without introducing bias.
+- Say what PPO's clipping accomplishes, and why a trust region is needed at all.
+- Describe the actor-critic split and what each network is responsible for.`),
   ],
   refs: [
     paper('Policy Gradient Methods for RL with Function Approximation', 'Sutton et al.', 1999, 'https://papers.nips.cc/paper/1713-policy-gradient-methods-for-reinforcement-learning-with-function-approximation', 'The theorem.'),
@@ -438,6 +536,33 @@ for r in [0.5, 0.8, 1.0, 1.2, 1.5, 2.0]:
   prereq: ['rl-policy-gradient', 'llm-finetuning'],
   tags: ['RLHF', 'DPO', 'alignment'],
   sections: [
+    tldr(`This is where the RL track meets the language model track, and it explains how a text predictor
+becomes an assistant.
+
+The insight is about *what humans can supply*. Writing an ideal answer is hard; **comparing** two answers is
+easy. So: collect comparisons, train a **reward model** to predict which one a human would prefer, then
+optimize the language model against that reward.
+
+Two things make it work in practice. A **KL penalty** keeps the model from drifting far from where it started —
+otherwise it finds adversarial nonsense that scores highly and is useless. And **DPO** later showed the whole RL
+stage can often be skipped, collapsing the pipeline into a single supervised loss.
+
+The final section covers what happens when the reward is *verifiable* rather than a learned preference — which
+is how reasoning models are trained, and which changes the picture substantially.`),
+
+    jargon([
+      ['RLHF', 'Reinforcement Learning from Human Feedback. Optimizing a model against a learned model of human preference.'],
+      ['preference pair', 'Two responses to the same prompt, with a human marking which is better. The raw data.'],
+      ['reward model', 'A network trained to predict which response a human would prefer, outputting a scalar score.'],
+      ['Bradley–Terry', 'The standard model for turning pairwise comparisons into scores. Logistic regression on the score difference.'],
+      ['KL penalty', 'A term punishing divergence from the starting model. The leash preventing reward hacking.'],
+      ['reward hacking', 'Finding outputs that score highly under the reward model but are actually bad. Inevitable, since the reward model is only a proxy.'],
+      ['DPO', 'Direct Preference Optimization. Algebraically eliminates the reward model and the RL loop, leaving one supervised loss.'],
+      ['RLVR', 'RL from Verifiable Rewards. Using automatically checkable rewards — does the test pass, is the answer correct — instead of learned preference.'],
+      ['alignment tax', 'Capability lost as a side effect of alignment training.'],
+      ['sycophancy', 'Agreeing with the user regardless of correctness. A direct consequence of optimizing for human approval.'],
+    ]),
+
     t(`## The problem SFT cannot solve
 
 Supervised fine-tuning imitates demonstrations, so it is capped by demonstration quality. And for many things people
@@ -563,6 +688,13 @@ for shift in [-1.0, 0.0, 1.0, 3.0]:
        'It is required for the policy gradient to be unbiased'],
       0,
       'The reward model was trained on outputs from roughly the SFT distribution. Far from there, its scores are extrapolations and often nonsense — and an optimizer will find exactly those regions, because that is where the proxy is highest. The KL term bounds the drift, keeping the policy inside the region where the proxy still tracks real quality. It is Goodhart mitigation, expressed as a constraint.'),
+
+    recap(`- Explain why comparisons are easier to collect than demonstrations, and what that unlocks.
+- Write the Bradley–Terry loss and recognise it as logistic regression on a score difference.
+- Explain reward hacking as Goodhart's law, and say what the KL penalty is doing about it.
+- Say what DPO eliminates from the pipeline and why that made preference tuning accessible.
+- Explain what changes when rewards are *verifiable*, and why that is what reasoning models use.
+- Name two costs of alignment training — sycophancy, the alignment tax — and their common cause.`),
   ],
   refs: [
     paper('Training language models to follow instructions with human feedback', 'Ouyang et al.', 2022, 'https://arxiv.org/abs/2203.02155', 'InstructGPT. The full RLHF pipeline.'),
