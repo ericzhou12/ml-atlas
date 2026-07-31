@@ -113,10 +113,12 @@ V['matmul-walkthrough'] = (host, params = {}) => {
     height: 380,
     plot: { pad: { l: 0, r: 0, t: 0, b: 0 } },
     controls: [
-      { type: 'select', key: 'mode', label: 'reading', value: params.mode || 'dot', options: [
-        { value: 'dot', label: 'row · column  (one cell at a time)' },
-        { value: 'outer', label: 'sum of layers  (one rank-1 slab at a time)' },
-      ] },
+      { type: 'select', key: 'mode', label: 'reading', value: params.mode || 'dot',
+        onChange: (v, P) => P.set('step', 0, true),
+        options: [
+          { value: 'dot', label: 'row · column  (one cell at a time)' },
+          { value: 'outer', label: 'sum of layers  (one rank-1 slab at a time)' },
+        ] },
       { type: 'slider', key: 'step', label: 'step', min: 0, max: 9, step: 1, value: 0 },
       { type: 'play' },
       { type: 'button', label: '⟳ new numbers', onClick: (s, P) => { A = mk(3, 3); B = mk(3, 3); P.set('step', 0, true); } },
