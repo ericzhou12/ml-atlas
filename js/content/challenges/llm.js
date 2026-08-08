@@ -1362,42 +1362,71 @@ making to a retrieval pipeline that is missing answers.`,
 },
 
 'llm-moe': {
-  title: 'Route tokens to experts, then fix the collapse',
-  prompt: `Implement top-k routing and measure load imbalance. Then implement the loss-free balancing trick: a
-per-expert bias nudged until the loads equalize.`,
-  hint: 'Adjust each expert bias by -lr * sign(load - target) and re-route until balanced.',
+  title: 'Route tokens to experts, watch the collapse happen, then fix it',
+  prompt: `1. Implement top-$k$ routing and measure how unevenly the tokens land.
+2. **The rich-get-richer loop.** The lesson said nothing in the objective encourages balance: whichever experts
+   win early get all the gradient, improve, and win more. Simulate that loop and watch a handful of experts
+   take everything. **Predict how many experts survive.**
+3. **The fix.** Implement loss-free balancing — a per-expert bias nudged up when an expert is under-used and
+   down when it is over-used — and rerun the same loop with it switched on.`,
+  hint: 'Top-$k$ per row: `np.argsort(-logits, axis=1)[:, :k]`. For the collapse loop, reward the experts that got tokens by raising their router logits a little. For the balancing bias, move each entry by `-lr * sign(load - target)`.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
 E, k, d, T = 8, 2, 32, 2000
 x = rng.normal(size=(T, d))
 Wr = rng.normal(0, d**-0.5, (d, E))
-Wr[:, :2] += 0.35                      # give experts 0,1 a head start
+Wr[:, :2] += 0.35                      # experts 0 and 1 start slightly ahead
 
 def route(x, Wr, bias=None):
     logits = x @ Wr
     if bias is not None: logits = logits + bias
-    # TODO: take the top-k experts per token, return their indices
+    # TODO: return the indices of the top-k experts for each token, shape (T, k)
     return np.zeros((len(x), k), dtype=int)
 
 def load_of(idx):
     return np.bincount(idx.ravel(), minlength=E)
 
 load = load_of(route(x, Wr))
-print(f"no balancing:  load {load}  CV={load.std()/load.mean():.3f}")
+print(f"before training:  load {load}   spread {load.std()/load.mean():.3f}")
+assert load.sum() == T*k, "every token should reach exactly k experts"
 
+# ---------- 2. let the winners get better ----------
+# pref stands in for "this expert has improved because it saw more tokens".
+pref = np.zeros(E)
+print("\\nnow let whichever experts get tokens improve, and re-route:")
+for step in range(60):
+    ld = load_of(route(x, Wr, pref))
+    pref += 0.004 * (ld - ld.mean())               # the popular get more popular
+    if step % 15 == 0 or step == 59:
+        l = load_of(route(x, Wr, pref))
+        print(f"  round {step:2d}: load {l}   experts still used: {int((l > 0).sum())}/{E}")
+collapsed = load_of(route(x, Wr, pref))
+assert (collapsed > 0).sum() <= 3, "the loop should concentrate onto a few experts"
+
+# ---------- 3. the same loop, with loss-free balancing ----------
+pref = np.zeros(E)
 bias = np.zeros(E)
 target = T * k / E
+print("\\nsame loop, but with a per-expert bias correcting the load each round:")
 for step in range(60):
-    load = load_of(route(x, Wr, bias))
-    # TODO: nudge bias to equalize load
-    pass
-print(f"after balancing: load {load}  CV={load.std()/load.mean():.3f}")
+    ld = load_of(route(x, Wr, pref + bias))
+    pref += 0.004 * (ld - ld.mean())               # identical pressure as before
+    # TODO: move bias down where the load is above target, up where it is below.
+    #       Proportional works well: subtract 0.005 * (ld - target).
+    if step % 15 == 0 or step == 59:
+        l = load_of(route(x, Wr, pref + bias))
+        print(f"  round {step:2d}: load {l}   experts still used: {int((l > 0).sum())}/{E}")
+
+final = load_of(route(x, Wr, pref + bias))
+assert (final > 0).all(), "with balancing, no expert should be starved"
+assert final.std()/final.mean() < 0.25, "the load should be roughly even"
+print("\\nPASS")
 
 dense = d * 4*d * 2
-print(f"\\ndense FFN      : {dense:,} params")
-print(f"MoE total      : {E*dense:,} ({E}x)")
-print(f"MoE per token  : {k*dense:,} ({k}x)  <- compute grows by k, not E")`,
+print(f"\\ndense FFN      : {dense:,} parameters")
+print(f"MoE total      : {E*dense:,}  ({E}x the parameters)")
+print(f"MoE per token  : {k*dense:,}  ({k}x the compute)")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -1411,23 +1440,61 @@ def route(x, Wr, bias=None):
     if bias is not None: logits = logits + bias
     return np.argsort(-logits, axis=1)[:, :k]
 
-def load_of(idx): return np.bincount(idx.ravel(), minlength=E)
+def load_of(idx):
+    return np.bincount(idx.ravel(), minlength=E)
 
 load = load_of(route(x, Wr))
-print(f"no balancing:    load {load}  CV={load.std()/load.mean():.3f}")
+print(f"before training:  load {load}   spread {load.std()/load.mean():.3f}")
+assert load.sum() == T*k
 
+pref = np.zeros(E)
+print("\\nnow let whichever experts get tokens improve, and re-route:")
+for step in range(60):
+    ld = load_of(route(x, Wr, pref))
+    pref += 0.004 * (ld - ld.mean())
+    if step % 15 == 0 or step == 59:
+        l = load_of(route(x, Wr, pref))
+        print(f"  round {step:2d}: load {l}   experts still used: {int((l > 0).sum())}/{E}")
+collapsed = load_of(route(x, Wr, pref))
+assert (collapsed > 0).sum() <= 3
+
+pref = np.zeros(E)
 bias = np.zeros(E)
 target = T * k / E
+print("\\nsame loop, but with a per-expert bias correcting the load each round:")
 for step in range(60):
-    load = load_of(route(x, Wr, bias))
-    bias -= 0.02 * np.sign(load - target)
-print(f"after balancing: load {load}  CV={load.std()/load.mean():.3f}")
+    ld = load_of(route(x, Wr, pref + bias))
+    pref += 0.004 * (ld - ld.mean())
+    bias -= 0.005 * (ld - target)
+    if step % 15 == 0 or step == 59:
+        l = load_of(route(x, Wr, pref + bias))
+        print(f"  round {step:2d}: load {l}   experts still used: {int((l > 0).sum())}/{E}")
+
+final = load_of(route(x, Wr, pref + bias))
+assert (final > 0).all()
+assert final.std()/final.mean() < 0.25
+print("\\nPASS")
 
 dense = d * 4*d * 2
-print(f"\\ndense FFN      : {dense:,} params")
-print(f"MoE total      : {E*dense:,} ({E}x)")
-print(f"MoE per token  : {k*dense:,} ({k}x)  <- compute grows by k, not E")`,
-  explain: 'Without balancing the router funnels everything to its favourites and the other experts never train. The bias trick (DeepSeek-V3) equalizes load without adding an auxiliary loss that would fight the language modeling objective.',
+print(f"\\ndense FFN      : {dense:,} parameters")
+print(f"MoE total      : {E*dense:,}  ({E}x the parameters)")
+print(f"MoE per token  : {k*dense:,}  ({k}x the compute)")`,
+  explain: `Part 2 is expert collapse, and the loop that produces it is only two lines long. Experts that receive
+tokens get better; experts that get better receive more tokens. Nothing in that feedback is a bug — it is what
+any sensible training signal does — and within fifteen rounds **six of the eight experts are receiving nothing
+at all**, while the surviving two take every token. Those experts still occupy memory, still have to be loaded, and contribute nothing. You paid for
+$E$ experts and are running a handful.
+
+Part 3 is the fix, and notice how little it is: one number per expert, moved down when that expert is
+over-subscribed and up when it is under-subscribed. Against exactly the same collapse pressure, the load settles
+at 500 tokens each and stays there. It never touches the loss, so it cannot interfere with the
+language-modelling objective — which is precisely the advantage over the older approach of adding an auxiliary
+balancing loss and hoping the two objectives do not fight. DeepSeek-V3 uses this.
+
+The last three lines are the reason anyone tolerates the complexity. Total parameters go up by a factor of $E$,
+but the compute per token only goes up by $k$ — so an 8-expert top-2 layer holds eight times the knowledge and
+costs twice the arithmetic. That is the trade: MoE buys parameters cheaply and buys memory not at all, which is
+why it is a training-and-serving-cost win and never a memory win.`,
 },
 
 'llm-evaluation': {
