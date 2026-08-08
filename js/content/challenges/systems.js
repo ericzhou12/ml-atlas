@@ -34,8 +34,23 @@ print(analyze("ReLU on 64M elements", 64e6, 64e6*2*2))
 
 print("\\nautoregressive decode floor (bf16, batch 1):")
 for name, params in [("7B", 7e9), ("70B", 70e9), ("405B", 405e9)]:
-    # TODO: bytes read per token = params * 2; time = bytes / bandwidth
-    print(f"  {name}")`,
+    # TODO: bytes read per token = params * 2; time = bytes / bandwidth;
+    #       print GB/token, ms/token, and the resulting tokens per second
+    print(f"  {name}")
+
+print("\\nbatching (70B): the weight read is shared across the whole batch")
+for B in [1, 8, 32, 128, 512]:
+    weight_ms = 140e9 / H100["bw"] * 1e3
+    compute_ms = 2 * 70e9 * B / H100["flops"] * 1e3
+    step = max(weight_ms, compute_ms)
+    print(f"  batch {B:4d}: {step:6.1f} ms/step -> {B*1000/step:8.1f} tok/s total, "
+          f"{1000/step:5.1f} per user")
+
+print("\\nquantization is a BANDWIDTH optimization (70B, batch 1):")
+for bits, name in [(16, "bf16"), (8, "int8"), (4, "int4")]:
+    read = 70e9 * bits/8
+    ms = read / H100["bw"] * 1e3
+    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s")`,
   solution: `import numpy as np
 H100 = dict(flops=989e12, bw=3.35e12)
 ridge = H100["flops"] / H100["bw"]
@@ -59,14 +74,37 @@ for name, params in [("7B", 7e9), ("70B", 70e9), ("405B", 405e9)]:
     ms = read / H100["bw"] * 1e3
     print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s max")
 
-print("\\nbatching (70B): the weight read is shared across the batch")
-for B in [1, 8, 32, 128]:
+print("\\nbatching (70B): the weight read is shared across the whole batch")
+for B in [1, 8, 32, 128, 512]:
     weight_ms = 140e9 / H100["bw"] * 1e3
     compute_ms = 2 * 70e9 * B / H100["flops"] * 1e3
     step = max(weight_ms, compute_ms)
-    print(f"  batch {B:4d}: {step:6.1f} ms -> {B*1000/step:8.1f} tok/s total, "
-          f"{1000/step:5.1f} per user")`,
-  explain: 'A matvec has arithmetic intensity around 1 — three hundred times below the ridge point. That is why generation is bandwidth-bound and why batching is nearly free until you run out of KV cache.',
+    print(f"  batch {B:4d}: {step:6.1f} ms/step -> {B*1000/step:8.1f} tok/s total, "
+          f"{1000/step:5.1f} per user")
+
+print("\\nquantization is a BANDWIDTH optimization (70B, batch 1):")
+for bits, name in [(16, "bf16"), (8, "int8"), (4, "int4")]:
+    read = 70e9 * bits/8
+    ms = read / H100["bw"] * 1e3
+    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s")`,
+  explain: `The first three lines sort the operations by which resource they exhaust. A large matmul has arithmetic
+intensity in the hundreds and is compute-bound — the GPU is doing what it was built for. A matvec is around 1,
+three hundred times below the ridge point, and a ReLU is below that: both spend essentially all their time
+waiting for memory, with the arithmetic units idle.
+
+The decode floor is the number worth carrying around. Generating one token requires reading **every weight**, so
+a 70B model in bf16 moves 140 GB per token and cannot exceed about 24 tokens per second on an H100 no matter how
+fast the chip computes. That is a bandwidth fact, not a compute fact, and buying a faster processor would not
+move it.
+
+The batching table shows why serving systems fight so hard to keep batches full: the weight read is shared, so
+128 sequences cost the same wall-clock step as one, and total throughput rises more than a hundredfold while each
+individual user's speed is unchanged. It stops being free only once the batch is large enough that the arithmetic
+finally exceeds the memory time — which is where the per-user number starts falling.
+
+And the last table is the lesson's claim about quantization, in numbers: 4-bit weights are not primarily about
+fitting in memory, they are about reading four times fewer bytes, which buys close to four times the tokens per
+second. The arithmetic was never the constraint.`,
 },
 
 'sys-memory': {
