@@ -15,49 +15,53 @@ export default [
   mins: 20, level: 'core',
   tags: ['theory', 'generalization'],
   sections: [
-    tldr(`"Learning" has a precise meaning, and it is not "getting good scores on your data". It is: doing well
-on data you have **not seen yet**.
+    tldr(`"Learning" has a precise meaning here, and it is not "getting good scores on your data". It is doing
+well on data you have **not seen yet**.
 
-That gap is the whole subject. You can only measure performance on the examples you have, but you only care
-about performance on the ones you don't. Everything in classical ML — validation splits, regularization,
-cross-validation, the obsession with not touching the test set — exists to stop you from fooling yourself about
-that gap.`),
+That gap is the whole subject. You can only measure performance on the examples you hold, but you only care
+about performance on the ones you don't. Every piece of machinery in classical ML — validation splits,
+regularization, cross-validation, the strict rules about the test set — exists to stop you from fooling yourself
+about the difference.
+
+The lesson also answers a question you may already have: given that many different models could fit the same
+data, what makes one of them the right choice? The answer is that every model comes with built-in assumptions
+about what the world looks like, and the good ones are the ones whose assumptions happen to be true.`),
 
     jargon([
       ['distribution $\\mathcal{D}$', 'The imaginary infinite pool of all possible examples your data was drawn from. You never see it; you only ever hold a finite sample.'],
-      ['$(\\mathbf{x}, y)$', 'One labelled example: the input features $\\mathbf{x}$ and the correct answer $y$.'],
-      ['loss $\\ell$', 'A number saying how wrong a single prediction was. Squared error, cross-entropy, and so on.'],
-      ['risk', 'Confusingly, just "average loss". **True risk** = average over the whole distribution (what you want). **Empirical risk** = average over your dataset (what you can measure).'],
-      ['ERM', 'Empirical Risk Minimization — the strategy of "minimise the average loss on the data I have and hope". Almost all supervised learning is this plus a safeguard.'],
-      ['generalization', 'How well the model does on unseen data. The gap between empirical and true risk.'],
-      ['i.i.d.', '"Independent and identically distributed" — the assumption that your test data looks like your training data and the examples do not influence each other.'],
-      ['capacity', 'How complicated a function a model is able to represent. High capacity can fit anything, including noise.'],
-      ['inductive bias', 'The assumptions a model makes before seeing any data. A CNN assumes nearby pixels matter together; that assumption is its inductive bias.'],
-      ['hyperparameter', 'A setting you choose rather than learn — learning rate, tree depth, number of layers. Distinguished from parameters, which are fit from data.'],
+      ['$(\\mathbf{x}, y)$', 'One labelled example: the input features $\\mathbf{x}$, and the correct answer $y$.'],
+      ['loss $\\ell$', 'A number saying how wrong a single prediction was — squared error, cross-entropy, and so on.'],
+      ['risk', 'Confusingly, this just means "average loss". **True risk** is the average over the whole distribution, which is what you want. **Empirical risk** is the average over your dataset, which is what you can measure.'],
+      ['ERM', 'Empirical Risk Minimization: the strategy of minimising the average loss on the data you have and hoping it transfers. Almost all supervised learning is this plus a safeguard.'],
+      ['generalization', 'How well a model does on data it has not seen. Measured as the gap between empirical and true risk.'],
+      ['i.i.d.', 'Independent and identically distributed — the assumption that your test data looks like your training data and that examples do not influence one another.'],
+      ['capacity', 'How complicated a function a model is able to represent. High capacity can fit anything, including pure noise.'],
+      ['inductive bias', 'The assumptions a model makes before it sees any data at all. A model that assumes nearby pixels belong together has an inductive bias, and that bias is why it needs less data than one that assumes nothing.'],
+      ['hyperparameter', 'A setting you choose rather than learn — learning rate, tree depth, number of layers. Contrast with parameters, which are fit from the data.'],
     ]),
 
-    t(`## The setup, formally
+    t(`## The setup, stated carefully
 
-Here is the whole problem in four objects.
+The whole problem is four objects.
 
-There is a **distribution** $\\mathcal{D}$ over input–output pairs $(\\mathbf{x}, y)$ — think of it as an
-infinite pool of every photo that could ever be taken and its correct label. You never see $\\mathcal{D}$. You
-see $n$ examples drawn from it. And you want a function $f$ that predicts $y$ from $\\mathbf{x}$ well on
-**future** draws from that same pool.
+There is a **distribution** $\\mathcal{D}$ over input–output pairs $(\\mathbf{x}, y)$. Think of it as an infinite
+pool containing every photo that could ever be taken, each paired with its correct label. You never see
+$\\mathcal{D}$; you see $n$ examples drawn from it. What you want is a function $f$ that predicts $y$ from
+$\\mathbf{x}$ well on **future** draws from that same pool.
 
-Pick a **loss** $\\ell(f(\\mathbf{x}), y)$ measuring how wrong one prediction is. What you genuinely care about
-is the average loss over the whole pool — the **true risk**:
+Pick a **loss** $\\ell(f(\\mathbf{x}), y)$ that scores how wrong one prediction is. What you actually care about
+is the average loss over the entire pool — the **true risk**:
 
 $$R(f) = \\mathbb{E}_{(\\mathbf{x},y)\\sim\\mathcal{D}}\\big[\\ell(f(\\mathbf{x}), y)\\big]$$
 
-And here is the problem in one line: **you cannot compute that.** It is an average over a distribution you do
-not have access to. The best you can do is average over the examples you happen to hold — the **empirical
-risk**:
+And here is the problem in one line: **you cannot compute that.** It is an average over a distribution you have
+no access to. The best available substitute is the average over the examples you happen to hold — the
+**empirical risk**:
 
 $$\\hat R(f) = \\frac{1}{n}\\sum_{i=1}^{n} \\ell(f(\\mathbf{x}_i), y_i)$$
 
-Minimising *that* is called **empirical risk minimization** (ERM), and essentially all supervised learning is
-ERM plus some scheme for stopping the model from taking the "minimise" instruction too literally.`),
+Minimising that is called **empirical risk minimization**, and essentially all supervised learning is ERM plus
+some scheme for stopping the model from taking the word "minimise" too literally.`),
 
     diagram('The one gap that everything else is about',
 `<svg viewBox="0 0 620 210" role="img" aria-label="Empirical risk measured on a sample versus true risk on the full distribution">
@@ -79,137 +83,158 @@ ERM plus some scheme for stopping the model from taking the "minimise" instructi
   <text class="dlabel" x="350" y="160">shrinks with more data,</text>
   <text class="dlabel" x="350" y="177">grows with more model capacity</text>
 </svg>`,
-      `Keep this picture when you read a benchmark number. Every reported score is the orange box; the claim being
-made is about the blue ellipse. The two coincide only when the sample is representative and you did not tune
-your way into fitting it.`),
+      `Keep this picture in mind whenever you read a benchmark number. Every reported score is the small orange
+box; the claim being made is about the whole blue ellipse. The two agree only when the sample is representative
+and nobody tuned their way into fitting it.`),
 
-    key(`The entire discipline hinges on one question: **when does small $\\hat R$ imply small $R$?**
+    t(`Why should the empirical risk resemble the true risk at all? Because an average over a random sample
+estimates an average over the population — the same fact behind every opinion poll. With $n$ independent
+examples, the estimate wobbles around the truth with a spread of about $1/\\sqrt{n}$.
 
-Two assumptions are doing all the work, and both fail in the real world more often than people admit:
+But that argument only holds for a function $f$ chosen **before** you looked at the data. The moment you pick
+$f$ *because* it scores well on those particular points, the estimate stops being fair — you have selected for
+whichever function happened to match this sample's noise. That is the entire reason training error is
+optimistic, and it is worth carrying as a sentence: **you cannot honestly evaluate on data you used to
+choose.**`),
 
-1. **i.i.d.** — training and test data come from the same distribution, independently. Broken by distribution shift,
-   temporal drift, selection bias, and by test sets that leaked into training.
-2. **Limited capacity** — your model cannot fit arbitrary noise. Broken, spectacularly, by modern overparameterized
-   networks, which *can* fit random labels and yet still generalize. Explaining that is an open problem.`),
+    key(`The whole discipline hinges on one question: **when does a small $\\hat R$ imply a small $R$?**
+
+Two assumptions do all the work, and both fail in the real world more often than people admit:
+
+1. **i.i.d.** — training and test data come from the same distribution, drawn independently. Broken by
+   distribution shift, by data that drifts over time, by selection bias in how the data was collected, and by
+   test examples that leaked into training.
+2. **Limited capacity** — the model cannot fit arbitrary noise, so fitting the training set is evidence that it
+   found real structure. Broken spectacularly by modern large networks, which *can* memorise entirely random
+   labels and yet still generalise on real ones. Why that happens is an open problem.`),
 
     t(`## The taxonomy, briefly
 
-- **Supervised** — labeled pairs. Classification (discrete $y$) or regression (continuous $y$).
+- **Supervised** — you have labelled pairs. Classification when $y$ is a category, regression when it is a
+  number.
 - **Unsupervised** — no labels. Clustering, density estimation, dimensionality reduction.
-- **Self-supervised** — labels manufactured from the data itself ("predict the next token", "predict the masked
-  patch"). This is how essentially every frontier model is pretrained, and it is the reason scale became possible:
-  the internet is a free, enormous labeled dataset if your labels come from the data.
-- **Reinforcement** — learning from reward rather than answers.`),
+- **Self-supervised** — the labels are manufactured from the data itself: hide the next word and predict it,
+  mask part of an image and reconstruct it. This is how essentially every frontier model is pretrained, and it
+  is why scale became possible — the internet is an enormous free labelled dataset if the labels come from the
+  data.
+- **Reinforcement** — learning from rewards rather than from correct answers.`),
 
-    t(`## No free lunch, and why it does not paralyze us
+    t(`## No free lunch, and why it does not paralyse us
 
 There is a theorem that sounds like it should end the field. The **No Free Lunch theorem** says that averaged
-over *all possible* target functions, every learning algorithm performs identically. Random guessing included.
-No method is better than any other.
+over *all possible* target functions, every learning algorithm performs identically — random guessing included.
 
-The escape is hiding in the premise. "All possible functions" includes every function that maps inputs to
-outputs at random with no structure whatsoever — an overwhelming majority of the space, and none of it anything
-you will ever be asked to learn. Real data has structure: it is smooth, local, compositional, hierarchical.
+The escape is hiding in the premise. "All possible functions" is dominated by functions that map inputs to
+outputs with no structure at all: no smoothness, no pattern, nothing to learn from having seen a nearby example.
+Almost none of them is anything you will ever be asked to predict. Real data is smooth, local, compositional,
+and repetitive.
 
 So an algorithm wins not by being universally good, but by **encoding assumptions that happen to match the
-structure of your data**. Those assumptions are called **inductive bias**, and choosing them is the actual
+structure of your data**. Those assumptions are its **inductive bias**, and choosing them well is the actual
 craft of the field:
 
-| Model | Inductive bias |
+| Model | What it assumes before seeing any data |
 |---|---|
-| Linear regression | The relationship is linear |
-| kNN | Nearby points have similar labels |
-| CNN | Features are local and translation-equivariant |
-| RNN | The data has sequential, Markov-ish structure |
-| Transformer | Any position may depend on any other; learn which |
-| Diffusion model | Data lies near a low-dimensional manifold reachable by denoising |`),
+| Linear regression | The output changes at a constant rate with each input |
+| k-nearest-neighbours | Points that are close together have similar labels |
+| Decision tree | The answer is a series of threshold questions on individual features |
+| CNN | Useful features are local, and a pattern means the same thing anywhere in the image |
+| RNN | The data is a sequence, and the recent past matters most |
+| Transformer | Any position may depend on any other, and which ones should be learned |`),
 
-    intuition(`A useful reframing: **more inductive bias = less data needed, but a lower ceiling if the bias is wrong.**
-CNNs beat ViTs on small image datasets because their bias is correct and free. ViTs beat CNNs on huge datasets because
-they can *learn* a better bias than we hand-designed. This tradeoff — hand-coded structure versus learned structure —
-is the recurring theme of the last decade, and scale has consistently favored the latter.`),
+    intuition(`A useful way to hold this: **more inductive bias means less data needed, but a lower ceiling if the
+bias is wrong.**
+
+A CNN's assumption that a cat is a cat wherever it appears in the frame is free, correct, and worth an enormous
+amount of training data. A transformer assumes almost nothing of the kind, so on a small image dataset it loses
+badly. Give it enough data and it wins, because it can *learn* a better assumption than the one we hand-designed.
+
+Hand-coded structure versus learned structure is the recurring argument of the last decade, and scale has
+consistently favoured the second.`),
 
     t(`## Train, validation, test
 
-Three splits, three distinct jobs, and conflating any two of them will quietly ruin your results:
+Three splits, three distinct jobs. Conflating any two of them will quietly ruin your results.
 
 - **Train** — fit the parameters. The model sees these directly.
 - **Validation** — choose hyperparameters, pick the architecture, decide when to stop. The model does not train
-  on these, but *you* do: every decision you make based on validation performance is a form of fitting.
-- **Test** — estimate the true risk. **Touch once, at the very end.**
+  on these, but *you* do: every decision you make by looking at validation performance is a form of fitting.
+- **Test** — estimate the true risk. **Look once, at the very end.**
 
-The reason the third one is so strict is worth spelling out, because "I never trained on the test set" feels
-like enough and is not.`),
+The third rule is stricter than it feels like it needs to be, and "I never trained on the test set" is not
+enough.`),
 
-    warn(`**Selection is training.** Every time you look at a test score and change something — a hyperparameter,
-an architecture, a preprocessing step — you have used the test set to make a decision. That is optimization, run
-by hand, at one bit per look.
+    warn(`**Selecting is training.** Every time you look at a test score and change something — a hyperparameter,
+an architecture, a preprocessing step — you have used the test set to make a decision. That is optimization,
+performed by you, by hand.
 
-Do it twenty times and your test score is no longer an estimate of true risk. It is a *validation* score
-wearing a disguise, and it is optimistically biased: you selected the maximum of twenty noisy numbers, and the
-maximum of noisy numbers sits above the average of what they are estimating.
+Here is why it biases the number. Each model's test score is its true accuracy plus some noise from the finite
+test set. Pick the best of twenty models by test score and you have systematically favoured the ones whose noise
+happened to be positive. With a 1000-example test set the noise on each score is around 1.5 percentage points,
+and the maximum of twenty such draws sits roughly 3 points above the average — so a model that is genuinely no
+better than its rivals reports a 3-point lead. That lead evaporates on any fresh data.
 
 This is the most common methodological failure in applied ML, it is entirely self-inflicted, and it is why
-published results routinely fail to reproduce. The discipline is to hold out a test set, forget it exists,
-iterate on validation, and look exactly once.`),
+published results so often fail to reproduce. The discipline is: hold out a test set, forget it exists, iterate
+on validation, and look exactly once.`),
 
     viz('cross-validation'),
 
-    code('ERM in twelve lines', `import numpy as np
-
+    code('Empirical risk, and how optimistic it is', `import numpy as np
 rng = np.random.default_rng(0)
 
-# ground truth we are trying to recover (we never get to see this)
-def true_f(x): return 1.5 * x - 0.4
+def true_f(x): return 1.5 * x - 0.4          # the truth, which we never get to see
+NOISE = 0.5
 
-n = 40
-X = rng.uniform(-3, 3, size=n)
-y = true_f(X) + rng.normal(0, 0.5, size=n)          # noisy observations
+def draw(n):
+    x = rng.uniform(-3, 3, size=n)
+    return x, true_f(x) + rng.normal(0, NOISE, size=n)
 
-def empirical_risk(w, b, X, y):
-    return np.mean((w * X + b - y) ** 2)
+def risk(w, b, x, y):
+    return np.mean((w*x + b - y) ** 2)
 
-# minimize it by brute force over a grid, just to make the idea concrete
-ws = np.linspace(0, 3, 300); bs = np.linspace(-2, 2, 300)
-W, B = np.meshgrid(ws, bs)
-R = np.array([[empirical_risk(w, b, X, y) for w in ws] for b in bs])
-i, j = np.unravel_index(R.argmin(), R.shape)
-print(f"ERM solution:   w={ws[j]:.3f}  b={bs[i]:.3f}")
-print(f"truth:          w=1.500  b=-0.400")
+# one dataset, one ERM fit
+x, y = draw(40)
+w_hat, b_hat = np.polyfit(x, y, 1)           # the line minimising empirical risk
+print(f"ERM picked: w={w_hat:.3f}  b={b_hat:.3f}   (truth: 1.500, -0.400)\\n")
 
-# true risk, estimable only because we cheated and know the generator
-Xte = rng.uniform(-3, 3, 100_000)
-yte = true_f(Xte) + rng.normal(0, 0.5, 100_000)
-print(f"\\nempirical risk (train, n={n}): {empirical_risk(ws[j], bs[i], X, y):.4f}")
-print(f"true risk      (n=100000):    {empirical_risk(ws[j], bs[i], Xte, yte):.4f}")
-print(f"irreducible noise floor:      {0.5**2:.4f}")`,
-      'Notice the empirical risk on 40 points is *optimistic* — lower than the true risk. That gap is exactly what generalization theory tries to bound, and it grows with model capacity.'),
+# the same experiment repeated, so we can see the systematic part
+for n in [8, 20, 100, 1000]:
+    gaps = []
+    for _ in range(400):
+        x, y = draw(n)
+        w_, b_ = np.polyfit(x, y, 1)
+        xte, yte = draw(20_000)              # a fresh sample stands in for the true risk
+        gaps.append(risk(w_, b_, xte, yte) - risk(w_, b_, x, y))
+    print(f"n={n:5d}   average (true - empirical) risk = {np.mean(gaps):+.4f}")
+print(f"\\nirreducible noise floor: {NOISE**2:.4f}")`,
+      'On any single dataset the gap is noisy and can land either way, which is why the loop repeats it 400 times. The average is what matters: it is positive at every $n$, so the training score is systematically optimistic, and it shrinks as $n$ grows. For a least-squares fit the size of that optimism is known exactly — it is $2\\sigma^2 p/n$, with $p$ the number of fitted parameters — which here is $2(0.25)(2)/n = 1/n$. Check the printed numbers against that. Note what the formula says: the gap grows with the number of parameters and shrinks with the amount of data, which is the whole of the next lesson in one fraction.'),
 
-    quiz('You tune 200 hyperparameter configurations, pick the one with the best test accuracy, and report it. What is wrong?',
-      ['Selecting on the test set makes the reported number optimistically biased — it is now a validation score',
+    quiz('You try 200 hyperparameter configurations, pick the one with the best test accuracy, and report that number. What is wrong?',
+      ['Selecting on the test set makes the number optimistically biased — it has become a validation score',
        'Nothing, as long as you never trained on the test set',
        '200 configurations is too few to be meaningful',
        'You should have used a larger test set'],
       0,
-      'With 200 draws you are selecting the maximum of 200 noisy estimates, and the max of noisy estimates is biased upward. This is the multiple-comparisons problem. The fix: select on a validation set, then evaluate the single chosen model on the test set once. Expect the test number to be meaningfully lower.'),
+      'You reported the maximum of 200 noisy estimates, and the maximum of noisy estimates sits above the average of what they estimate. So the number is biased upward even though no gradient ever touched the test set. The fix is to select on a validation set and then evaluate the single chosen model on the test set once — and to expect that number to be meaningfully lower than the one you were admiring.'),
 
     recap(`- Define true risk and empirical risk, and say precisely why one is computable and the other is not.
+- Explain why an average over a sample estimates an average over a population, and why that argument fails for a
+  model you chose using that sample.
 - Name the two assumptions that make ERM work, and give a real situation that breaks each.
-- Explain No Free Lunch, then explain why it does not mean "all models are equally good in practice".
+- State No Free Lunch, then explain why it does not mean all models are equally good in practice.
 - Read off the inductive bias of a model you are considering, and predict whether it will win on small or large
   data.
-- Say why selecting a model on the test set turns your test score into a lie, in terms of the maximum of noisy
+- Say why selecting a model on the test set turns the test score into a lie, in terms of the maximum of noisy
   estimates.`),
   ],
   refs: [
     book('Understanding Machine Learning: From Theory to Algorithms', 'Shalev-Shwartz & Ben-David', 2014, 'https://www.cs.huji.ac.il/~shais/UnderstandingMachineLearning/', 'Free PDF. The rigorous foundation for everything in this lesson.'),
     book('The Elements of Statistical Learning', 'Hastie, Tibshirani & Friedman', 2009, 'https://hastie.su.domains/ElemStatLearn/', 'Free PDF. The standard reference for classical ML.'),
     paper('The Lack of A Priori Distinctions Between Learning Algorithms', 'David Wolpert', 1996, 'https://doi.org/10.1162/neco.1996.8.7.1341', 'The No Free Lunch theorem, in the original.'),
-    paper('Understanding deep learning requires rethinking generalization', 'Zhang et al.', 2016, 'https://arxiv.org/abs/1611.03530', 'Deep nets fit random labels perfectly and still generalize on real ones. The paper that broke classical capacity theory.'),
+    paper('Understanding deep learning requires rethinking generalization', 'Zhang et al.', 2016, 'https://arxiv.org/abs/1611.03530', 'Deep networks fit random labels perfectly and still generalise on real ones. The paper that broke classical capacity theory.'),
   ],
 },
-
-/* ---------------------------------------------------------- */
 {
   id: 'ml-linear-regression',
   title: 'Linear Regression',

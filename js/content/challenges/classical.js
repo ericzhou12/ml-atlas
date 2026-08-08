@@ -12,14 +12,19 @@
 export default {
 
 'ml-framing': {
-  title: 'Watch empirical risk lie to you',
-  prompt: `Fit a model on $n$ points and compare its training error to its error on a huge fresh sample. Plot the gap
-against $n$. How much data do you need before the training error is trustworthy?`,
-  hint: 'Training error is optimistically biased because you chose the parameters to minimize exactly that quantity.',
-  starter: `import numpy as np
-import matplotlib.pyplot as plt
+  title: 'Watch empirical risk lie to you, twice',
+  prompt: `Two ways the number on your screen can be better than the truth.
 
+1. **Fitting.** \`fit_and_measure(n)\` should fit a model on $n$ points and return its error on those same
+   points alongside its error on a large fresh sample. Fill it in, then read how the gap behaves as $n$ grows
+   and as the model gets more flexible.
+2. **Selecting.** The second block never trains on the test set at all — it just picks whichever of $K$ honest
+   models scores best on it. Watch the reported score climb with $K$ while the *fresh* score of the same chosen
+   model does not. **Predict what happens before running it.**`,
+  hint: '`np.polyfit(x, y, deg)` returns coefficients; `np.polyval(w, x)` evaluates them. For part 2, nothing needs implementing — read the two columns and compare.',
+  starter: `import numpy as np
 rng = np.random.default_rng(0)
+
 true_f = lambda x: 1.5*x - 0.4
 NOISE = 0.5
 
@@ -27,21 +32,47 @@ def sample(n):
     x = rng.uniform(-3, 3, n)
     return x, true_f(x) + rng.normal(0, NOISE, n)
 
-def fit_and_measure(n, deg=5):
+def fit_and_measure(n, deg):
+    """Fit a degree-deg polynomial on n points; return (error on those points,
+       error on 50,000 fresh ones)."""
     x, y = sample(n)
-    # TODO: fit a degree-\`deg\` polynomial, return (train_mse, test_mse)
+    # TODO
     return 0.0, 0.0
 
-ns, gaps = [], []
-for n in [8, 12, 20, 50, 100, 500, 2000]:
-    tr, te = fit_and_measure(n)
-    ns.append(n); gaps.append(te - tr)
-    print(f"n={n:5d}  train {tr:.4f}  test {te:.4f}  gap {te-tr:+.4f}")
-print(f"\\nirreducible noise floor: {NOISE**2:.4f}")`,
-  solution: `import numpy as np
-import matplotlib.pyplot as plt
+print("degree 1 (two parameters):")
+for n in [8, 12, 20, 50, 200, 2000]:
+    tr, te = fit_and_measure(n, 1)
+    print(f"  n={n:5d}   train {tr:.4f}   fresh {te:.4f}   gap {te-tr:+.4f}")
 
+print("\\ndegree 8 (nine parameters), same data sizes:")
+for n in [12, 20, 50, 200, 2000]:
+    tr, te = fit_and_measure(n, 8)
+    print(f"  n={n:5d}   train {tr:.4f}   fresh {te:.4f}   gap {te-tr:+.4f}")
+
+print(f"\\nirreducible noise floor: {NOISE**2:.4f}")
+tr, te = fit_and_measure(2000, 1)
+assert abs(te - NOISE**2) < 0.05, "with plenty of data the honest error should approach the noise floor"
+assert fit_and_measure(12, 8)[0] < NOISE**2, "a flexible model on 12 points should beat the noise floor on its own data"
+print("PASS\\n")
+
+# ---------- part 2: choosing on the test set, without ever training on it ----------
+# 400 candidate classifiers that are all, provably, exactly 50% accurate:
+# each one just guesses at random. Then pick the "best" one by test accuracy.
+rng2 = np.random.default_rng(1)
+N_TEST, K = 500, 400
+y_test    = rng2.integers(0, 2, N_TEST)
+guesses   = rng2.integers(0, 2, (K, N_TEST))
+test_acc  = (guesses == y_test).mean(axis=1)
+
+print("   K   best-of-K test accuracy   the SAME model, on fresh data")
+for k in [1, 5, 25, 100, 400]:
+    best = int(np.argmax(test_acc[:k]))
+    y_fresh = rng2.integers(0, 2, 100_000)
+    fresh   = (rng2.integers(0, 2, 100_000) == y_fresh).mean()
+    print(f"{k:5d}             {test_acc[best]:.4f}                    {fresh:.4f}")`,
+  solution: `import numpy as np
 rng = np.random.default_rng(0)
+
 true_f = lambda x: 1.5*x - 0.4
 NOISE = 0.5
 
@@ -49,7 +80,7 @@ def sample(n):
     x = rng.uniform(-3, 3, n)
     return x, true_f(x) + rng.normal(0, NOISE, n)
 
-def fit_and_measure(n, deg=5):
+def fit_and_measure(n, deg):
     x, y = sample(n)
     w = np.polyfit(x, y, deg)
     xt, yt = sample(50_000)
@@ -57,19 +88,52 @@ def fit_and_measure(n, deg=5):
     te = np.mean((np.polyval(w, xt) - yt) ** 2)
     return tr, te
 
-ns, gaps = [], []
-for n in [8, 12, 20, 50, 100, 500, 2000]:
-    tr, te = fit_and_measure(n)
-    ns.append(n); gaps.append(te - tr)
-    print(f"n={n:5d}  train {tr:.4f}  test {te:.4f}  gap {te-tr:+.4f}")
+print("degree 1 (two parameters):")
+for n in [8, 12, 20, 50, 200, 2000]:
+    tr, te = fit_and_measure(n, 1)
+    print(f"  n={n:5d}   train {tr:.4f}   fresh {te:.4f}   gap {te-tr:+.4f}")
+
+print("\\ndegree 8 (nine parameters), same data sizes:")
+for n in [12, 20, 50, 200, 2000]:
+    tr, te = fit_and_measure(n, 8)
+    print(f"  n={n:5d}   train {tr:.4f}   fresh {te:.4f}   gap {te-tr:+.4f}")
+
 print(f"\\nirreducible noise floor: {NOISE**2:.4f}")
+tr, te = fit_and_measure(2000, 1)
+assert abs(te - NOISE**2) < 0.05
+assert fit_and_measure(12, 8)[0] < NOISE**2
+print("PASS\\n")
 
-plt.semilogx(ns, gaps, "o-")
-plt.axhline(0, ls="--", lw=1)
-plt.xlabel("training points"); plt.ylabel("test - train MSE")
-plt.title("the optimism of empirical risk")`,
+# ---------- part 2: choosing on the test set, without ever training on it ----------
+# 400 candidate classifiers that are all, provably, exactly 50% accurate:
+# each one just guesses at random. Then pick the "best" one by test accuracy.
+rng2 = np.random.default_rng(1)
+N_TEST, K = 500, 400
+y_test    = rng2.integers(0, 2, N_TEST)
+guesses   = rng2.integers(0, 2, (K, N_TEST))
+test_acc  = (guesses == y_test).mean(axis=1)
+
+print("   K   best-of-K test accuracy   the SAME model, on fresh data")
+for k in [1, 5, 25, 100, 400]:
+    best = int(np.argmax(test_acc[:k]))
+    y_fresh = rng2.integers(0, 2, 100_000)
+    fresh   = (rng2.integers(0, 2, 100_000) == y_fresh).mean()
+    print(f"{k:5d}             {test_acc[best]:.4f}                    {fresh:.4f}")`,
+  explain: `Part 1: compare the two tables. The degree-1 rows bounce around zero, because a two-parameter line
+has essentially nothing to overfit. The degree-8 rows are a different world: at $n=12$ the training error drops
+*below* the noise floor — impossible for any honest model, since 0.25 is the error of the true function itself —
+and the fresh error is catastrophic. Nine parameters and twelve points means the model spent its freedom
+memorising noise. That is [overfitting](#/l/ml-overfitting), arriving a lesson early.
+
+Part 2 is the one worth sitting with. Every one of those 400 classifiers is a coin flip, so every one of them
+has a true accuracy of exactly 50% — there is no better model in the pool to find. Yet best-of-400 reports about
+**57%**, and it reports it honestly: that model really did get 57% on the test set. The right-hand column, the
+same model measured on data that played no part in choosing it, sits at 50% every time.
+
+Nothing improper happened anywhere. No model trained on the test set. The only thing that grew was the number of
+candidates allowed to compete, and the maximum of many noisy numbers drifts upward on its own. A seven-point
+lead, conjured out of nothing but looking. This is why the rule is to look once.`,
 },
-
 'ml-linear-regression': {
   title: 'Three ways to solve least squares, and one that breaks',
   prompt: `Solve the same regression with the normal equations, \`lstsq\`, and gradient descent. Then add a
