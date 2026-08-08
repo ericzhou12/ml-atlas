@@ -264,58 +264,98 @@ predicts exactly as well as before, while every story you might tell about an in
 worthless. Nothing in the fit fails loudly; only the standard errors give it away. Regularization, in [the next lessons](#/l/ml-regularization), is how you force the fit
 to pick a sensible split.`,
 },
+
 'ml-overfitting': {
-  title: 'Reproduce the bias-variance decomposition numerically',
-  prompt: `Fit the same model to many independent datasets, then estimate bias² and variance directly from the
-definitions and check that they sum to the expected test error minus noise.`,
-  hint: 'Bias² is $(\\overline{\\hat f}(x) - f(x))^2$; variance is the spread of $\\hat f(x)$ around its own mean.',
+  title: 'Reproduce the bias–variance decomposition, and check that it is really an identity',
+  prompt: `The lesson said the three-way split is an exact identity, not an approximation. Test that claim.
+
+The setup fits the same polynomial to 400 independently drawn datasets, so you can see the whole cloud of
+models the dartboard picture describes, rather than the single dart you normally get.
+
+1. From that cloud, compute **bias²** — how far the *average* model is from the truth — and **variance** — how
+   much the individual models scatter around their own average.
+2. The script separately measures the actual expected test error by brute force. Your two numbers plus $\\sigma^2$
+   have to match it. The assertion checks that they do.
+3. Then read the table and find where the total is smallest.`,
+  hint: '`P` has one row per dataset and one column per grid point. `P.mean(0)` is the average model; `P.var(0)` is the per-point variance. Average each over the grid.',
   starter: `import numpy as np
-
 rng = np.random.default_rng(0)
+
 truth = lambda x: np.sin(2.2*x)*1.3 + 0.35*x
-NOISE, N_DATA, N_REP = 0.35, 12, 300
-grid = np.linspace(-2.4, 2.4, 60)
+NOISE, N_DATA, N_REP = 0.35, 30, 400
+grid = np.linspace(-2.2, 2.2, 60)
 
 def fit_many(deg):
-    preds = []
+    """Fit the same model to N_REP independent datasets. Returns (N_REP, len(grid))."""
+    out = []
     for _ in range(N_REP):
         x = rng.uniform(-2.5, 2.5, N_DATA)
         y = truth(x) + rng.normal(0, NOISE, N_DATA)
-        w = np.polyfit(x, y, deg)
-        preds.append(np.polyval(w, grid))
-    return np.array(preds)      # (N_REP, len(grid))
+        out.append(np.polyval(np.polyfit(x, y, deg), grid))
+    return np.array(out)
 
-print(f"{'deg':>4} {'bias^2':>9} {'variance':>10} {'+noise':>9} {'= total':>9}")
-for deg in [0, 1, 3, 6, 9, 11]:
+def bias2_and_var(P):
+    # TODO: return (bias^2, variance), each averaged over the grid
+    return 0.0, 0.0
+
+def measured_test_error(P):
+    """Brute force: draw a fresh noisy y at every grid point for every model, and
+       average the squared error. This is the left-hand side of the identity."""
+    noise = rng.normal(0, NOISE, P.shape)
+    return np.mean((truth(grid)[None, :] + noise - P) ** 2)
+
+print(f"{'deg':>4} {'bias^2':>9} {'variance':>10} {'noise':>8} {'sum':>9} {'measured':>10}")
+for deg in [0, 1, 2, 3, 5, 7, 9]:
     P = fit_many(deg)
-    # TODO: compute bias2 and var from P and truth(grid)
-    bias2, var = 0.0, 0.0
-    print(f"{deg:4d} {bias2:9.4f} {var:10.4f} {NOISE**2:9.4f} {bias2+var+NOISE**2:9.4f}")`,
+    b2, v = bias2_and_var(P)
+    total, meas = b2 + v + NOISE**2, measured_test_error(P)
+    print(f"{deg:4d} {b2:9.4f} {v:10.4f} {NOISE**2:8.4f} {total:9.4f} {meas:10.4f}")
+    assert abs(total - meas) / meas < 0.05, f"the identity failed at degree {deg}"
+print("\\nPASS -- the three parts add up to the measured error at every degree")`,
   solution: `import numpy as np
-
 rng = np.random.default_rng(0)
+
 truth = lambda x: np.sin(2.2*x)*1.3 + 0.35*x
-NOISE, N_DATA, N_REP = 0.35, 12, 300
-grid = np.linspace(-2.4, 2.4, 60)
+NOISE, N_DATA, N_REP = 0.35, 30, 400
+grid = np.linspace(-2.2, 2.2, 60)
 
 def fit_many(deg):
-    preds = []
+    out = []
     for _ in range(N_REP):
         x = rng.uniform(-2.5, 2.5, N_DATA)
         y = truth(x) + rng.normal(0, NOISE, N_DATA)
-        preds.append(np.polyval(np.polyfit(x, y, deg), grid))
-    return np.array(preds)
+        out.append(np.polyval(np.polyfit(x, y, deg), grid))
+    return np.array(out)
 
-print(f"{'deg':>4} {'bias^2':>9} {'variance':>10} {'+noise':>9} {'= total':>9}")
-for deg in [0, 1, 3, 6, 9, 11]:
-    P = fit_many(deg)
+def bias2_and_var(P):
     mean_pred = P.mean(0)
-    bias2 = np.mean((mean_pred - truth(grid)) ** 2)
-    var = np.mean(P.var(0))
-    print(f"{deg:4d} {bias2:9.4f} {var:10.4f} {NOISE**2:9.4f} {bias2+var+NOISE**2:9.4f}")`,
-  explain: 'Bias falls monotonically with degree while variance climbs, and their sum has a minimum in the middle. Notice how violently variance explodes past degree 9 with only 12 data points.',
-},
+    return np.mean((mean_pred - truth(grid)) ** 2), np.mean(P.var(0))
 
+def measured_test_error(P):
+    noise = rng.normal(0, NOISE, P.shape)
+    return np.mean((truth(grid)[None, :] + noise - P) ** 2)
+
+print(f"{'deg':>4} {'bias^2':>9} {'variance':>10} {'noise':>8} {'sum':>9} {'measured':>10}")
+for deg in [0, 1, 2, 3, 5, 7, 9]:
+    P = fit_many(deg)
+    b2, v = bias2_and_var(P)
+    total, meas = b2 + v + NOISE**2, measured_test_error(P)
+    print(f"{deg:4d} {b2:9.4f} {v:10.4f} {NOISE**2:8.4f} {total:9.4f} {meas:10.4f}")
+    assert abs(total - meas) / meas < 0.05, f"the identity failed at degree {deg}"
+print("\\nPASS -- the three parts add up to the measured error at every degree")`,
+  explain: `Read the two right-hand columns first: they agree at every degree, which is the identity from the
+derivation confirmed by measurement rather than algebra.
+
+Then read the two left-hand columns against each other. Bias² falls steadily as the degree rises — more
+flexibility lets the average model track the truth more closely, from 0.92 down to almost nothing. Variance
+climbs the whole way, from 0.03 to nearly 2.0, because with thirty points a degree-9 curve is pulled somewhere
+different by every dataset. Their sum bottoms out at **degree 5**, where the true function stops being
+misrepresented and the scatter has not yet taken over. Neither column alone would have told you to stop there.
+
+Note what you had to do to compute any of this: fit 400 separate datasets. In real work you have one. That is
+why bias and variance are a way of *thinking* about error rather than a diagnostic you can run — and why
+cross-validation, which fakes a handful of extra datasets out of the one you have, is the practical stand-in.`,
+},
 'ml-regularization': {
   title: 'Implement Lasso with coordinate descent',
   prompt: `Write the soft-thresholding update and use it to recover a sparse signal. Verify Lasso produces *exactly*

@@ -577,6 +577,24 @@ different models. The decomposition is a statement about that collection.
 - **Noise** — the randomness in $y$ itself. Irreducible. No model, however good, beats this floor, and a
   model that appears to beat it is leaking.`),
 
+    deriv('Where the three terms come from', `The whole derivation is one trick — add and subtract the same thing — plus the expectation rules from [the probability lesson](#/l/math-probability). Fix an input $\\mathbf{x}$ and write $\\bar f = \\mathbb{E}[\\hat f(\\mathbf{x})]$ for the average prediction across training sets. The truth is $y = f(\\mathbf{x}) + \\epsilon$ with $\\mathbb{E}[\\epsilon] = 0$ and $\\text{Var}(\\epsilon) = \\sigma^2$.
+
+**Step 1: split off the noise.** The noise $\\epsilon$ is independent of anything the model does, so
+
+$$\\mathbb{E}\\big[(y - \\hat f)^2\\big] = \\mathbb{E}\\big[(f + \\epsilon - \\hat f)^2\\big] = \\mathbb{E}\\big[(f - \\hat f)^2\\big] + \\underbrace{\\mathbb{E}[\\epsilon^2]}_{\\sigma^2}$$
+
+The cross term $2\\mathbb{E}[\\epsilon(f - \\hat f)]$ vanishes because $\\epsilon$ is independent with mean zero.
+
+**Step 2: add and subtract the average prediction.** Inside the remaining term, write $f - \\hat f = (f - \\bar f) + (\\bar f - \\hat f)$ and expand the square:
+
+$$\\mathbb{E}\\big[(f - \\hat f)^2\\big] = \\underbrace{(f - \\bar f)^2}_{\\text{bias}^2} + \\mathbb{E}\\big[(\\bar f - \\hat f)^2\\big] + 2(f - \\bar f)\\,\\mathbb{E}\\big[\\bar f - \\hat f\\big]$$
+
+The first term has no randomness left in it — both $f$ and $\\bar f$ are fixed numbers — so the expectation does nothing to it. The last term dies because $\\mathbb{E}[\\bar f - \\hat f] = \\bar f - \\bar f = 0$: the average prediction is, by definition, the average of the predictions.
+
+$$\\mathbb{E}\\big[(y-\\hat f)^2\\big] = \\underbrace{(f - \\bar f)^2}_{\\text{bias}^2} + \\underbrace{\\mathbb{E}[(\\hat f - \\bar f)^2]}_{\\text{variance}} + \\underbrace{\\sigma^2}_{\\text{noise}}$$
+
+Every step was exact, which is why this is an identity rather than an approximation — and why the three numbers really do add up when you measure them, as the challenge does.`),
+
     diagram('Bias and variance, as a dartboard',
 `<svg viewBox="0 0 620 220" role="img" aria-label="Four dartboards showing high and low bias crossed with high and low variance">
   <g transform="translate(30,20)">
@@ -652,9 +670,16 @@ At $d = n$ there is essentially **one** way to fit the data exactly, and the mod
 the cost — typically enormous, precariously balanced weights that cancel each other out. It is the worst of both
 worlds: no flexibility to choose a sensible fit, and no slack to ignore the noise.
 
-Push past $d = n$ and suddenly there are *many* exact fits available. Now the question becomes which one
-gradient descent picks — and it turns out to pick something close to the minimum-norm solution, which is the
-smooth one. More parameters gave the optimizer room to choose well.`),
+Push past $d = n$ and suddenly there are *many* exact fits available. Now the question becomes which one the
+optimizer picks — and gradient descent, started from small weights, tends to settle on the one with the smallest
+weights that still fits, which is also the smoothest one. More parameters did not give the model more ways to go
+wrong; they gave the optimizer room to choose well among fits that were all equally correct on the training
+data.
+
+Notice that this is a claim about the *optimizer*, not about the model class. The extra capacity is there
+either way; what changed is that gradient descent has a preference, and the preference happens to be a good one.
+That preference has a name — **implicit regularization** — and pinning down exactly what it prefers, and why it
+generalises, is one of the more active open questions in the field.`),
 
     warn(`This is not a curiosity from a toy experiment. **It is the regime every modern deep network lives
 in**: far more parameters than training examples, training loss driven to essentially zero, and good
