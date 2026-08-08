@@ -161,7 +161,8 @@ print("\\neffect of the discount factor on the value of the start state:")
 for g in [0.5, 0.9, 0.95, 0.99]:
     Vg, _ = value_iteration(g)
     print(f"  gamma={g:.2f}: V(0,0)={Vg[(0,0)]:+.4f}   "
-          f"reward 10 steps away is worth {g**10:.3f}")`),
+          f"reward 10 steps away is worth {g**10:.3f}")`,
+      'Watch the values spread outward from the goal. On the first sweep only the squares adjacent to a reward have a nonzero value; each further sweep pushes that information one step further back. That is what the Bellman backup does — it is not solving anything globally, only repeatedly asking each square \'what is the best I can do in one step, plus the discounted value of where I land\'. Policy iteration converges in far fewer sweeps because it re-derives the whole policy each round rather than nudging values; on small problems it is usually the faster of the two.'),
 
     quiz('Why does the optimal policy avoid tiles next to the trap when the slip probability is high?',
       ['Expected value accounts for the chance of slipping into the −1 square, so a longer safer path can be worth more',
@@ -338,7 +339,8 @@ def bandit(strategy, arms=(0.3,0.5,0.55,0.2), T=2000):
 
 print("cumulative regret over 2000 pulls (lower is better):")
 for st in ["greedy", "eps", "ucb", "thompson"]:
-    print(f"  {st:10s} {np.mean([bandit(st) for _ in range(20)]):7.1f}")`),
+    print(f"  {st:10s} {np.mean([bandit(st) for _ in range(20)]):7.1f}")`,
+      'The one-character difference between the two updates is the whole lesson: Q-learning uses the value of the *best* next action, SARSA the value of the action it will *actually take* — exploration included. That is why SARSA\'s estimates near the cliff are worse and its learned path is safer. Neither is more correct; they are learning the values of different policies, and which you want depends on whether mistakes during learning are expensive.'),
 
     quiz('Why does DQN need a separate target network?',
       ['Without it the TD target shifts every update, so the network chases a moving target and can diverge',
@@ -502,7 +504,8 @@ for r in [0.5, 0.8, 1.0, 1.2, 1.5, 2.0]:
     note = ""
     if r > 1.2: note = "clipped for A>0 -> no gradient"
     elif r < 0.8: note = "clipped for A<0 -> no gradient"
-    print(f"{r:7.1f} {pos:8.2f} {neg:8.2f}  {note}")`),
+    print(f"{r:7.1f} {pos:8.2f} {neg:8.2f}  {note}")`,
+      'Compare the two gradient-variance numbers. The baseline changes nothing about where training converges — subtracting it multiplies a quantity whose expectation is zero — and yet the estimator is dramatically less noisy. That is why every practical policy-gradient method uses one, and why the value function in actor–critic exists: it is a learned baseline.'),
 
     quiz('Why does subtracting a baseline from the return leave the policy gradient unbiased?',
       ['E[∇log π(a|s)] = 0 for any fixed state, so the baseline term contributes zero in expectation',
@@ -679,7 +682,8 @@ def dpo_loss(logp_pos, logp_neg, ref_pos, ref_neg, beta=0.1):
 print("\\nDPO loss as the policy learns to prefer the chosen response:")
 for shift in [-1.0, 0.0, 1.0, 3.0]:
     print(f"  policy favours chosen by {shift:+.1f} nats -> "
-          f"loss {dpo_loss(shift, 0.0, 0.0, 0.0, beta=1.0):.4f}")`),
+          f"loss {dpo_loss(shift, 0.0, 0.0, 0.0, beta=1.0):.4f}")`,
+      'The Bradley–Terry loss is doing something worth naming: it never sees an absolute score, only which of two things a human preferred, and from that alone it reconstructs a reward function up to an additive constant. That is what makes RLHF trainable, since humans are far better at comparing two outputs than at scoring one. The DPO block then shows why the reward model can sometimes be skipped entirely — the same preference objective can be written directly in terms of the policy.'),
 
     quiz('Why does the RLHF objective include a KL penalty to the SFT model?',
       ['The reward model is only accurate near its training distribution; the penalty keeps the policy where the proxy is still valid',
