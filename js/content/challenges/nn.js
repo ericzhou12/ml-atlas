@@ -12,10 +12,14 @@
 export default {
 
 'nn-perceptron-mlp': {
-  title: 'Solve XOR, and prove a linear model cannot',
-  prompt: `Train a 2-layer MLP on XOR until the loss is near zero. Then set the hidden activation to the identity and
-confirm it plateaus at chance — no width or training time rescues it.`,
-  hint: 'Composing linear maps gives another linear map. XOR is not linearly separable, so no linear model can fit it.',
+  title: 'Solve XOR, prove a linear model cannot, then look at the features it invented',
+  prompt: `1. Complete the backward pass and train a 2-layer MLP on XOR until the loss is near zero. Then rerun it
+   with the hidden activation set to the identity and watch it plateau — no width and no amount of training
+   rescues it.
+2. **Look at what the hidden layer built.** The last block feeds the four inputs through the trained hidden
+   layer and then checks whether the four points have become linearly separable *in those new coordinates*.
+   The lesson claimed a network is "logistic regression that invents its own features" — this is the check.`,
+  hint: 'Backward pass, top to bottom: `d2 = (p - y)/len(X)` from the sigmoid-plus-cross-entropy collapse; then `gW2 = h.T @ d2`; then `d1 = (d2 @ W2.T) * df(z1)`; then `gW1 = X.T @ d1`. Every line is one of the rules from the Jacobian lesson.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -23,20 +27,46 @@ X = np.array([[0.,0.], [0.,1.], [1.,0.], [1.,1.]])
 y = np.array([[0.], [1.], [1.], [0.]])
 
 def train(act, width=8, steps=4000, lr=0.5):
-    W1 = rng.normal(0, np.sqrt(2/2), (2, width)); b1 = np.zeros(width)
-    W2 = rng.normal(0, np.sqrt(2/width), (width, 1)); b2 = np.zeros(1)
+    r = np.random.default_rng(0)
+    W1 = r.normal(0, 1.0, (2, width)); b1 = np.zeros(width)
+    W2 = r.normal(0, np.sqrt(2/width), (width, 1)); b2 = np.zeros(1)
     f  = (lambda z: np.maximum(0, z)) if act == "relu" else (lambda z: z)
     df = (lambda z: (z > 0).astype(float)) if act == "relu" else (lambda z: np.ones_like(z))
     for t in range(steps):
         z1 = X @ W1 + b1; h = f(z1)
         p = 1/(1+np.exp(-(h @ W2 + b2)))
-        # TODO: backward pass and SGD update
+        # TODO: backward pass, then subtract lr * gradient from each of W1, b1, W2, b2
         pass
-    return float(-np.mean(y*np.log(p+1e-12) + (1-y)*np.log(1-p+1e-12))), p.ravel()
+    loss = float(-np.mean(y*np.log(p+1e-12) + (1-y)*np.log(1-p+1e-12)))
+    return loss, p.ravel(), (W1, b1, f)
 
 for act in ["relu", "identity"]:
-    loss, preds = train(act)
-    print(f"{act:9s} loss {loss:.5f}  preds {preds.round(3)}  target {y.ravel()}")`,
+    loss, preds, _ = train(act)
+    print(f"{act:9s} loss {loss:.5f}   preds {preds.round(3)}   target {y.ravel()}")
+
+loss_relu, _, (W1, b1, f) = train("relu")
+loss_lin,  _, _           = train("identity")
+assert loss_relu < 0.05,        "the ReLU network should fit XOR almost exactly"
+assert abs(loss_lin - np.log(2)) < 0.02, "the linear one should sit at ln(2) = 0.693, pure chance"
+print("PASS\\n")
+
+# ---------- what did the hidden layer build? ----------
+H = f(X @ W1 + b1)
+print("the four inputs, re-described by the hidden layer:")
+for xi, hi, yi in zip(X, H, y.ravel()):
+    print(f"  {xi} (label {yi:.0f})  ->  {np.round(hi, 2)}")
+
+# are they linearly separable NOW? fit a plain linear model on H and see.
+Hb = np.c_[np.ones(4), H]
+w = np.linalg.lstsq(Hb, y.ravel()*2 - 1, rcond=None)[0]
+sep_after = ((Hb @ w > 0) == (y.ravel() > 0.5)).all()
+
+Xb = np.c_[np.ones(4), X]
+w0 = np.linalg.lstsq(Xb, y.ravel()*2 - 1, rcond=None)[0]
+sep_before = ((Xb @ w0 > 0) == (y.ravel() > 0.5)).all()
+
+print(f"\\nlinearly separable in the ORIGINAL coordinates? {sep_before}")
+print(f"linearly separable in the HIDDEN coordinates?   {sep_after}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -44,24 +74,61 @@ X = np.array([[0.,0.], [0.,1.], [1.,0.], [1.,1.]])
 y = np.array([[0.], [1.], [1.], [0.]])
 
 def train(act, width=8, steps=4000, lr=0.5):
-    W1 = rng.normal(0, 1.0, (2, width)); b1 = np.zeros(width)
-    W2 = rng.normal(0, np.sqrt(2/width), (width, 1)); b2 = np.zeros(1)
+    r = np.random.default_rng(0)
+    W1 = r.normal(0, 1.0, (2, width)); b1 = np.zeros(width)
+    W2 = r.normal(0, np.sqrt(2/width), (width, 1)); b2 = np.zeros(1)
     f  = (lambda z: np.maximum(0, z)) if act == "relu" else (lambda z: z)
     df = (lambda z: (z > 0).astype(float)) if act == "relu" else (lambda z: np.ones_like(z))
     for t in range(steps):
         z1 = X @ W1 + b1; h = f(z1)
         p = 1/(1+np.exp(-(h @ W2 + b2)))
-        d2 = (p - y) / len(X)                 # sigmoid + BCE collapse
+        d2 = (p - y) / len(X)
         gW2, gb2 = h.T @ d2, d2.sum(0)
         d1 = (d2 @ W2.T) * df(z1)
         gW1, gb1 = X.T @ d1, d1.sum(0)
-        W2 -= lr*gW2; b2 -= lr*gb2; W1 -= lr*gW1; b1 -= lr*gb1
-    return float(-np.mean(y*np.log(p+1e-12) + (1-y)*np.log(1-p+1e-12))), p.ravel()
+        W2 = W2 - lr*gW2; b2 = b2 - lr*gb2
+        W1 = W1 - lr*gW1; b1 = b1 - lr*gb1
+    loss = float(-np.mean(y*np.log(p+1e-12) + (1-y)*np.log(1-p+1e-12)))
+    return loss, p.ravel(), (W1, b1, f)
 
 for act in ["relu", "identity"]:
-    loss, preds = train(act)
-    print(f"{act:9s} loss {loss:.5f}  preds {preds.round(3)}  target {y.ravel()}")`,
-  explain: 'The identity version converges to predicting 0.5 everywhere — loss ≈ 0.693 = ln 2, exactly chance. That is the 1969 Minsky-Papert result, reproduced in ten lines.',
+    loss, preds, _ = train(act)
+    print(f"{act:9s} loss {loss:.5f}   preds {preds.round(3)}   target {y.ravel()}")
+
+loss_relu, _, (W1, b1, f) = train("relu")
+loss_lin,  _, _           = train("identity")
+assert loss_relu < 0.05
+assert abs(loss_lin - np.log(2)) < 0.02
+print("PASS\\n")
+
+H = f(X @ W1 + b1)
+print("the four inputs, re-described by the hidden layer:")
+for xi, hi, yi in zip(X, H, y.ravel()):
+    print(f"  {xi} (label {yi:.0f})  ->  {np.round(hi, 2)}")
+
+Hb = np.c_[np.ones(4), H]
+w = np.linalg.lstsq(Hb, y.ravel()*2 - 1, rcond=None)[0]
+sep_after = ((Hb @ w > 0) == (y.ravel() > 0.5)).all()
+
+Xb = np.c_[np.ones(4), X]
+w0 = np.linalg.lstsq(Xb, y.ravel()*2 - 1, rcond=None)[0]
+sep_before = ((Xb @ w0 > 0) == (y.ravel() > 0.5)).all()
+
+print(f"\\nlinearly separable in the ORIGINAL coordinates? {sep_before}")
+print(f"linearly separable in the HIDDEN coordinates?   {sep_after}")`,
+  explain: `Part 1: the identity version settles at a loss of $\\ln 2 \\approx 0.693$ and predicts 0.5 for every
+input. That is not slow convergence — 0.693 is exactly the loss of a model that has given up and is guessing,
+and it is where a linear model *must* end up on XOR. This is the 1969 Minsky–Papert result, reproduced in a
+dozen lines.
+
+Part 2 is the point of having a hidden layer at all. In the original coordinates the four points are not
+linearly separable, and the last two lines confirm it. After passing through the trained hidden layer they are.
+Nothing was added — no new information about XOR entered the picture — the hidden layer simply re-described each
+input as a list of eight numbers, and in that description a plain weighted sum suffices.
+
+That is the whole architecture in miniature. The final layer of any classifier is a linear model; everything
+before it exists to hand that linear model a description it can work with. Deep learning is the discovery that
+gradient descent can find such descriptions on its own, for problems far harder than XOR.`,
 },
 
 'nn-backprop': {

@@ -127,6 +127,15 @@ never work, at any width or depth. Then switch to ReLU.`),
 
     viz('mlp-playground'),
 
+    steps('Two hidden units solving XOR, by hand', [
+      { h: 'The problem', md: `XOR is 1 when exactly one input is 1: the points $(0,1)$ and $(1,0)$ are positive, while $(0,0)$ and $(1,1)$ are negative. Plot those four points and the two positives sit on opposite corners of the square, so no straight line can put them on one side and the negatives on the other.` },
+      { h: 'Build a unit that detects "at least one input is on"', md: `Set $h_1 = \\text{ReLU}(x_1 + x_2 - 0.5)$. On the four inputs this gives $0,\\ 0.5,\\ 0.5,\\ 1.5$ — zero only for $(0,0)$.` },
+      { h: 'Build a unit that detects "both inputs are on"', md: `Set $h_2 = \\text{ReLU}(x_1 + x_2 - 1.5)$. This gives $0,\\ 0,\\ 0,\\ 0.5$ — nonzero only for $(1,1)$.` },
+      { h: 'Subtract one from the other', md: `Take $\\hat y = 2h_1 - 4h_2$, giving $0,\\ 1,\\ 1,\\ 1$ for the first three... and $2(1.5) - 4(0.5) = 1$ for the last. Not right yet — so scale the second unit harder: $\\hat y = 2h_1 - 6h_2$ gives $0,\\ 1,\\ 1,\\ 0$. That is XOR, exactly.` },
+      { h: 'What just happened', md: `The two hidden units re-described each input as a pair of numbers $(h_1, h_2)$, and in *those* coordinates the four points became linearly separable — the output layer is a plain weighted sum, and it worked. Nothing was added but a change of description. That is what "the hidden layer invents features" means in the smallest possible case.` },
+    ]),
+
+
     t(`## What the hidden layer is doing
 
 Two complementary readings. Neither is more correct; having both available is what lets you reason about
@@ -153,8 +162,9 @@ one.`),
 
     t(`## Universal approximation, and what it does not say
 
-**Theorem** (Cybenko 1989, Hornik 1991): a network with one hidden layer and a non-polynomial activation can
-approximate any continuous function on a compact set to arbitrary accuracy, given enough hidden units.
+**Theorem** (Cybenko 1989, Hornik 1991): a network with a single hidden layer can approximate any continuous
+function, to any accuracy you name, given enough hidden units — provided the activation is not a polynomial, and
+provided you only care about a bounded region of input space rather than all the way out to infinity.
 
 This is much weaker than it sounds:
 
@@ -230,7 +240,7 @@ print("A linear model cannot do this. Two hidden layers solve it in seconds.")`,
        'A network that can still fit XOR, just less efficiently',
        'A polynomial model of degree 10'],
       0,
-      '$W_{10}(W_9(\\cdots W_1\\mathbf{x})) = (W_{10}\\cdots W_1)\\mathbf{x} = W_{\\text{eff}}\\mathbf{x}$. Depth without nonlinearity buys exactly nothing in expressiveness — although it does change the *optimization* dynamics, which is a genuinely interesting research topic (deep linear networks have non-convex loss surfaces and implicit low-rank bias).'),
+      '$W_{10}(W_9(\\cdots W_1\\mathbf{x})) = (W_{10}\\cdots W_1)\\mathbf{x} = W_{\\text{eff}}\\mathbf{x}$ — one matrix, so one linear layer. Depth without a nonlinearity buys exactly nothing in what the model can represent. It does change how *training* behaves, which is a real research topic in its own right, but no amount of training can make a linear model fit XOR.'),
 
     recap(`- Explain what XOR proved about single-layer models, and what it did *not* prove about multilayer ones.
 - Show algebraically why stacked linear layers collapse, and say what the nonlinearity prevents.
