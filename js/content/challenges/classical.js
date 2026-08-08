@@ -946,11 +946,15 @@ Part 3 is why the trick generalises. For the RBF kernel there is no finite $\\ph
 does not matter: every eigenvalue of its similarity table is non-negative, which is precisely the condition for
 that table to be a table of dot products in *some* space. The algorithm only ever needed the table.`,
 },
+
 'ml-unsupervised': {
-  title: 'k-means, and how much the initialization matters',
-  prompt: `Implement Lloyd's algorithm, then run it from 20 random initializations on the same data and report the
-spread of final inertias. Add k-means++ seeding and compare.`,
-  hint: 'k-means++ picks each new centre with probability proportional to squared distance from the nearest existing centre.',
+  title: 'k-means: how much the initialization matters, and the shape it cannot see',
+  prompt: `1. **Initialization.** Implement Lloyd's algorithm — assign, then update, repeat. Run it from 20 random
+   starts on the same data and look at the spread of final inertias. Then swap in k-means++ seeding and compare
+   the spread.
+2. **The shape assumption.** The last block hands k-means two long parallel bands. It has the correct $k$, it
+   converges cleanly, and it reports a perfectly respectable inertia. Check whether it found the bands.`,
+  hint: 'Assignment: `((X[:,None] - C[None])**2).sum(-1).argmin(1)`. Update: move each centre to the mean of the points assigned to it, leaving it alone if it has no points.',
   starter: `import numpy as np
 rng = np.random.default_rng(2)
 
@@ -960,8 +964,10 @@ X = np.vstack([rng.normal([0,0], 0.4, (120,2)),
                rng.normal([3,0], 0.4, (120,2))])
 
 def lloyd(X, C, iters=100):
+    C = C.copy()
     for _ in range(iters):
-        # TODO: assign points to nearest centre, then move centres to the mean
+        # TODO: assign every point to its nearest centre,
+        #       then move every centre to the mean of its points
         pass
     d = ((X[:,None] - C[None])**2).sum(-1)
     a = d.argmin(1)
@@ -971,16 +977,48 @@ def init_random(X, k, r):
     return X[r.choice(len(X), k, replace=False)]
 
 def init_pp(X, k, r):
+    """k-means++: each new centre is chosen with probability proportional to
+       its squared distance from the nearest centre chosen so far."""
     C = [X[r.integers(len(X))]]
     for _ in range(k-1):
         d2 = ((X[:,None] - np.array(C)[None])**2).sum(-1).min(1)
         C.append(X[r.choice(len(X), p=d2/d2.sum())])
     return np.array(C)
 
+results = {}
 for name, init in [("random", init_random), ("k-means++", init_pp)]:
-    scores = [lloyd(X, init(X, 4, np.random.default_rng(s)))[2] for s in range(20)]
-    print(f"{name:10s} inertia: best {min(scores):7.2f}  worst {max(scores):7.2f}  "
-          f"spread {max(scores)-min(scores):7.2f}")`,
+    scores = [lloyd(X, init(X, 4, np.random.default_rng(s)))[2] for s in range(40)]
+    results[name] = scores
+    best = min(scores)
+    hits = sum(1 for v in scores if v < best*1.01)
+    print(f"{name:10s} over 40 starts:  best {best:7.2f}   worst {max(scores):7.2f}   "
+          f"reached the best answer {hits}/40 times")
+
+assert min(results["random"]) < 200, "Lloyd's algorithm does not look implemented"
+assert max(results["random"]) > 1.5 * min(results["random"]), \\
+    "some random starts should land in a clearly worse local optimum"
+print("PASS\\n")
+
+# ---------- the shape k-means cannot see ----------
+band = rng.uniform(-4, 4, 200)
+B = np.vstack([np.c_[band, np.full(200,  0.6) + rng.normal(0, .12, 200)],
+               np.c_[band, np.full(200, -0.6) + rng.normal(0, .12, 200)]])
+true_label = np.r_[np.zeros(200), np.ones(200)]     # which band each point is really in
+
+# do it properly: 20 restarts, keep the lowest inertia, exactly as part 1 advised
+best = None
+for s in range(20):
+    C, a, inertia = lloyd(B, init_pp(B, 2, np.random.default_rng(s)))
+    if best is None or inertia < best[2]:
+        best = (C, a, inertia)
+C, a, inertia = best
+agree = max((a == true_label).mean(), (a != true_label).mean())
+
+print("two long horizontal bands, k=2, best of 20 restarts:")
+print(f"  centres found:      {np.round(C, 2).tolist()}")
+print(f"  inertia:            {inertia:.1f}   (converged, no complaints)")
+print(f"  agreement with the real bands: {agree:.1%}")
+print("  50% agreement means the split has nothing to do with the true grouping.")`,
   solution: `import numpy as np
 rng = np.random.default_rng(2)
 
@@ -1000,7 +1038,8 @@ def lloyd(X, C, iters=100):
     a = d.argmin(1)
     return C, a, ((X - C[a])**2).sum()
 
-def init_random(X, k, r): return X[r.choice(len(X), k, replace=False)]
+def init_random(X, k, r):
+    return X[r.choice(len(X), k, replace=False)]
 
 def init_pp(X, k, r):
     C = [X[r.integers(len(X))]]
@@ -1009,13 +1048,61 @@ def init_pp(X, k, r):
         C.append(X[r.choice(len(X), p=d2/d2.sum())])
     return np.array(C)
 
+results = {}
 for name, init in [("random", init_random), ("k-means++", init_pp)]:
-    scores = [lloyd(X, init(X, 4, np.random.default_rng(s)))[2] for s in range(20)]
-    print(f"{name:10s} inertia: best {min(scores):7.2f}  worst {max(scores):7.2f}  "
-          f"spread {max(scores)-min(scores):7.2f}")`,
-  explain: 'Random seeding produces a wide spread of final inertias — k-means converges reliably to a *local* optimum that depends entirely on where it started. k-means++ narrows the spread substantially, which is why it is the default in every library.',
-},
+    scores = [lloyd(X, init(X, 4, np.random.default_rng(s)))[2] for s in range(40)]
+    results[name] = scores
+    best = min(scores)
+    hits = sum(1 for v in scores if v < best*1.01)
+    print(f"{name:10s} over 40 starts:  best {best:7.2f}   worst {max(scores):7.2f}   "
+          f"reached the best answer {hits}/40 times")
 
+assert min(results["random"]) < 200
+assert max(results["random"]) > 1.5 * min(results["random"])
+print("PASS\\n")
+
+band = rng.uniform(-4, 4, 200)
+B = np.vstack([np.c_[band, np.full(200,  0.6) + rng.normal(0, .12, 200)],
+               np.c_[band, np.full(200, -0.6) + rng.normal(0, .12, 200)]])
+true_label = np.r_[np.zeros(200), np.ones(200)]
+
+# do it properly: 20 restarts, keep the lowest inertia, exactly as part 1 advised
+best = None
+for s in range(20):
+    C, a, inertia = lloyd(B, init_pp(B, 2, np.random.default_rng(s)))
+    if best is None or inertia < best[2]:
+        best = (C, a, inertia)
+C, a, inertia = best
+agree = max((a == true_label).mean(), (a != true_label).mean())
+
+print("two long horizontal bands, k=2, best of 20 restarts:")
+print(f"  centres found:      {np.round(C, 2).tolist()}")
+print(f"  inertia:            {inertia:.1f}   (converged, no complaints)")
+print(f"  agreement with the real bands: {agree:.1%}")
+print("  50% agreement means the split has nothing to do with the true grouping.")`,
+  explain: `Part 1: identical data, identical algorithm, forty different answers. The best is around 156 and the worst is
+over 650 — more than four times worse — because Lloyd's algorithm only ever walks downhill from wherever you
+dropped it, and a start that puts two centres inside the same blob leaves an entire cluster with nobody to
+represent it. k-means++, which spreads the initial centres apart, lands on the best answer noticeably more
+often. Neither guarantees it. The practical rule follows directly: run it several times and keep the lowest
+inertia, which is what every library does by default.
+
+Part 2 is the more important lesson, and there is a sting in it. The two bands are obviously two groups to any
+human eye. k-means was given the correct $k$, seeded well, and restarted twenty times exactly as part 1 said to.
+
+Look at the centres it found: both sit at $y \\approx 0$, one at $x \\approx -2$ and one at $x \\approx +2$. It cut
+the picture **left from right** instead of top from bottom, and agreement with the real grouping is 50% — a coin
+flip.
+
+It is worth checking that this is not a bug. A left–right split gives inertia around 700; the top–bottom split
+you wanted gives around 2300. k-means found the genuinely better answer *to the question it was asked*. And
+notice the sting: following part 1's advice made things worse. A single lazy run had a decent chance of landing
+in the top–bottom local optimum by accident; twenty careful restarts reliably found the "right" one.
+
+Nothing in the output announces any of this. The inertia is an ordinary number and there is no warning flag. The
+assumption lives in the objective — minimising squared distance to a centre makes every cluster implicitly a
+round blob, and a long thin band is not one. Plot the result, always.`,
+},
 'ml-evaluation': {
   title: 'Put a confidence interval on an accuracy',
   prompt: `Implement the Wilson score interval and use it to answer: with 20 test examples, can you distinguish a

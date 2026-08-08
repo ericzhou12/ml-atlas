@@ -1866,7 +1866,8 @@ The most-used clustering algorithm, and one you could reinvent from scratch. You
 $k$ groups so that points within a group are close to each other. Formally: minimise the total squared distance
 from each point to its group's centre.
 
-Solving that exactly is NP-hard. So k-means alternates two easy steps instead:
+Solving that exactly is NP-hard — meaning no known method beats checking essentially every way of splitting
+the points, which is hopeless past a few dozen of them. So k-means alternates two easy steps instead:
 
 1. **Assign** — put each point with whichever centre is nearest.
 2. **Update** — move each centre to the mean of the points assigned to it.
@@ -1903,8 +1904,9 @@ frequently not a well-posed question.
   regularly produces a smooth curve with no elbow at all.
 - **Silhouette score** — measures how much closer each point is to its own cluster than to the next nearest.
   Better behaved, gives an actual number to maximise.
-- **BIC / AIC** — only available if you fit a proper probabilistic model, which is one good reason to prefer a
-  GMM over k-means.
+- **BIC / AIC** — scores that add up how well the model explains the data and then subtract a penalty for each
+  parameter it used, so a more complicated model has to earn its complexity. They are only available if you fit
+  a proper probabilistic model, which is one good reason to prefer a GMM over k-means.
 - **An external reason.** By far the best option. "We have shelf space for 6 customer segments" is a stronger
   justification for $k=6$ than any curve.`),
 
@@ -1939,8 +1941,10 @@ Repeat. EM's guarantee is that the log-likelihood increases every iteration and 
 shape and orientation, honest uncertainty at boundaries, and a proper likelihood — which means you can use AIC/BIC to
 choose $K$ rather than squinting at an elbow.
 
-EM's guarantee is that log-likelihood increases monotonically. It is the same alternating-optimization pattern you will
-see again in the VAE (where the E-step is replaced by an amortized encoder network).`),
+EM's guarantee is that the log-likelihood increases on every iteration and never decreases — which is why it always
+converges, though again to a local optimum rather than the best one. Keep the shape of the algorithm in mind: guess the
+hidden assignments, refit the model, repeat. It comes back in [variational autoencoders](#/l/gen-autoencoders), where
+the guessing step is replaced by a neural network trained to do it in one shot.`),
 
     t(`## PCA
 
@@ -1953,12 +1957,17 @@ PCA can be defined two ways, and the fact that they turn out to be the same thin
 - **Minimise reconstruction error.** Find the $k$-dimensional flat subspace that the data sits closest to, so
   that projecting onto it loses as little as possible.
 
-These sound like different goals and are provably identical. The intuition: total spread is fixed, so whatever
-variance a subspace *captures* is variance the residual does not have to carry. Maximising one minimises the
-other.
+These sound like different goals, and they are provably the same goal. The reason is the
+[projection split](#/l/math-vectors) from the first lesson: every centred data point breaks into the part its
+subspace explains plus an orthogonal residual, and because those two pieces meet at a right angle, Pythagoras
+applies:
 
-And it is the [projection picture](#/l/math-vectors) again — "explained by the subspace" plus "orthogonal
-residual" — with the subspace chosen to make the residual as small as possible.`),
+$$\\underbrace{\\|\\mathbf{x}_i\\|^2}_{\\text{fixed by the data}} = \\underbrace{\\|\\text{projection}\\|^2}_{\\text{captured}} + \\underbrace{\\|\\text{residual}\\|^2}_{\\text{lost}}$$
+
+Add that up over all the points. The left side does not depend on which subspace you chose, so it is a constant.
+Therefore making the captured term as large as possible is *exactly* making the lost term as small as possible —
+they are two ways of describing one split of a fixed total. Maximising variance and minimising reconstruction
+error are not two goals that happen to agree; they are the same equation read from opposite ends.`),
 
     viz('pca'),
 
@@ -2046,7 +2055,8 @@ print(f"PC1 direction: {Vt[0].round(3)}")
 
 # reconstruction error from keeping only PC1
 recon = (Xc @ Vt[0][:, None]) @ Vt[0][None, :]
-print(f"1-component reconstruction MSE: {((Xc - recon)**2).mean():.4f}")`),
+print(f"1-component reconstruction MSE: {((Xc - recon)**2).mean():.4f}")`,
+      'The five seeds give five different inertias on identical data, which is the local-optimum problem made concrete — and note that you would never have known if you had only run it once. The elbow numbers fall steeply to k=3 and then flatten, which is what an elbow looks like when the data actually has an answer; on real data it usually does not look this cooperative. The PCA block closes the loop with the SVD lesson: the explained-variance figures are the squared singular values, normalised.'),
 
     quiz('Your t-SNE plot shows two clusters far apart and one nearby pair. What can you conclude about the underlying data?',
       ['Only that there is local neighbourhood structure — inter-cluster distances in t-SNE carry no reliable meaning',
