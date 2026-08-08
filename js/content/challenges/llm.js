@@ -789,34 +789,60 @@ answering billions of requests, that trade is not close.`,
 },
 
 'llm-finetuning': {
-  title: 'Implement LoRA and verify the merge',
-  prompt: `Write the LoRA forward pass, confirm it is exactly the identity at initialization, count the parameter
-saving, and check that merging BA into W gives bit-identical outputs.`,
-  hint: 'B initializes to zero so BA = 0 at step 0. The scale factor is alpha/r.',
+  title: 'Implement LoRA, verify the merge, then test the bet it rests on',
+  prompt: `1. Write the LoRA forward pass. Confirm it is *exactly* the identity at initialization, count the
+   parameter saving, and check that merging $BA$ into $W$ gives identical outputs.
+2. **The bet.** LoRA assumes the update a task needs is approximately low rank. Train a LoRA adapter at several
+   ranks against two different targets: one whose required update genuinely is rank 2, and one whose required
+   update is full rank. **Predict which curve flattens and which keeps improving.**`,
+  hint: 'The forward pass is $xW + \\frac{\\alpha}{r}(xA)B$; merged, it is $x(W + \\frac{\\alpha}{r}AB)$. For part 2, with the loss being squared error and $W$ frozen, you can fit the adapter by gradient descent on $A$ and $B$ — the gradients are the ordinary chain rule through two matrix multiplies.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
 d_in, d_out, r, alpha = 512, 512, 8, 16
 W = rng.normal(0, d_in**-0.5, (d_in, d_out))
 A = rng.normal(0, 0.01, (d_in, r))
-B = np.zeros((r, d_out))
+B = np.zeros((r, d_out))              # zero, so the adapter starts as a no-op
 
-def forward(x, merged=False):
-    # TODO: return x @ W + (alpha/r) * ((x @ A) @ B), or the merged equivalent
+def forward(x, A, B, merged=False):
+    # TODO: x @ W + (alpha/r) * ((x @ A) @ B), or the merged equivalent
     return x @ W
 
 x = rng.normal(size=(4, d_in))
-assert np.allclose(forward(x), x @ W), "at init, LoRA must be the identity"
+assert np.allclose(forward(x, A, B), x @ W), "at init, LoRA must change nothing"
 print("PASS at init\\n")
 
-full = d_in*d_out
-lora = d_in*r + r*d_out
-print(f"full fine-tune : {full:,} params")
-print(f"LoRA (r={r})    : {lora:,} params  ({lora/full:.2%})")
+full, lora = d_in*d_out, d_in*r + r*d_out
+print(f"full fine-tune : {full:,} parameters")
+print(f"LoRA (r={r})    : {lora:,} parameters  ({lora/full:.2%})")
 print(f"optimizer state saved: {(full-lora)*16/1e6:.0f} MB per layer")
 
-B[:] = rng.normal(0, 0.05, B.shape)     # pretend we trained
-print(f"\\nmerged == unmerged: {np.allclose(forward(x), forward(x, merged=True), atol=1e-9)}")`,
+Btrained = rng.normal(0, 0.05, B.shape)
+print(f"\\nmerged == unmerged: "
+      f"{np.allclose(forward(x, A, Btrained), forward(x, A, Btrained, merged=True), atol=1e-9)}")
+
+# ---------- 2. is the update actually low rank? ----------
+n, d = 256, 64
+Wf = rng.normal(0, d**-0.5, (d, d))
+X  = rng.normal(size=(n, d))
+
+low  = rng.normal(size=(d, 2)) @ rng.normal(size=(2, d)) * 0.3     # a rank-2 change
+fullr = rng.normal(0, 0.3/np.sqrt(d), (d, d))                       # a full-rank change
+
+def fit_lora(target_delta, rank, steps=3000, lr=0.02):
+    Y = X @ (Wf + target_delta)
+    a = rng.normal(0, 0.02, (d, rank)); b = np.zeros((rank, d))
+    for _ in range(steps):
+        pred = X @ Wf + (X @ a) @ b
+        g = 2*(pred - Y)/n
+        ga = X.T @ (g @ b.T); gb = (X @ a).T @ g
+        a -= lr*ga; b -= lr*gb
+    return float(np.mean((X @ Wf + (X @ a) @ b - Y)**2) / np.mean((X @ target_delta)**2))
+
+print("\\nrelative error of the fitted adapter (1.0 = learned nothing):")
+print(f"{'rank':>6} {'target is rank 2':>18} {'target is full rank':>21}")
+for rank in [1, 2, 4, 8, 16]:
+    print(f"{rank:6d} {fit_lora(low, rank):18.4f} {fit_lora(fullr, rank):21.4f}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -825,23 +851,60 @@ W = rng.normal(0, d_in**-0.5, (d_in, d_out))
 A = rng.normal(0, 0.01, (d_in, r))
 B = np.zeros((r, d_out))
 
-def forward(x, merged=False):
+def forward(x, A, B, merged=False):
     if merged:
         return x @ (W + (alpha/r) * (A @ B))
     return x @ W + (alpha/r) * ((x @ A) @ B)
 
 x = rng.normal(size=(4, d_in))
-assert np.allclose(forward(x), x @ W)
+assert np.allclose(forward(x, A, B), x @ W)
 print("PASS at init\\n")
 
 full, lora = d_in*d_out, d_in*r + r*d_out
-print(f"full fine-tune : {full:,} params")
-print(f"LoRA (r={r})    : {lora:,} params  ({lora/full:.2%})")
+print(f"full fine-tune : {full:,} parameters")
+print(f"LoRA (r={r})    : {lora:,} parameters  ({lora/full:.2%})")
 print(f"optimizer state saved: {(full-lora)*16/1e6:.0f} MB per layer")
 
-B[:] = rng.normal(0, 0.05, B.shape)
-print(f"\\nmerged == unmerged: {np.allclose(forward(x), forward(x, merged=True), atol=1e-9)}")
-print("-> adapters fold into W after training, so inference costs nothing extra.")`,
+Btrained = rng.normal(0, 0.05, B.shape)
+print(f"\\nmerged == unmerged: "
+      f"{np.allclose(forward(x, A, Btrained), forward(x, A, Btrained, merged=True), atol=1e-9)}")
+
+n, d = 256, 64
+Wf = rng.normal(0, d**-0.5, (d, d))
+X  = rng.normal(size=(n, d))
+
+low  = rng.normal(size=(d, 2)) @ rng.normal(size=(2, d)) * 0.3
+fullr = rng.normal(0, 0.3/np.sqrt(d), (d, d))
+
+def fit_lora(target_delta, rank, steps=3000, lr=0.02):
+    Y = X @ (Wf + target_delta)
+    a = rng.normal(0, 0.02, (d, rank)); b = np.zeros((rank, d))
+    for _ in range(steps):
+        pred = X @ Wf + (X @ a) @ b
+        g = 2*(pred - Y)/n
+        ga = X.T @ (g @ b.T); gb = (X @ a).T @ g
+        a -= lr*ga; b -= lr*gb
+    return float(np.mean((X @ Wf + (X @ a) @ b - Y)**2) / np.mean((X @ target_delta)**2))
+
+print("\\nrelative error of the fitted adapter (1.0 = learned nothing):")
+print(f"{'rank':>6} {'target is rank 2':>18} {'target is full rank':>21}")
+for rank in [1, 2, 4, 8, 16]:
+    print(f"{rank:6d} {fit_lora(low, rank):18.4f} {fit_lora(fullr, rank):21.4f}")`,
+  explain: `Part 1: because $B$ starts at zero, the adapter contributes exactly nothing at step 0 — the model you
+begin fine-tuning from is bit-for-bit the model you started with, which is why LoRA never damages a checkpoint
+just by being attached. And since $\\frac{\\alpha}{r}AB$ is only a matrix, you can add it into $W$ when you are
+done: the merged model has the same shape, the same speed, and no adapter to carry around.
+
+Part 2 is the empirical bet, isolated. Against the rank-2 target, error collapses as soon as the adapter has
+rank 2 and adding more rank buys nothing — the adapter has *exactly* enough capacity, and any extra is wasted.
+Against the full-rank target, every increase in rank keeps helping and even rank 16 leaves a lot on the table,
+because a rank-16 matrix simply cannot express a rank-64 change.
+
+That is the whole of LoRA's risk in two columns. It is not a compression trick that works generally; it works
+when the change your task needs happens to be simple. Empirically, adapting a pretrained model to a domain or a
+style usually is — which is why rank 8 or 16 is enough for most fine-tuning. Teaching a model a genuinely new
+capability often is not, and that is when people find LoRA underperforming full fine-tuning and reach for a
+higher rank.`,
 },
 
 'llm-decoding': {
