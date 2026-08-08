@@ -164,8 +164,22 @@ for label, kw in [
 print("\\npipeline bubble = (P-1)/(m+P-1):")
 for P in [4, 8]:
     print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))`,
-},
+  explain: `Read the first block top to bottom. A 7B model — small by current standards — needs 258 GB to fine-tune
+naively, which is three H100s for a model whose weights are only 14 GB. The other 244 GB is optimizer state and
+activations, and the activations are the larger surprise: they scale with batch size and sequence length rather
+than with the model.
 
+Gradient checkpointing halves the total, and ZeRO does the rest by noticing that with 8 GPUs there is no reason
+for each of them to hold a full copy of the optimizer state. Stage 1 shards the optimizer, stage 2 also the
+gradients, stage 3 also the weights — each stage trading more communication for less memory. The 70B rows show
+where it ends: even ZeRO-3 across 8 GPUs does not fit, and you need 64.
+
+The pipeline table is the other cost of splitting a model across devices. With $P$ stages, the first stage
+finishes and then waits for the last to catch up — a **bubble** of idle time worth $(P-1)/(m+P-1)$ of every step.
+At one microbatch across eight stages, **87.5% of your very expensive GPUs are doing nothing**. Keeping many
+microbatches in flight is what fills the pipeline back up, which is why $m$ is pushed large and why deep
+pipelines need big batches to be worth having.`,
+},
 'sys-quantization': {
   title: 'Break quantization with one outlier, then fix it with groups',
   prompt: `Implement symmetric integer quantization with an optional group size. Add a few extreme outlier weights and
@@ -227,8 +241,21 @@ print("\\n7B model:")
 for name, bits, oh in [("bf16",16,0), ("int8",8,0.02), ("int4 g=128",4,0.04)]:
     gb = P * bits/8 * (1+oh) / 1e9
     print(f"  {name:12s} {gb:6.1f} GB   decode ceiling {3.35e12/(gb*1e9):6.1f} tok/s")`,
-},
+  explain: `The first table is the case for group-wise quantization, and the mechanism is worth naming. Quantizing means
+mapping a tensor's whole range onto a handful of levels — so one outlier weight stretches the range and every
+*other* weight gets squeezed into fewer effective levels. Splitting the tensor into groups of 64 or 128, each
+with its own scale, means an outlier can only ruin its own group. Compare the 4-bit rows: per-tensor error is
+several times worse than group-of-64, bought with one extra scale factor per 64 weights.
 
+Notice also which column degrades faster. Error on the *matrix product* is consistently worse than error on the
+weights themselves, because the errors accumulate across the summation — a reminder that weight-level error
+metrics understate what the model will actually experience.
+
+The last block is why anyone accepts the error at all. Going from bf16 to 4-bit does not merely halve memory
+twice; it roughly quadruples the decode ceiling, because generation is bandwidth-bound and you are now reading a
+quarter of the bytes. That is the trade: a small and controllable loss of precision for a large and immediate
+speedup, which is why 4-bit is the default for local inference.`,
+},
 'sys-inference': {
   title: 'Size a KV cache and find the optimal speculation length',
   prompt: `Compute KV cache size with and without GQA, then derive the expected speedup from speculative decoding and
@@ -285,6 +312,17 @@ for a in [0.5, 0.7, 0.8, 0.9]:
 for a in [0.6, 0.8, 0.9]:
     best = max(((speedup(a,k,0.10), k) for k in range(1,17)))
     print(f"\\nalpha={a}: optimal k={best[1]} giving {best[0]:.2f}x")`,
-},
+  explain: `Speculative decoding works because verifying $k$ drafted tokens costs one weight-read — the same as generating
+a single token. So when the draft is usually right, you get several tokens for the price of one.
 
+The table shows both sides of the trade. Higher acceptance means longer runs of drafted tokens survive, so the
+speedup climbs. But read along each row: the speedup rises with $k$, peaks, and then **falls**. Drafting more
+tokens than the small model can reliably get right means paying for draft passes whose output is discarded. The
+optimum moves right as acceptance improves — $k=3$ at 60% acceptance, $k=10$ at 90% — which is why a better draft
+model is worth more than a bigger $k$.
+
+And it is worth stressing what this does *not* cost. The verification step accepts a drafted token only with the
+probability the target model itself would have assigned, so the text you get is exactly the text the big model
+would have produced. It is a pure latency win with no quality change, which is rare enough to be worth noticing.`,
+},
 };
