@@ -12,10 +12,13 @@
 export default {
 
 'gen-autoencoders': {
-  title: 'Train a VAE and induce posterior collapse',
-  prompt: `Implement the reparameterization trick and the closed-form Gaussian KL. Then sweep beta and find the value
-where the decoder starts ignoring the latent entirely.`,
-  hint: 'KL for a diagonal Gaussian against N(0,I) is -0.5 * sum(1 + logvar - mu^2 - exp(logvar)).',
+  title: 'Train a VAE, then turn the KL term up until the encoder gives up',
+  prompt: `1. Implement the reparameterization trick and the closed-form Gaussian KL, and fill in the backward pass.
+2. Sweep $\\beta$, the weight on the KL term, and read three numbers at each setting: how well it reconstructs,
+   how far the posteriors sit from the prior, and how large the encoder's outputs $\\mu$ are.
+3. **Predict what happens to $\\mu$ as $\\beta$ grows** before you run it. The failure at the top of the sweep has
+   a name, and it is visible in that third column rather than in the loss.`,
+  hint: 'The sample is $\\mathbf{z} = \\mu + \\sigma \\odot \\epsilon$ with $\\epsilon$ drawn once per step — that is what lets a gradient pass through a random draw. The KL against $\\mathcal{N}(0,I)$ is $-\\tfrac12\\sum_j(1 + \\log\\sigma_j^2 - \\mu_j^2 - \\sigma_j^2)$, so its gradient pulls $\\mu$ toward 0 and $\\sigma$ toward 1.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -24,36 +27,7 @@ tt = rng.uniform(-2.2, 2.2, n)
 X = np.c_[tt, 0.45*tt + 0.35*tt**2 - 0.5] + rng.normal(0, 0.06, (n,2))
 X = (X - X.mean(0)) / X.std(0)
 
-D, H, Z = 2, 24, 1
-def init(a,b): return rng.normal(0, np.sqrt(2/a), (a,b)), np.zeros(b)
-We1,be1 = init(D,H); Wmu,bmu = init(H,Z); Wlv,blv = init(H,Z)
-Wd1,bd1 = init(Z,H); Wd2,bd2 = init(H,D)
-relu = lambda x: np.maximum(0, x)
-
-def step(beta, lr=0.02):
-    global We1,be1,Wmu,bmu,Wlv,blv,Wd1,bd1,Wd2,bd2
-    x = X[rng.integers(0, n, 128)]
-    h  = relu(x @ We1 + be1)
-    mu = h @ Wmu + bmu
-    lv = np.clip(h @ Wlv + blv, -6, 6)
-    sd = np.exp(0.5*lv)
-    eps = rng.normal(size=mu.shape)
-    # TODO: z = reparameterized sample; then decode, compute rec + beta*kl,
-    #       and backprop (dmu gets both the decoder path and the KL pull)
-    return 0.0, 0.0
-
-for beta in [0.0, 1.0, 4.0]:
-    for _ in range(3000): rec, kl = step(beta)
-    print(f"beta={beta:4.1f}  reconstruction {rec:.4f}  KL {kl:.4f}")`,
-  solution: `import numpy as np
-rng = np.random.default_rng(0)
-
-n = 800
-tt = rng.uniform(-2.2, 2.2, n)
-X = np.c_[tt, 0.45*tt + 0.35*tt**2 - 0.5] + rng.normal(0, 0.06, (n,2))
-X = (X - X.mean(0)) / X.std(0)
-
-def run(beta, steps=3000, lr=0.02):
+def run(beta, steps=3000, lr=0.005):
     r = np.random.default_rng(0)
     D, H, Z = 2, 24, 1
     init = lambda a,b: (r.normal(0, np.sqrt(2/a), (a,b)), np.zeros(b))
@@ -64,10 +38,70 @@ def run(beta, steps=3000, lr=0.02):
         x = X[r.integers(0, n, 128)]
         h  = relu(x @ We1 + be1)
         mu = h @ Wmu + bmu
-        lv = np.clip(h @ Wlv + blv, -6, 6)
+        lv = np.clip(h @ Wlv + blv, -6, 2)      # log variance
         sd = np.exp(0.5*lv)
         eps = r.normal(size=mu.shape)
-        z = mu + sd*eps                       # reparameterization trick
+
+        # TODO 1: z = the reparameterized sample
+        z = mu
+        hd = relu(z @ Wd1 + bd1)
+        xh = hd @ Wd2 + bd2
+
+        rec = ((xh-x)**2).sum(1).mean()
+        # TODO 2: the closed-form KL against N(0, I)
+        kl = 0.0
+
+        dxh = 2*(xh-x)/len(x)
+        dWd2, dbd2 = hd.T @ dxh, dxh.sum(0)
+        dhd = (dxh @ Wd2.T) * (hd > 0)
+        dWd1, dbd1 = z.T @ dhd, dhd.sum(0)
+        dz = dhd @ Wd1.T
+        # TODO 3: mu and lv each receive a decoder path AND a pull from the KL term
+        dmu = dz
+        dlv = dz*(0.5*sd*eps)
+        dh = (dmu @ Wmu.T + dlv @ Wlv.T) * (h > 0)
+        for W,b,gW,gb in [(Wd2,bd2,dWd2,dbd2),(Wd1,bd1,dWd1,dbd1),
+                          (Wmu,bmu,h.T@dmu,dmu.sum(0)),(Wlv,blv,h.T@dlv,dlv.sum(0)),
+                          (We1,be1,x.T@dh,dh.sum(0))]:
+            W -= lr*gW; b -= lr*gb
+    return rec, kl, float(np.abs(mu).mean())
+
+print(f"{'beta':>6} {'reconstruction':>16} {'KL':>10} {'mean |mu|':>11}")
+for beta in [0.0, 0.5, 1.0, 4.0, 10.0]:
+    rec, kl, mu_mag = run(beta)
+    tag = "   <- posterior collapse" if kl < 0.05 else ""
+    print(f"{beta:6.1f} {rec:16.4f} {kl:10.4f} {mu_mag:11.4f}{tag}")
+
+r0, r10 = run(0.0), run(10.0)
+assert r0[0] < r10[0],  "beta=0 should reconstruct far better than beta=10"
+assert r0[1] > 2.0,     "with no KL term the posteriors should drift far from the prior"
+assert r10[1] < 0.05,   "beta=10 should drive the KL to nearly zero"
+assert r10[2] < 0.1,    "under collapse the encoder outputs mu near 0 whatever the input"
+print("\\nPASS")`,
+  solution: `import numpy as np
+rng = np.random.default_rng(0)
+
+n = 800
+tt = rng.uniform(-2.2, 2.2, n)
+X = np.c_[tt, 0.45*tt + 0.35*tt**2 - 0.5] + rng.normal(0, 0.06, (n,2))
+X = (X - X.mean(0)) / X.std(0)
+
+def run(beta, steps=3000, lr=0.005):
+    r = np.random.default_rng(0)
+    D, H, Z = 2, 24, 1
+    init = lambda a,b: (r.normal(0, np.sqrt(2/a), (a,b)), np.zeros(b))
+    We1,be1 = init(D,H); Wmu,bmu = init(H,Z); Wlv,blv = init(H,Z)
+    Wd1,bd1 = init(Z,H); Wd2,bd2 = init(H,D)
+    relu = lambda x: np.maximum(0, x)
+    for _ in range(steps):
+        x = X[r.integers(0, n, 128)]
+        h  = relu(x @ We1 + be1)
+        mu = h @ Wmu + bmu
+        lv = np.clip(h @ Wlv + blv, -6, 2)
+        sd = np.exp(0.5*lv)
+        eps = r.normal(size=mu.shape)
+
+        z = mu + sd*eps                                   # reparameterization
         hd = relu(z @ Wd1 + bd1)
         xh = hd @ Wd2 + bd2
 
@@ -86,13 +120,36 @@ def run(beta, steps=3000, lr=0.02):
                           (Wmu,bmu,h.T@dmu,dmu.sum(0)),(Wlv,blv,h.T@dlv,dlv.sum(0)),
                           (We1,be1,x.T@dh,dh.sum(0))]:
             W -= lr*gW; b -= lr*gb
-    return rec, kl, np.abs(mu).mean()
+    return rec, kl, float(np.abs(mu).mean())
 
+print(f"{'beta':>6} {'reconstruction':>16} {'KL':>10} {'mean |mu|':>11}")
 for beta in [0.0, 0.5, 1.0, 4.0, 10.0]:
     rec, kl, mu_mag = run(beta)
-    tag = "  <- posterior collapse" if kl < 0.05 else ""
-    print(f"beta={beta:5.1f}  recon {rec:.4f}  KL {kl:.4f}  mean|mu| {mu_mag:.4f}{tag}")`,
-  explain: 'At beta = 0 you have an autoencoder: great reconstruction, unusable latent space. At high beta the KL wins, mu collapses to 0, and the decoder ignores z entirely — that is posterior collapse.',
+    tag = "   <- posterior collapse" if kl < 0.05 else ""
+    print(f"{beta:6.1f} {rec:16.4f} {kl:10.4f} {mu_mag:11.4f}{tag}")
+
+r0, r10 = run(0.0), run(10.0)
+assert r0[0] < r10[0]
+assert r0[1] > 2.0
+assert r10[1] < 0.05
+assert r10[2] < 0.1
+print("\\nPASS")`,
+  explain: `Read the three columns together as $\\beta$ rises.
+
+At $\\beta = 0$ there is no KL term, so this is a plain autoencoder. Reconstruction is nearly perfect and the KL
+is enormous — the encoder scattered each example's code wherever it found convenient, treating the latent space
+as a filing cabinet with no obligation to fill it. Draw a random $\\mathbf{z}$ from the prior and you will land in
+a gap between codes and decode nonsense. An excellent compressor, and not a generator.
+
+At $\\beta = 1$ the two terms balance. Reconstruction is worse, the KL is under 1, and the codes are now packed
+tightly enough around the prior that sampling from it works. That trade *is* the ELBO, and it is not free — the
+blur people complain about in VAE samples is this row.
+
+At $\\beta \\ge 4$ the KL wins outright, and the tell is the last column collapsing to nearly zero. The encoder has
+given up and outputs the prior for *every* input, ignoring $\\mathbf{x}$ completely. The KL is then essentially 0,
+which the objective is delighted by, while reconstruction is as bad as predicting the dataset mean. That is
+**posterior collapse** — and note how it presents: one term of the loss looks excellent while the latent variable
+has quietly stopped carrying any information at all. Watching only the total loss, you might not notice.`,
 },
 
 'gen-gans': {
@@ -106,7 +163,7 @@ rng = np.random.default_rng(0)
 sigmoid = lambda z: 1/(1+np.exp(-np.clip(z,-30,30)))
 real = lambda n: rng.normal(2.0, 0.5, n)
 
-def train(d_steps=1, d_lr=0.05, g_lr=0.02, non_saturating=True, steps=1500):
+def train(d_steps=1, d_lr=0.05, g_lr=0.005, non_saturating=True, steps=1500):
     g_mu, g_sd, d_w, d_b = -2.0, 0.5, 0.5, 0.0
     for t in range(steps):
         for _ in range(d_steps):
@@ -134,7 +191,7 @@ rng = np.random.default_rng(0)
 sigmoid = lambda z: 1/(1+np.exp(-np.clip(z,-30,30)))
 real = lambda n: rng.normal(2.0, 0.5, n)
 
-def train(d_steps=1, d_lr=0.05, g_lr=0.02, non_saturating=True, steps=1500):
+def train(d_steps=1, d_lr=0.05, g_lr=0.005, non_saturating=True, steps=1500):
     g_mu, g_sd, d_w, d_b = -2.0, 0.5, 0.5, 0.0
     for t in range(steps):
         for _ in range(d_steps):
