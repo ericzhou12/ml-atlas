@@ -365,55 +365,138 @@ nobody optimizes by guessing directions.`,
 },
 
 'math-jacobian': {
-  title: 'Vector-Jacobian products without building the Jacobian',
-  prompt: `For $\\mathbf{y} = \\tanh(W\\mathbf{x})$, compute $\\mathbf{v}^{\\mathsf T}J$ two ways: by explicitly forming
-$J$, and the way autodiff does it. Confirm they match, then compare the memory each would need at $d=4096$.`,
-  hint: 'The elementwise activation contributes a *diagonal* Jacobian, so it becomes an elementwise multiply.',
+  title: 'Write a backward pass using only VJP rules',
+  prompt: `Build the backward pass of a two-layer classifier by hand, using nothing but the three rules from the
+lesson. No Jacobian is ever constructed.
+
+The forward pass is $\\mathbf{z}_1 = W_1\\mathbf{x}$, $\\mathbf{h} = \\tanh(\\mathbf{z}_1)$,
+$\\mathbf{z}_2 = W_2\\mathbf{h}$, then softmax and cross-entropy against a one-hot target.
+
+Fill in \`backward\`, working from the loss end down, using in order:
+
+1. Softmax + cross-entropy fused: $\\partial\\mathcal{L}/\\partial \\mathbf{z}_2 = \\mathbf{p} - \\mathbf{y}$.
+2. Linear layer: the gradient for the weights is the outer product
+   $\\boldsymbol{\\delta}\\,\\mathbf{h}^{\\mathsf T}$, and the gradient passed down is $W_2^{\\mathsf T}\\boldsymbol{\\delta}$.
+3. tanh: its Jacobian is diagonal, so multiply elementwise by $1 - \\tanh(z_1)^2$.
+
+Then repeat rule 2 for the first layer. The check compares every gradient against numeric nudging.`,
+  hint: 'Work strictly backwards and carry one vector, $\\boldsymbol{\\delta}$, the whole way. Each step either turns $\\boldsymbol{\\delta}$ into a weight gradient (outer product with that layer\'s input) or hands a new $\\boldsymbol{\\delta}$ to the layer below ($W^{\\mathsf T}\\boldsymbol{\\delta}$, or an elementwise multiply for tanh).',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
-W = rng.normal(size=(4, 6)) * 0.5
-x = rng.normal(size=6)
-v = rng.normal(size=4)
+n_in, n_hid, n_out = 6, 5, 4
+W1 = rng.normal(size=(n_hid, n_in)) * 0.5
+W2 = rng.normal(size=(n_out, n_hid)) * 0.5
+x  = rng.normal(size=n_in)
+y  = np.eye(n_out)[2]                       # one-hot: the true class is 2
 
-z = W @ x
-y = np.tanh(z)
+def softmax(z):
+    e = np.exp(z - z.max())                 # subtracting the max changes nothing, avoids overflow
+    return e / e.sum()
 
-# --- explicit: build the full Jacobian dy/dx, then multiply ---
-J = np.diag(1 - np.tanh(z)**2) @ W
-grad_explicit = v @ J
+def forward(W1, W2):
+    z1 = W1 @ x
+    h  = np.tanh(z1)
+    z2 = W2 @ h
+    p  = softmax(z2)
+    loss = -np.log(p[y.argmax()])
+    return loss, (z1, h, z2, p)
 
-def vjp(v, W, z):
-    # TODO: same result, without ever forming J
-    return np.zeros(W.shape[1])
+def backward(W1, W2):
+    """Return (dW1, dW2) using only the three VJP rules."""
+    loss, (z1, h, z2, p) = forward(W1, W2)
+    # TODO 1: delta at z2 -- the fused softmax + cross-entropy gradient
+    d2 = np.zeros(n_out)
+    # TODO 2: gradient for W2, and the delta handed down to h
+    dW2 = np.zeros_like(W2)
+    dh  = np.zeros(n_hid)
+    # TODO 3: push that through tanh to get the delta at z1
+    d1  = np.zeros(n_hid)
+    # TODO 4: gradient for W1
+    dW1 = np.zeros_like(W1)
+    return dW1, dW2
 
-g = vjp(v, W, z)
-print("match:", np.allclose(grad_explicit, g), "->", "PASS" if np.allclose(grad_explicit, g) else "FAIL")
+# --- check against numeric nudging, entry by entry ---
+def numeric(W, which, eps=1e-6):
+    g = np.zeros_like(W)
+    for i in range(W.shape[0]):
+        for j in range(W.shape[1]):
+            up, dn = W.copy(), W.copy()
+            up[i, j] += eps; dn[i, j] -= eps
+            f_up = forward(up, W2)[0] if which == 1 else forward(W1, up)[0]
+            f_dn = forward(dn, W2)[0] if which == 1 else forward(W1, dn)[0]
+            g[i, j] = (f_up - f_dn) / (2 * eps)
+    return g
 
-d = 4096
-print(f"\\nat d={d}: explicit Jacobian = {d*d*8/1e6:.0f} MB, VJP working set = {d*8/1e3:.0f} KB")`,
+dW1, dW2 = backward(W1, W2)
+e1 = np.abs(dW1 - numeric(W1, 1)).max()
+e2 = np.abs(dW2 - numeric(W2, 2)).max()
+print(f"W1 gradient error: {e1:.2e}")
+print(f"W2 gradient error: {e2:.2e}")
+print("PASS" if max(e1, e2) < 1e-6 else "FAIL")
+
+# --- what you avoided building ---
+print(f"\\nJacobians never formed: layer 2 would be {n_out}x{n_hid}, layer 1 {n_hid}x{n_in}.")
+print("At 4096 wide, that pair alone is", f"{2*4096*4096*4/1e6:.0f} MB per example.")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
-W = rng.normal(size=(4, 6)) * 0.5
-x = rng.normal(size=6)
-v = rng.normal(size=4)
-z = W @ x
+n_in, n_hid, n_out = 6, 5, 4
+W1 = rng.normal(size=(n_hid, n_in)) * 0.5
+W2 = rng.normal(size=(n_out, n_hid)) * 0.5
+x  = rng.normal(size=n_in)
+y  = np.eye(n_out)[2]
 
-J = np.diag(1 - np.tanh(z)**2) @ W
-grad_explicit = v @ J
+def softmax(z):
+    e = np.exp(z - z.max())
+    return e / e.sum()
 
-def vjp(v, W, z):
-    dz = v * (1 - np.tanh(z)**2)   # diagonal Jacobian -> elementwise
-    return dz @ W                  # then one matvec
+def forward(W1, W2):
+    z1 = W1 @ x
+    h  = np.tanh(z1)
+    z2 = W2 @ h
+    p  = softmax(z2)
+    loss = -np.log(p[y.argmax()])
+    return loss, (z1, h, z2, p)
 
-g = vjp(v, W, z)
-print("match:", np.allclose(grad_explicit, g), "-> PASS")
+def backward(W1, W2):
+    loss, (z1, h, z2, p) = forward(W1, W2)
+    d2  = p - y                       # fused softmax + cross-entropy
+    dW2 = np.outer(d2, h)             # outer product with this layer's input
+    dh  = W2.T @ d2                   # pass down through the linear layer
+    d1  = dh * (1 - np.tanh(z1)**2)   # tanh: diagonal Jacobian -> elementwise
+    dW1 = np.outer(d1, x)
+    return dW1, dW2
 
-d = 4096
-print(f"\\nat d={d}: explicit Jacobian = {d*d*8/1e6:.0f} MB, VJP working set = {d*8/1e3:.0f} KB")`,
+def numeric(W, which, eps=1e-6):
+    g = np.zeros_like(W)
+    for i in range(W.shape[0]):
+        for j in range(W.shape[1]):
+            up, dn = W.copy(), W.copy()
+            up[i, j] += eps; dn[i, j] -= eps
+            f_up = forward(up, W2)[0] if which == 1 else forward(W1, up)[0]
+            f_dn = forward(dn, W2)[0] if which == 1 else forward(W1, dn)[0]
+            g[i, j] = (f_up - f_dn) / (2 * eps)
+    return g
+
+dW1, dW2 = backward(W1, W2)
+e1 = np.abs(dW1 - numeric(W1, 1)).max()
+e2 = np.abs(dW2 - numeric(W2, 2)).max()
+print(f"W1 gradient error: {e1:.2e}")
+print(f"W2 gradient error: {e2:.2e}")
+print("PASS" if max(e1, e2) < 1e-6 else "FAIL")
+
+print(f"\\nJacobians never formed: layer 2 would be {n_out}x{n_hid}, layer 1 {n_hid}x{n_in}.")
+print("At 4096 wide, that pair alone is", f"{2*4096*4096*4/1e6:.0f} MB per example.")`,
+  explain: `Those five lines of \`backward\` are a real backpropagation implementation. Notice the shape of the
+computation: one vector $\\boldsymbol{\\delta}$ travels from the loss down to the input, and at each layer it does
+exactly two things — spin off a weight gradient by outer product with that layer's stored input, and transform
+itself for the layer below. Nothing bigger than a matrix you already had is ever created, which is the point of
+the whole lesson.
+
+The numeric check needs one forward pass per weight — 54 of them here, and it would be billions for a real
+model. That asymmetry *is* the forward-versus-reverse-mode argument, felt rather than argued.`,
 },
-
 'math-probability': {
   title: 'The base rate trap, and how fast the prior loses',
   prompt: `Compute $P(\\text{sick}\\mid+)$ for a 99%-accurate test at various disease prevalences. Then simulate

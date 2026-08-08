@@ -1337,88 +1337,109 @@ print("they agree to", f"{np.abs(grad_analytic(w) - grad_numeric(w)).max():.1e}"
   prereq: ['math-derivatives'],
   tags: ['calculus', 'backprop'],
   sections: [
-    tldr(`A gradient is what you get when a function has many inputs and *one* output. A **Jacobian** is what you
-get when it has many inputs and many outputs — a whole matrix of partial derivatives.
+    tldr(`A gradient is what a derivative becomes when a function has many inputs and *one* output. A **Jacobian**
+is what it becomes when there are many inputs and many outputs: a whole grid of partial derivatives, one per
+(output, input) pair.
 
-Every layer of a neural network is a many-in, many-out function, so backprop is conceptually a long product of
-Jacobian matrices. The practical insight is that you never build them: for the shapes involved, forming one
-Jacobian would cost more memory than the entire model. Autodiff multiplies by them without ever writing them
-down, and that trick is what makes training large networks possible at all.`),
+Every layer of a neural network is a many-in, many-out function, so the chain rule across a network is a product
+of Jacobian matrices. The practical problem is that a single Jacobian for one layer of a large model would be
+tens of millions of numbers, per example. So frameworks never build them. They compute *products with* Jacobians
+directly, which costs a vector instead of a matrix.
+
+That one trick, plus the choice to multiply the chain from the loss end rather than the parameter end, is what
+makes training a billion-parameter model possible at all.`),
 
     jargon([
-      ['Jacobian $J$', 'The derivative of a function with many inputs *and* many outputs. An $m \\times n$ grid: row $i$, column $j$ says how output $i$ responds to input $j$.'],
-      ['$f: \\mathbb{R}^n \\to \\mathbb{R}^m$', 'A type signature: "takes $n$ numbers, returns $m$ numbers". A gradient is the special case $m = 1$.'],
-      ['VJP (vector–Jacobian product)', 'Computing $\\mathbf{v}^{\\mathsf T}J$ *without ever constructing* $J$. The core operation of backprop.'],
-      ['JVP (Jacobian–vector product)', 'The mirror image, $J\\mathbf{v}$. What forward-mode autodiff computes.'],
-      ['autodiff / automatic differentiation', 'A framework computing exact derivatives by tracking operations as you run the forward pass. Not symbolic algebra, and not finite differences — a third thing.'],
-      ['reverse mode', 'Autodiff run backwards from the output. Cheap when there are few outputs and many inputs — i.e. always, in deep learning. "Backpropagation" is this.'],
-      ['activations', 'The intermediate values a network computes on its way from input to output. Reverse mode has to remember them.'],
-      ['gradient checkpointing', 'Deliberately throwing away stored activations and recomputing them during the backward pass. Trades compute for memory.'],
-      ['logits', 'The raw scores a classifier outputs before softmax turns them into probabilities.'],
-      ['one-hot', 'Encoding a category as a vector of zeros with a single 1 in the correct slot. Class 2 of 5 becomes $(0,0,1,0,0)$.'],
+      ['Jacobian $J$', 'The derivative of a function with many inputs *and* many outputs. An $m \\times n$ grid where row $i$, column $j$ says how much output $i$ responds to input $j$.'],
+      ['$f: \\mathbb{R}^n \\to \\mathbb{R}^m$', 'A type signature: takes $n$ numbers, returns $m$ numbers. A gradient is the special case $m = 1$.'],
+      ['autodiff', 'Automatic differentiation: a framework computing exact derivatives by recording every operation as the forward pass runs. It is neither symbolic algebra nor finite differences, but a third thing.'],
+      ['forward mode', 'Autodiff that works through the network in the same direction as the data. Each run gives the derivative with respect to one *input*.'],
+      ['reverse mode', 'Autodiff that works backwards from the output. Each run gives the derivative of one *output* with respect to everything. Backpropagation is this.'],
+      ['VJP (vector–Jacobian product)', 'Computing $\\mathbf{v}^{\\mathsf T}J$ without ever building $J$. The core operation of reverse mode.'],
+      ['activations', 'The intermediate values a network computes on the way from input to output. The backward pass needs them, so they have to be kept.'],
+      ['gradient checkpointing', 'Deliberately discarding stored activations and recomputing them during the backward pass. Trades extra compute for less memory.'],
+      ['softmax', 'A function that turns a list of arbitrary scores into positive numbers that add to 1, so they can be read as probabilities.'],
+      ['logits', 'The raw scores a classifier produces *before* softmax turns them into probabilities.'],
+      ['one-hot', 'Encoding a category as a vector of zeros with a single 1 in the right slot. Class 3 out of 5 becomes $(0,0,1,0,0)$.'],
     ]),
 
     t(`## The Jacobian
 
-So far the functions have been many-in, one-out: a loss takes all your parameters and returns a single number.
-Its derivative is a gradient — one vector.
+So far, functions have been many-in, one-out: a loss takes every parameter and returns a single number, and its
+derivative is a gradient — one vector, one entry per input.
 
-But a *layer* is not like that. It takes $n$ numbers and returns $m$ numbers. Now there is no single slope,
-because there are $m \\times n$ separate questions to ask: how does output 1 respond to input 1, how does
-output 1 respond to input 2, and so on. Collect all those answers into a grid and you have the **Jacobian**:
+A *layer* is not like that. It takes $n$ numbers and returns $m$ numbers. There is no single slope any more,
+because there are $m \\times n$ separate questions: how does output 1 respond to input 1, how does output 1
+respond to input 2, and so on down to output $m$ and input $n$. Put every answer in a grid and you have the
+**Jacobian**:
 
-$$J_{ij} = \\frac{\\partial f_i}{\\partial x_j} \\qquad \\text{(row } i \\text{ = which output, column } j \\text{ = which input)}$$
+$$J_{ij} = \\frac{\\partial f_i}{\\partial x_j} \\qquad \\text{row } i = \\text{which output},\\quad \\text{column } j = \\text{which input}$$`),
 
-Despite being a matrix, it means what derivatives always mean — the best local linear approximation:
+    steps('A 2-in, 2-out Jacobian, by hand', [
+      { h: 'Take a function', md: `$f(x_1, x_2) = (x_1^2 x_2,\\ \\ x_1 + \\sin x_2)$. Two inputs, two outputs, so the Jacobian is 2×2.` },
+      { h: 'Row 1 is the first output', md: `$f_1 = x_1^2x_2$. Freezing $x_2$: $\\partial f_1/\\partial x_1 = 2x_1x_2$. Freezing $x_1$: $\\partial f_1/\\partial x_2 = x_1^2$.` },
+      { h: 'Row 2 is the second output', md: `$f_2 = x_1 + \\sin x_2$. Its partials are $1$ and $\\cos x_2$.` },
+      { h: 'Assemble', md: `$J = \\begin{pmatrix} 2x_1x_2 & x_1^2 \\\\ 1 & \\cos x_2\\end{pmatrix}$. Each **row** is the gradient of one output. That is the useful way to remember the layout: a Jacobian is a stack of gradients.` },
+    ]),
+
+    t(`Despite being a matrix, the Jacobian means what derivatives always mean — the best straight-line stand-in
+near a point:
 
 $$f(\\mathbf{x}+\\mathbf{h}) \\approx f(\\mathbf{x}) + J\\mathbf{h}$$
 
-Compare that with $f(x+h) \\approx f(x) + f'(x)h$ from the previous lesson. Identical sentence; the slope has
-just become a matrix, because "multiply by a matrix" is what a linear map looks like in many dimensions.`),
+Compare that with $f(x+h) \\approx f(x) + f'(x)h$ from the last lesson. It is the same sentence. The slope just
+had to become a matrix, because [multiplying by a matrix](#/l/math-matrices) is what a linear function looks
+like when there is more than one number going in and out.`),
 
     viz('jacobian'),
 
     t(`## The chain rule with Jacobians
 
-If a derivative in one dimension is a number, and the chain rule multiplies numbers, then a derivative in many
-dimensions is a matrix and the chain rule multiplies matrices:
+In one dimension a derivative is a number and the chain rule multiplies numbers. In many dimensions a derivative
+is a matrix, and the chain rule multiplies matrices:
 
 $$J_{g\\circ f}(\\mathbf{x}) = J_g(f(\\mathbf{x}))\\; J_f(\\mathbf{x})$$
 
-(That $\\circ$ means composition — "$g$ applied to the result of $f$".) And since matrix multiplication *is*
-function composition, this is the same statement as before rather than a new rule.
+($g \\circ f$ means "$g$ applied to the result of $f$".) Because matrix multiplication already *is* function
+composition, this is not a new rule — it is the old one, restated in the only notation that fits.
 
-Stack that up over a network $L$ layers deep and the gradient of the loss with respect to the first layer's
-activations is a chain of $L-1$ Jacobians:
+Now stack it up over a network $L$ layers deep. The derivative of the loss with respect to the first layer's
+output is a chain of Jacobians, one per layer in between:
 
 $$\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{h}_1} = \\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{h}_L}\\, J_L\\, J_{L-1}\\cdots J_2$$
 
-Which raises an immediate practical problem, and the answer to it is the whole design of modern autodiff.`),
+That expression raises an immediate practical problem, and the whole design of modern autodiff is the answer to
+it.`),
 
-    key(`**Backprop never builds these matrices.** For a layer with 4096 inputs and outputs, the Jacobian is
-$4096^2 = 16.8$M entries — per example, per layer. Instead, autodiff computes **vector–Jacobian products**
-$\\mathbf{v}^{\\mathsf T}J$ directly. For a linear layer $\\mathbf{y}=W\\mathbf{x}$ the VJP is just
-$\\mathbf{v}^{\\mathsf T}W$, i.e. one matrix-vector multiply. For an elementwise activation the Jacobian is diagonal, so
-the VJP is an elementwise multiply.
+    key(`**Backprop never builds these matrices.** A layer with 4096 inputs and 4096 outputs has a Jacobian of
+$4096^2 = 16.8$ million entries — that is 67 MB in float32, per layer, per example. A hundred layers and a batch
+of 32 would need over 200 GB just to hold derivatives you are about to multiply away.
 
-This is the entire computational trick behind reverse-mode automatic differentiation.`),
+So autodiff computes **vector–Jacobian products** instead. Given the gradient $\\mathbf{v}$ flowing back from
+above, it produces $\\mathbf{v}^{\\mathsf T}J$ directly, never materialising $J$:
+
+- For a linear layer $\\mathbf{y} = W\\mathbf{x}$, the Jacobian *is* $W$, so the VJP is $\\mathbf{v}^{\\mathsf T}W$
+  — one matrix-vector multiply against a matrix you already have.
+- For an elementwise activation like $\\tanh$, output $i$ depends only on input $i$, so the Jacobian is diagonal
+  and the VJP is an elementwise multiply — $n$ numbers, not $n^2$.
+
+Every operation in a framework ships with a hand-written VJP rule. That is what a \`backward()\` method is.`),
 
     t(`## Forward mode vs reverse mode
 
-A product like $J_L J_{L-1} \\cdots J_2$ can be evaluated in either order — matrix multiplication is
-associative, so the answer is the same. But the *cost* is wildly different, and choosing correctly is the
-single most consequential decision in the design of an autodiff system.
+The product $J_L J_{L-1} \\cdots J_2$ can be evaluated in either order — matrix multiplication is associative, so
+the answer is identical. The *cost* is not, and picking the right order is the single most consequential decision
+in the design of an autodiff system.
 
-- **Forward mode** goes left to right through the network, computing $J\\mathbf{v}$ (Jacobian–vector products).
-  Each pass gives you the derivative with respect to **one input**. Cost scales with the number of *inputs*.
-- **Reverse mode** goes right to left, computing $\\mathbf{v}^{\\mathsf T}J$ (vector–Jacobian products). Each
-  pass gives you the derivative of **one output** with respect to everything. Cost scales with the number of
-  *outputs*.
+- **Forward mode** multiplies left to right, in the same direction the data flows. Each pass gives you the
+  derivative with respect to **one input**, so the cost scales with the number of *inputs*.
+- **Reverse mode** multiplies right to left, starting from the output end. Each pass gives you the derivative of
+  **one output** with respect to everything, so the cost scales with the number of *outputs*.
 
-Now count. Deep learning has $10^9$ inputs (the parameters) and exactly **one** output (the scalar loss). Forward
-mode would need a billion passes. Reverse mode needs one. That factor of a billion is the entire reason
-"backpropagation" is the algorithm — and backpropagation is nothing more exotic than reverse-mode autodiff
-applied to a neural network.`),
+Now count what deep learning actually has: about $10^9$ inputs (the parameters) and exactly **one** output (the
+scalar loss). Forward mode would need a billion passes. Reverse mode needs one. That ratio is the entire reason
+backpropagation is the algorithm, and backpropagation is nothing more exotic than reverse-mode autodiff applied
+to a network.`),
 
     diagram('Why the multiplication order matters so much',
 `<svg viewBox="0 0 620 200" role="img" aria-label="Forward mode versus reverse mode cost">
@@ -1449,60 +1470,74 @@ applied to a neural network.`),
     <text class="dlabel" x="300" y="180" style="fill: var(--text-faint)">1 pass, because the loss is 1 number</text>
   </g>
 </svg>`,
-      `The trick is starting from the side where the vector is. A vector times a matrix stays a vector, so every
-subsequent step is a cheap matrix–vector multiply. Start from the other end and you are doing full matrix–matrix
-products the whole way. Same answer, wildly different bill.`),
+      `The trick is to start from whichever end already has a vector. A vector times a matrix is still a vector,
+so every step after the first stays cheap. Start from the other end and you are doing full matrix-by-matrix
+products the entire way. Identical answer, wildly different bill.`),
 
-    warn(`Reverse mode's advantage is not free — it is bought with **memory**. To compute a backward pass you
-need the activations from the forward pass, so all of them must be kept alive until the backward pass reaches
-them. For a large model on a long sequence, activations, not weights, are what fills your GPU.
+    warn(`Reverse mode's advantage is not free — it is paid for in **memory**. Computing the backward pass at a
+layer needs that layer's forward-pass activations, and the backward pass does not reach the early layers until
+the very end, so every layer's activations must stay alive the whole time. For a large model on a long sequence,
+it is the activations, not the weights, that fill the GPU.
 
-**Gradient checkpointing** is the standard escape hatch: store only every $k$-th layer's activations and
-recompute the rest on the way back. Roughly $\\sqrt{L}$ memory instead of $L$, for about 30% more compute. When
-you see "OOM during backward but forward was fine", this is why, and this is the fix.`),
+**Gradient checkpointing** is the standard escape hatch: keep only every $k$-th layer's activations and recompute
+the ones in between on the way back. That costs roughly 30% more compute and cuts memory from scaling with $L$ to
+scaling with $\\sqrt{L}$. If you ever see a model run the forward pass fine and then run out of memory during
+\`backward()\`, this is why, and this is the fix.`),
 
-    t(`## Matrix calculus you will actually need
+    t(`## The matrix derivatives you will actually need
 
-You do not need to memorize a table, but these five come up constantly. Assume $\\mathbf{a}$, $\\mathbf{x}$ are vectors,
-$A$ a matrix, and $\\mathcal{L}$ a scalar.
+You do not need a lookup table memorised, but these come up constantly. Take $\\mathbf{a}$ and $\\mathbf{x}$ to be
+vectors, $W$ a matrix, and $\\mathcal{L}$ a scalar loss.
 
-| Expression | Derivative |
-|---|---|
-| $\\frac{\\partial}{\\partial \\mathbf{x}}(\\mathbf{a}^{\\mathsf T}\\mathbf{x})$ | $\\mathbf{a}$ |
-| $\\frac{\\partial}{\\partial \\mathbf{x}}(\\mathbf{x}^{\\mathsf T}A\\mathbf{x})$ | $(A + A^{\\mathsf T})\\mathbf{x}$, and $2A\\mathbf{x}$ if $A$ symmetric |
-| $\\frac{\\partial}{\\partial \\mathbf{x}}\\|\\mathbf{x}\\|^2$ | $2\\mathbf{x}$ |
-| $\\frac{\\partial \\mathcal{L}}{\\partial W}$ where $\\mathbf{y}=W\\mathbf{x}$ | $\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{y}}\\mathbf{x}^{\\mathsf T}$ (outer product) |
-| $\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{x}}$ where $\\mathbf{y}=W\\mathbf{x}$ | $W^{\\mathsf T}\\frac{\\partial \\mathcal{L}}{\\partial \\mathbf{y}}$ |
+| Expression | Derivative | Why you meet it |
+|---|---|---|
+| $\\dfrac{\\partial}{\\partial \\mathbf{x}}(\\mathbf{a}\\cdot\\mathbf{x})$ | $\\mathbf{a}$ | The multivariable version of "the derivative of $ax$ is $a$" |
+| $\\dfrac{\\partial}{\\partial \\mathbf{x}}\\|\\mathbf{x}\\|^2$ | $2\\mathbf{x}$ | Weight decay, ridge regression |
+| $\\dfrac{\\partial \\mathcal{L}}{\\partial W}$ where $\\mathbf{y}=W\\mathbf{x}$ | $\\boldsymbol{\\delta}\\,\\mathbf{x}^{\\mathsf T}$, an outer product | The weight update in every linear layer |
+| $\\dfrac{\\partial \\mathcal{L}}{\\partial \\mathbf{x}}$ where $\\mathbf{y}=W\\mathbf{x}$ | $W^{\\mathsf T}\\boldsymbol{\\delta}$ | The signal passed down to the layer below |
 
-The last two are the forward and backward passes of a linear layer, and they are the two lines at the heart of every
-deep learning framework.`),
+Here $\\boldsymbol{\\delta}$ is shorthand for $\\partial\\mathcal{L}/\\partial\\mathbf{y}$, the gradient arriving
+from above. The last two rows are the entire backward pass of a linear layer — the two lines at the heart of
+every deep learning framework — and the second of them is the transpose identity you proved back in
+[the matrices lesson](#/l/math-matrices), now doing real work.`),
 
-    intuition(`**The shape rule.** If you forget a formula, reconstruct it from shapes. $\\partial\\mathcal{L}/\\partial W$
-must have the same shape as $W$ (that is $m\\times n$). You have $\\partial\\mathcal{L}/\\partial\\mathbf{y}$ ($m$-vector)
-and $\\mathbf{x}$ ($n$-vector). The only way to combine them into $m\\times n$ is the outer product
-$\\delta\\mathbf{x}^{\\mathsf T}$. This trick resolves most sign-and-transpose confusion in practice.`),
+    intuition(`**When you forget a formula, rebuild it from shapes.** Suppose you cannot remember whether
+$\\partial\\mathcal{L}/\\partial W$ is $\\boldsymbol{\\delta}\\mathbf{x}^{\\mathsf T}$ or
+$\\mathbf{x}\\boldsymbol{\\delta}^{\\mathsf T}$. The answer must have the same shape as $W$, which is $m\\times n$.
+You have $\\boldsymbol{\\delta}$, which has $m$ entries, and $\\mathbf{x}$, which has $n$. The only way to combine
+an $m$-vector and an $n$-vector into an $m\\times n$ grid is $\\boldsymbol{\\delta}\\mathbf{x}^{\\mathsf T}$, with
+$\\boldsymbol{\\delta}$ as the column. Done — no memory required. This resolves most transpose confusion in
+practice.`),
 
-    deriv('The softmax + cross-entropy gradient', `This is the most important derivative in classification, and it collapses beautifully.
+    deriv('The softmax + cross-entropy gradient, from scratch', `This is the most-used derivative in classification, and it collapses into something you can remember forever. Both ingredients are defined here, so nothing is assumed.
 
-Let $z$ be the logits, $p = \\text{softmax}(z)$, and the loss be cross-entropy against a one-hot target $y$:
-$\\mathcal{L} = -\\sum_k y_k \\log p_k$.
+**Softmax** turns a vector of scores $\\mathbf{z}$ (the logits) into probabilities by exponentiating and normalising:
 
-First, the softmax Jacobian. With $p_i = e^{z_i}/\\sum_j e^{z_j}$:
+$$p_i = \\frac{e^{z_i}}{\\sum_j e^{z_j}}$$
 
-$$\\frac{\\partial p_i}{\\partial z_j} = p_i(\\delta_{ij} - p_j)$$
+Exponentiating makes everything positive; dividing by the total makes them add to 1.
 
-Now the chain rule, using $\\partial\\mathcal{L}/\\partial p_i = -y_i/p_i$:
+**Cross-entropy** measures how much probability you put on the correct answer. With a one-hot target $\\mathbf{y}$, the loss is $\\mathcal{L} = -\\sum_k y_k \\log p_k$, which — since only one $y_k$ is 1 — is just $-\\log(\\text{probability of the right class})$. It is 0 when you were certain and correct, and grows without bound as you approach certainty in the wrong answer.
 
-$$\\frac{\\partial \\mathcal{L}}{\\partial z_j} = \\sum_i \\frac{\\partial \\mathcal{L}}{\\partial p_i}\\frac{\\partial p_i}{\\partial z_j}
-= -\\sum_i \\frac{y_i}{p_i}\\,p_i(\\delta_{ij}-p_j) = -y_j + p_j\\sum_i y_i$$
+**Step 1: the softmax Jacobian.** Differentiate $p_i$ with respect to $z_j$ using the quotient rule, writing $S = \\sum_j e^{z_j}$. When $i = j$ the numerator depends on $z_j$ too:
 
-Since $y$ is one-hot, $\\sum_i y_i = 1$, giving
+$$\\frac{\\partial p_i}{\\partial z_i} = \\frac{e^{z_i}S - e^{z_i}e^{z_i}}{S^2} = p_i - p_i^2 = p_i(1 - p_i)$$
 
-$$\\boxed{\\frac{\\partial\\mathcal{L}}{\\partial \\mathbf{z}} = \\mathbf{p} - \\mathbf{y}}$$
+When $i \\neq j$ only the denominator depends on $z_j$:
 
-Just "predicted minus actual." Every framework fuses softmax and cross-entropy into one op for exactly this reason:
-the fused gradient is numerically stable and costs nothing, whereas computing them separately involves dividing by
-$p_i$, which can underflow.`),
+$$\\frac{\\partial p_i}{\\partial z_j} = \\frac{0 \\cdot S - e^{z_i}e^{z_j}}{S^2} = -p_ip_j$$
+
+Both cases fit one formula, $\\frac{\\partial p_i}{\\partial z_j} = p_i(\\delta_{ij} - p_j)$, where $\\delta_{ij}$ is 1 when $i = j$ and 0 otherwise.
+
+**Step 2: chain through the loss.** From $\\mathcal{L} = -\\sum_k y_k\\log p_k$ we get $\\partial\\mathcal{L}/\\partial p_i = -y_i/p_i$. Sum over every path from $z_j$ to the loss:
+
+$$\\frac{\\partial \\mathcal{L}}{\\partial z_j} = \\sum_i \\frac{\\partial \\mathcal{L}}{\\partial p_i}\\frac{\\partial p_i}{\\partial z_j} = -\\sum_i \\frac{y_i}{p_i}\\,p_i(\\delta_{ij}-p_j) = -\\sum_i y_i(\\delta_{ij} - p_j)$$
+
+The $p_i$ cancels — that is the whole reason this collapses. Expanding, $\\sum_i y_i \\delta_{ij} = y_j$ and $\\sum_i y_i p_j = p_j\\sum_i y_i = p_j$ because a one-hot vector sums to 1. So
+
+$$\\frac{\\partial\\mathcal{L}}{\\partial \\mathbf{z}} = \\mathbf{p} - \\mathbf{y}$$
+
+**Predicted minus actual.** Every framework fuses softmax and cross-entropy into a single operation for exactly this reason: the fused gradient is this one subtraction, and it avoids ever computing the $-y_i/p_i$ term, which blows up when the model assigns a near-zero probability to the true class.`),
 
     code('Vector-Jacobian products, by hand', `import numpy as np
 
@@ -1510,59 +1545,55 @@ rng = np.random.default_rng(0)
 W = rng.normal(size=(4, 6)) * 0.5
 x = rng.normal(size=6)
 
-# forward
-y = np.tanh(W @ x)
-
-# suppose the loss gradient w.r.t. y is v
-v = rng.normal(size=4)
-
-# --- the expensive way: build the Jacobian explicitly ---
 z = W @ x
-J = np.diag(1 - np.tanh(z)**2) @ W        # (4,6) Jacobian of y w.r.t. x
+y = np.tanh(z)                            # forward pass: 6 numbers in, 4 out
+
+v = rng.normal(size=4)                    # the gradient arriving from above
+
+# --- the expensive way: build the Jacobian, then multiply ---
+J = np.diag(1 - np.tanh(z)**2) @ W        # the (4, 6) Jacobian of y with respect to x
 grad_x_explicit = v @ J
 
 # --- the way autodiff does it: never form J ---
-dz = v * (1 - np.tanh(z)**2)              # elementwise: diagonal Jacobian
-grad_x_vjp = dz @ W                       # one matvec
-grad_W_vjp = np.outer(dz, x)              # outer product
+dz = v * (1 - np.tanh(z)**2)              # tanh's Jacobian is diagonal -> elementwise
+grad_x = dz @ W                           # one matrix-vector product
+grad_W = np.outer(dz, x)                  # the outer-product rule from the table
 
-print("match:", np.allclose(grad_x_explicit, grad_x_vjp))
-print("explicit Jacobian entries:", J.size, " vs VJP work:", dz.size + W.size)
+print("same answer:", np.allclose(grad_x_explicit, grad_x))
+print("numbers touched -- explicit:", J.size, "  VJP:", dz.size + W.size)
 
-# scale it up to see why this matters
 d = 4096
-print(f"\\nFor a {d}x{d} layer:")
-print(f"  explicit Jacobian: {d*d:,} floats = {d*d*4/1e6:.0f} MB per example")
-print(f"  VJP:               {d:,} floats  = {d*4/1e3:.0f} KB")`),
+print(f"\\nScaled up to a {d}x{d} layer, per example:")
+print(f"  explicit Jacobian: {d*d:,} floats = {d*d*4/1e6:.0f} MB")
+print(f"  VJP:               {d:,} floats  = {d*4/1e3:.0f} KB")`,
+      'Both routes produce identical gradients; only the bill differs. The 4096 figures at the end are per layer and per example — multiply by a hundred layers and a batch of 32 and the explicit route is asking for hundreds of gigabytes to hold matrices it would immediately throw away.'),
 
-    quiz('Why does reverse-mode autodiff, not forward mode, power deep learning?',
-      ['Cost scales with the number of outputs; a loss has exactly one, while parameters number in the billions',
+    quiz('Why does reverse-mode autodiff, rather than forward mode, power deep learning?',
+      ['Its cost scales with the number of outputs, and a loss has exactly one, while parameters number in the billions',
        'Reverse mode is numerically more accurate',
        'Forward mode cannot handle nonlinearities',
        'Reverse mode uses less memory'],
       0,
-      'Forward mode costs one pass per *input* dimension; reverse mode costs one pass per *output* dimension. With $10^9$ parameters and a single scalar loss, reverse mode is a billion times cheaper. It actually uses **more** memory (it must cache activations) — that is the trade you accept, and gradient checkpointing is how you claw some of it back.'),
+      'Forward mode costs one pass per *input*; reverse mode costs one pass per *output*. With $10^9$ parameters and a single scalar loss, reverse mode is about a billion times cheaper. Note that the last option is not merely wrong but backwards: reverse mode uses considerably *more* memory, because it has to keep every activation alive until the backward pass arrives. That is the trade you accept, and gradient checkpointing is how you buy some of it back.'),
 
-    recap(`- Say what a Jacobian is and how it relates to a gradient (a gradient is the one-output case).
-- Explain why backprop is a product of Jacobians, and why nobody ever builds one.
-- Choose reverse mode over forward mode from a parameter count and an output count, and justify it in one
+    recap(`- Say what a Jacobian is, build a small one by hand, and explain why a gradient is the one-output case.
+- Explain why the chain rule across a network is a product of Jacobians, and why nobody ever builds one.
+- Choose reverse mode over forward mode given a parameter count and an output count, and justify it in one
   sentence.
-- Name the price reverse mode pays, and what gradient checkpointing buys back.
-- Reconstruct $\\partial\\mathcal{L}/\\partial W = \\delta\\mathbf{x}^{\\mathsf T}$ from shapes alone when you
-  cannot remember the formula.
-- State the softmax + cross-entropy gradient from memory — "predicted minus actual" — and say why frameworks
-  fuse the two operations.`),
+- Name the price reverse mode pays, and say what gradient checkpointing buys back.
+- Rebuild $\\partial\\mathcal{L}/\\partial W = \\boldsymbol{\\delta}\\mathbf{x}^{\\mathsf T}$ from shapes alone when
+  you cannot remember it.
+- Derive the softmax plus cross-entropy gradient, get "predicted minus actual", and say why frameworks fuse the
+  two operations.`),
   ],
   refs: [
-    blog('The Matrix Calculus You Need For Deep Learning', 'Parr & Howard', 2018, 'https://explained.ai/matrix-calculus/', ''),
-    book('The Matrix Cookbook', 'Petersen & Pedersen', 2012, 'https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf', 'The lookup table. Print it.'),
-    paper('Automatic differentiation in machine learning: a survey', 'Baydin et al.', 2018, 'https://arxiv.org/abs/1502.05767', 'Forward vs reverse mode, and what frameworks actually implement.'),
-    blog('Autodidax: JAX core from scratch', 'JAX team', 2021, 'https://jax.readthedocs.io/en/latest/autodidax.html', 'Build an autodiff system in a few hundred lines. The best way to truly understand it.'),
-    paper('Training Deep Nets with Sublinear Memory Cost', 'Chen et al.', 2016, 'https://arxiv.org/abs/1604.06174', 'Gradient checkpointing: trade compute for the memory reverse mode demands.'),
+    blog('The Matrix Calculus You Need For Deep Learning', 'Parr & Howard', 2018, 'https://explained.ai/matrix-calculus/', 'Starts from single-variable calculus and builds up to exactly the rules in the table above.'),
+    book('The Matrix Cookbook', 'Petersen & Pedersen', 2012, 'https://www.math.uwaterloo.ca/~hwolkowi/matrixcookbook.pdf', 'The lookup table for everything not in that table. Print it.'),
+    paper('Automatic differentiation in machine learning: a survey', 'Baydin et al.', 2018, 'https://arxiv.org/abs/1502.05767', 'Forward versus reverse mode, and what frameworks actually implement.'),
+    blog('Autodidax: JAX core from scratch', 'JAX team', 2021, 'https://jax.readthedocs.io/en/latest/autodidax.html', 'Build an autodiff system in a few hundred lines. The best way to genuinely understand it.'),
+    paper('Training Deep Nets with Sublinear Memory Cost', 'Chen et al.', 2016, 'https://arxiv.org/abs/1604.06174', 'Gradient checkpointing: trading compute for the memory reverse mode demands.'),
   ],
 },
-
-/* ---------------------------------------------------------- */
 {
   id: 'math-probability',
   title: 'Probability, Distributions, and Bayes',
