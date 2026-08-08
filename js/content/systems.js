@@ -196,7 +196,8 @@ or four simultaneously, and knowing which axis each one splits is what makes the
       ['tensor parallel (TP)', 'Splitting individual weight matrices across GPUs. Needs very fast interconnect — used within a node, not across.'],
       ['pipeline parallel (PP)', 'Giving different GPUs different layers. Cheap on bandwidth; introduces idle time called the "bubble".'],
       ['bubble', 'GPUs sitting idle in a pipeline waiting for work from the previous stage.'],
-      ['all-reduce', 'The collective operation summing a tensor across all GPUs and giving everyone the result. The main communication cost of data parallelism.'],
+      ['all-reduce', 'The collective operation that sums a tensor across all GPUs and gives every GPU the result. The main communication cost of data parallelism.'],
+      ['all-gather', 'The collective that collects a different piece from each GPU and gives every GPU the whole thing. How a sharded layer is reassembled just before it runs.'],
       ['3D parallelism', 'Using data, tensor, and pipeline parallelism together. Standard at frontier scale.'],
     ]),
 
@@ -242,9 +243,21 @@ communicating more.
 only one all-reduce is needed per block. Communication happens *inside* every layer, so it needs NVLink-class
 interconnect and is normally confined within a node.
 
-**Pipeline parallel.** Different GPUs own different layers. Communication is tiny (just activations at boundaries) but
-naive scheduling leaves GPUs idle — the "bubble." Micro-batching (GPipe, 1F1B) shrinks it to roughly
-$(P-1)/(m+P-1)$ for $P$ stages and $m$ micro-batches.
+**Pipeline parallel.** Different GPUs own different layers. Communication is tiny — only the activations at each
+boundary — but naive scheduling leaves GPUs idle, and that idle time is the **bubble**.
+
+Here is where the bubble formula comes from. Send one batch through $P$ stages: stage 1 works, then waits while
+stages 2 through $P$ work, then waits again for the backward pass to come back. Every stage is busy for 1 time
+unit out of the $P$ it takes the batch to cross, so $P-1$ units per stage are wasted.
+
+Now send $m$ micro-batches back to back. Once the pipeline is full every stage is busy every step, so the waste
+is still only the $P-1$ units at the start and end — but it is now amortised over $m$ units of real work. The
+fraction of time wasted is therefore
+
+$$\\text{bubble} = \\frac{P-1}{m + P - 1}$$
+
+which goes to zero as $m$ grows. That is the entire reason pipeline schedules (GPipe, 1F1B) exist: not to remove
+the bubble, which is structural, but to keep enough micro-batches in flight that it stops mattering.
 
 Real runs combine all four. The standard shape: tensor-parallel within a node, pipeline-parallel across nodes,
 data-parallel over the whole thing, with FSDP sharding optimizer state.`),
