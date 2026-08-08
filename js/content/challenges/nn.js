@@ -561,31 +561,57 @@ survives being raised to the fiftieth power.`,
 },
 
 'nn-normalization': {
-  title: 'Implement BatchNorm, LayerNorm, and RMSNorm',
-  prompt: `Write all three and confirm which axis each one normalizes. Then show that LayerNorm is invariant to
-scaling the *input row* while BatchNorm is not.`,
-  hint: 'BatchNorm reduces over the batch axis (0); LayerNorm and RMSNorm reduce over features (-1).',
+  title: 'Implement all three, then reproduce the bug that makes BatchNorm annoying',
+  prompt: `1. Write \`batchnorm\`, \`layernorm\` and \`rmsnorm\`. They are the same two lines each; only the axis
+   changes. The printout shows which statistic each one actually zeroes.
+2. **Example coupling.** Scale one row of the batch by 10 and check whether the *other* rows' outputs changed.
+   The lesson claimed BatchNorm couples examples together and LayerNorm does not — this is that claim, tested.
+3. **Train versus eval.** The last block runs the same example through BatchNorm in three settings: alone,
+   inside a batch of similar examples, and inside a batch of unusual ones. **Predict whether the three agree
+   before you run it.** Then see what running statistics fix, and what they do not.`,
+  hint: 'BatchNorm reduces over axis 0 (down the columns, one statistic per feature); LayerNorm and RMSNorm reduce over axis -1 (along each row, one statistic per example). RMSNorm skips the mean subtraction entirely.',
   starter: `import numpy as np
-x = np.random.default_rng(0).normal(2.0, 3.0, (8, 16))
+rng = np.random.default_rng(0)
+x = rng.normal(2.0, 3.0, (8, 16))          # (batch, features)
 
 def batchnorm(x, eps=1e-5):  return x   # TODO
 def layernorm(x, eps=1e-5):  return x   # TODO
 def rmsnorm(x, eps=1e-5):    return x   # TODO
 
+print(f"{'':11s} {'per-feature mean':>22s} {'per-example std':>20s}")
 for name, f in [("input", lambda z: z), ("batchnorm", batchnorm),
                 ("layernorm", layernorm), ("rmsnorm", rmsnorm)]:
     y = f(x)
-    print(f"{name:11s} per-feature mean {y.mean(0)[:3].round(3)}  "
-          f"per-row std {y.std(-1)[:3].round(3)}")
+    print(f"{name:11s} {str(y.mean(0)[:3].round(3)):>22s} {str(y.std(-1)[:3].round(3)):>20s}")
 
-# scale one example by 10 -- which norms are unaffected?
-x2 = x.copy(); x2[0] *= 10
-print("\\nrow 0 scaled by 10:")
+assert np.allclose(batchnorm(x).mean(0), 0, atol=1e-6), "batchnorm should zero the per-feature means"
+assert np.allclose(layernorm(x).mean(-1), 0, atol=1e-6), "layernorm should zero each example's own mean"
+assert np.allclose(np.sqrt((rmsnorm(x)**2).mean(-1)), 1, atol=1e-5), "rmsnorm should give each row unit RMS"
+
+# ---------- 2. does one example's value affect another's output? ----------
+x2 = x.copy(); x2[0] *= 10                 # change ONLY row 0
+print("\\nafter scaling row 0 by 10, is row 1's output unchanged?")
 for name, f in [("batchnorm", batchnorm), ("layernorm", layernorm), ("rmsnorm", rmsnorm)]:
-    same = np.allclose(f(x)[1], f(x2)[1], atol=1e-6)
-    print(f"  {name:11s} row 1 unchanged: {same}")`,
+    print(f"  {name:11s} {np.allclose(f(x)[1], f(x2)[1], atol=1e-6)}")
+
+# ---------- 3. the same example, three different batches ----------
+example  = rng.normal(2.0, 3.0, (1, 16))
+ordinary = np.vstack([example, rng.normal(2.0, 3.0, (15, 16))])
+unusual  = np.vstack([example, rng.normal(9.0, 0.5, (15, 16))])
+
+print("\\nthe SAME example, normalized three ways (first 3 features):")
+print(f"  alone in a batch of 1     : {batchnorm(example)[0][:3].round(3)}")
+print(f"  in a batch of similar rows: {batchnorm(ordinary)[0][:3].round(3)}")
+print(f"  in a batch of odd rows    : {batchnorm(unusual)[0][:3].round(3)}")
+print(f"  under LayerNorm, any batch: {layernorm(example)[0][:3].round(3)}")
+
+# what a framework does at inference: freeze statistics from training
+mu, var = ordinary.mean(0), ordinary.var(0)
+frozen = (example - mu) / np.sqrt(var + 1e-5)
+print(f"  BatchNorm with frozen stats: {frozen[0][:3].round(3)}")`,
   solution: `import numpy as np
-x = np.random.default_rng(0).normal(2.0, 3.0, (8, 16))
+rng = np.random.default_rng(0)
+x = rng.normal(2.0, 3.0, (8, 16))
 
 def batchnorm(x, eps=1e-5):
     return (x - x.mean(0, keepdims=True)) / np.sqrt(x.var(0, keepdims=True) + eps)
@@ -596,17 +622,50 @@ def layernorm(x, eps=1e-5):
 def rmsnorm(x, eps=1e-5):
     return x / np.sqrt((x**2).mean(-1, keepdims=True) + eps)
 
+print(f"{'':11s} {'per-feature mean':>22s} {'per-example std':>20s}")
 for name, f in [("input", lambda z: z), ("batchnorm", batchnorm),
                 ("layernorm", layernorm), ("rmsnorm", rmsnorm)]:
     y = f(x)
-    print(f"{name:11s} per-feature mean {y.mean(0)[:3].round(3)}  "
-          f"per-row std {y.std(-1)[:3].round(3)}")
+    print(f"{name:11s} {str(y.mean(0)[:3].round(3)):>22s} {str(y.std(-1)[:3].round(3)):>20s}")
+
+assert np.allclose(batchnorm(x).mean(0), 0, atol=1e-6)
+assert np.allclose(layernorm(x).mean(-1), 0, atol=1e-6)
+assert np.allclose(np.sqrt((rmsnorm(x)**2).mean(-1)), 1, atol=1e-5)
 
 x2 = x.copy(); x2[0] *= 10
-print("\\nrow 0 scaled by 10:")
+print("\\nafter scaling row 0 by 10, is row 1's output unchanged?")
 for name, f in [("batchnorm", batchnorm), ("layernorm", layernorm), ("rmsnorm", rmsnorm)]:
-    print(f"  {name:11s} row 1 unchanged: {np.allclose(f(x)[1], f(x2)[1], atol=1e-6)}")`,
-  explain: 'Only BatchNorm changes row 1 when row 0 is perturbed — it couples examples through the batch statistics. That coupling is exactly why it misbehaves with small batches and variable-length sequences, and why transformers use LayerNorm.',
+    print(f"  {name:11s} {np.allclose(f(x)[1], f(x2)[1], atol=1e-6)}")
+
+example  = rng.normal(2.0, 3.0, (1, 16))
+ordinary = np.vstack([example, rng.normal(2.0, 3.0, (15, 16))])
+unusual  = np.vstack([example, rng.normal(9.0, 0.5, (15, 16))])
+
+print("\\nthe SAME example, normalized three ways (first 3 features):")
+print(f"  alone in a batch of 1     : {batchnorm(example)[0][:3].round(3)}")
+print(f"  in a batch of similar rows: {batchnorm(ordinary)[0][:3].round(3)}")
+print(f"  in a batch of odd rows    : {batchnorm(unusual)[0][:3].round(3)}")
+print(f"  under LayerNorm, any batch: {layernorm(example)[0][:3].round(3)}")
+
+mu, var = ordinary.mean(0), ordinary.var(0)
+frozen = (example - mu) / np.sqrt(var + 1e-5)
+print(f"  BatchNorm with frozen stats: {frozen[0][:3].round(3)}")`,
+  explain: `Part 2 is example coupling, demonstrated. Nothing about row 1 changed, yet BatchNorm's output for row 1
+did — because row 0 moved the column means that row 1 was measured against. LayerNorm and RMSNorm are unaffected,
+because each row is normalized entirely by its own numbers. That single difference is why transformers use
+LayerNorm: with variable-length sequences and padding, having one example's output depend on its batch-mates is
+not a quirk to tolerate, it is a correctness problem.
+
+Part 3 is the bug that catches everyone. The same example produces **three different outputs** depending on what
+happened to be batched alongside it — and look at the batch-of-one row: with a single example the per-feature
+variance is zero, so BatchNorm divides by $\\sqrt{\\epsilon}$ and returns essentially nothing at all. A model that
+worked in training now returns garbage when you serve one request at a time.
+
+The last line is the fix frameworks use: freeze the statistics collected during training and use those at
+inference, so the function stops depending on the batch. But notice what that means — the layer computes a
+*different function* in training mode and in evaluation mode. Forgetting to switch modes gives you a model that
+silently scores worse for no visible reason, and it is one of the most common bugs in practice. LayerNorm has
+none of this: one row of numbers goes in, the same row comes out, always.`,
 },
 
 'nn-regularization': {

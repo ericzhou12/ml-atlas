@@ -1032,21 +1032,15 @@ for name, f in [("input", lambda z: z), ("batchnorm", batchnorm),
     print(f"{name:10s}  per-feature mean {y.mean(0)[:3].round(3)}  "
           f"per-example std {y.std(-1)[:3].round(3)}")
 
-# does normalization actually flatten the landscape?
-def loss_curvature(normalize):
-    rng = np.random.default_rng(1)
-    W = rng.normal(0, 0.5, (16, 16))
-    h = x @ W
-    if normalize: h = layernorm(h)
-    # crude curvature proxy: how much does the output move for a fixed weight perturbation?
-    dW = rng.normal(0, 0.01, (16, 16))
-    h2 = x @ (W + dW)
-    if normalize: h2 = layernorm(h2)
-    return np.abs(h2 - h).mean()
-
-print(f"\\noutput sensitivity to a weight perturbation:")
-print(f"  without layernorm: {loss_curvature(False):.5f}")
-print(f"  with layernorm:    {loss_curvature(True):.5f}")`),
+# the scale-invariance the lesson warned about
+rng = np.random.default_rng(1)
+W = rng.normal(0, 0.5, (16, 16))
+h_small = x @ W
+h_big   = x @ (100 * W)                 # the same layer, weights blown up 100x
+print(f"\\nwithout normalization, output scale: {np.abs(h_small).mean():.3f} vs {np.abs(h_big).mean():.3f}")
+print(f"after layernorm, largest difference: "
+      f"{np.abs(layernorm(h_small) - layernorm(h_big)).max():.2e}")`,
+      'The first table shows each variant zeroing a different axis: BatchNorm makes the per-feature means zero (read down the columns), while LayerNorm and RMSNorm make each example\'s own features have unit spread (read along the rows). The second block is the scale-invariance warning made concrete — multiplying the weights by 100 changes the layer\'s raw output completely and changes the normalized output by nothing at all. The normalization divides the factor straight back out. That is worth remembering when you apply weight decay to a normalized layer: shrinking those weights does not shrink the function it computes, so the penalty is not doing what you think it is.'),
 
     quiz('Why do transformers use LayerNorm rather than BatchNorm?',
       ['It is independent of batch size and sequence length, and behaves identically at train and inference',
