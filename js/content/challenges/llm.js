@@ -12,35 +12,100 @@
 export default {
 
 'llm-tokenization': {
-  title: 'Train a BPE tokenizer',
-  prompt: `Implement the merge loop: repeatedly find the most frequent adjacent symbol pair and merge it. Then encode a
-word the tokenizer has never seen and confirm it still decomposes rather than failing.`,
-  hint: 'Count pairs across all words weighted by word frequency, merge the argmax, and apply that merge everywhere.',
+  title: 'Train a BPE tokenizer, then make it charge one language more than another',
+  prompt: `1. Implement the merge loop: find the most frequent adjacent pair, merge it everywhere, record the rule.
+   Then encode words the tokenizer has never seen and confirm they still decompose rather than failing.
+2. **Where the language tax comes from.** The second corpus is 90% "English" and 10% another language. Train
+   BPE on it, then measure how many tokens each language costs per word. **Predict the ratio before running** —
+   and note that nothing in the algorithm was told which language to favour.`,
+  hint: 'Use `pairs.most_common(1)[0]` to get the winning pair and its count. Stop when the best count drops below 2 — a pair seen once is not worth a vocabulary slot. Applying a merge means scanning each split left to right and joining the two symbols wherever they are adjacent.',
   starter: `from collections import Counter
+
+def train_bpe(corpus, n_merges):
+    words = Counter("_" + w for w in corpus)
+    splits = {w: list(w) for w in words}
+    merges = []
+    for step in range(n_merges):
+        pairs = Counter()
+        for w, freq in words.items():
+            s = splits[w]
+            for i in range(len(s) - 1):
+                pairs[(s[i], s[i+1])] += freq
+        if not pairs: break
+        # TODO: take the most frequent pair and its count; stop if the count < 2;
+        #       append it to merges; then rewrite every entry of splits using it
+        break
+    return merges
+
+def encode(word, merges):
+    s = list("_" + word)
+    for a, b in merges:
+        out, i = [], 0
+        while i < len(s):
+            if i+1 < len(s) and s[i] == a and s[i+1] == b:
+                out.append(a+b); i += 2
+            else:
+                out.append(s[i]); i += 1
+        s = out
+    return s
 
 corpus = ("the cat sat on the mat the cat ate the rat "
           "a rat sat on a hat the dog sat on the log").split()
+merges = train_bpe(corpus, 14)
 
-words = Counter("_" + w for w in corpus)
-splits = {w: list(w) for w in words}
-merges = []
-
-for step in range(14):
-    pairs = Counter()
-    for w, freq in words.items():
-        s = splits[w]
-        for i in range(len(s) - 1):
-            pairs[(s[i], s[i+1])] += freq
-    if not pairs: break
-    # TODO: pick the most frequent pair, stop if its count < 2,
-    #       record it in merges, and apply it to every entry of splits
-    break
-
-print("merges learned:", len(merges))
+print(f"merges learned: {len(merges)}")
 for i, (a, b) in enumerate(merges[:8]):
     print(f"  {i+1}. {a!r} + {b!r} -> {a+b!r}")
 
-def encode(word):
+print("\\nknown words are short; unseen ones still encode, just into more pieces:")
+for w in ["the", "cat", "splat", "zebra"]:
+    print(f"  {w:8s} -> {encode(w, merges)}")
+assert len(merges) >= 8, "the merge loop does not look implemented"
+assert len(encode("the", merges)) < len(encode("zebra", merges)), \\
+    "a frequent word should cost fewer tokens than an unseen one"
+print("PASS\\n")
+
+# ---------- 2. the same algorithm, on a lopsided corpus ----------
+eng = "the model reads the text and the model writes the text again".split()
+oth = "qux zeb qux vlim zeb qux".split()
+mixed = eng*9 + oth*1                    # 90% one language, 10% the other
+big = train_bpe(mixed, 60)
+
+def cost(words, merges):
+    return sum(len(encode(w, merges)) for w in words) / len(words)
+
+c_eng, c_oth = cost(set(eng), big), cost(set(oth), big)
+print(f"tokens per word, the majority language: {c_eng:.2f}")
+print(f"tokens per word, the minority language: {c_oth:.2f}")
+print(f"the minority language costs {c_oth/c_eng:.1f}x more per word")
+print("\\nNobody chose this. The merge rule only ever asked 'which pair is most frequent'.")`,
+  solution: `from collections import Counter
+
+def train_bpe(corpus, n_merges):
+    words = Counter("_" + w for w in corpus)
+    splits = {w: list(w) for w in words}
+    merges = []
+    for step in range(n_merges):
+        pairs = Counter()
+        for w, freq in words.items():
+            s = splits[w]
+            for i in range(len(s) - 1):
+                pairs[(s[i], s[i+1])] += freq
+        if not pairs: break
+        (a, b), count = pairs.most_common(1)[0]
+        if count < 2: break
+        merges.append((a, b))
+        for w in words:
+            s, out, i = splits[w], [], 0
+            while i < len(s):
+                if i+1 < len(s) and s[i] == a and s[i+1] == b:
+                    out.append(a+b); i += 2
+                else:
+                    out.append(s[i]); i += 1
+            splits[w] = out
+    return merges
+
+def encode(word, merges):
     s = list("_" + word)
     for a, b in merges:
         out, i = [], 0
@@ -51,54 +116,48 @@ def encode(word):
                 out.append(s[i]); i += 1
         s = out
     return s
-
-for w in ["the", "cat", "splat", "zebra"]:
-    print(f"  {w:8s} -> {encode(w)}")`,
-  solution: `from collections import Counter
 
 corpus = ("the cat sat on the mat the cat ate the rat "
           "a rat sat on a hat the dog sat on the log").split()
+merges = train_bpe(corpus, 14)
 
-words = Counter("_" + w for w in corpus)
-splits = {w: list(w) for w in words}
-merges = []
+print(f"merges learned: {len(merges)}")
+for i, (a, b) in enumerate(merges[:8]):
+    print(f"  {i+1}. {a!r} + {b!r} -> {a+b!r}")
 
-for step in range(14):
-    pairs = Counter()
-    for w, freq in words.items():
-        s = splits[w]
-        for i in range(len(s) - 1):
-            pairs[(s[i], s[i+1])] += freq
-    if not pairs: break
-    (a, b), count = pairs.most_common(1)[0]
-    if count < 2: break
-    merges.append((a, b))
-    for w in words:
-        s, out, i = splits[w], [], 0
-        while i < len(s):
-            if i+1 < len(s) and s[i] == a and s[i+1] == b:
-                out.append(a+b); i += 2
-            else:
-                out.append(s[i]); i += 1
-        splits[w] = out
-    print(f"merge {step+1:2d}: {a!r} + {b!r} -> {(a+b)!r}  (seen {count}x)")
-
-def encode(word):
-    s = list("_" + word)
-    for a, b in merges:
-        out, i = [], 0
-        while i < len(s):
-            if i+1 < len(s) and s[i] == a and s[i+1] == b:
-                out.append(a+b); i += 2
-            else:
-                out.append(s[i]); i += 1
-        s = out
-    return s
-
-print()
+print("\\nknown words are short; unseen ones still encode, just into more pieces:")
 for w in ["the", "cat", "splat", "zebra"]:
-    print(f"  {w:8s} -> {encode(w)}")`,
-  explain: 'Frequent words collapse to one token; unseen words fall back to pieces. Nothing is ever out-of-vocabulary, which is the entire point of subword tokenization.',
+    print(f"  {w:8s} -> {encode(w, merges)}")
+assert len(merges) >= 8
+assert len(encode("the", merges)) < len(encode("zebra", merges))
+print("PASS\\n")
+
+eng = "the model reads the text and the model writes the text again".split()
+oth = "qux zeb qux vlim zeb qux".split()
+mixed = eng*9 + oth*1
+big = train_bpe(mixed, 60)
+
+def cost(words, merges):
+    return sum(len(encode(w, merges)) for w in words) / len(words)
+
+c_eng, c_oth = cost(set(eng), big), cost(set(oth), big)
+print(f"tokens per word, the majority language: {c_eng:.2f}")
+print(f"tokens per word, the minority language: {c_oth:.2f}")
+print(f"the minority language costs {c_oth/c_eng:.1f}x more per word")
+print("\\nNobody chose this. The merge rule only ever asked 'which pair is most frequent'.")`,
+  explain: `Part 1: notice that "zebra" — a word the tokenizer has never seen — does not fail. It comes back as
+several pieces. That is the property byte-level BPE was built for: there is no such thing as an unknown input,
+only an expensive one.
+
+Part 2 is where the practical consequences come from. The merge rule contains no notion of language, fairness,
+or importance — it asks only which adjacent pair is most frequent, and a corpus that is 90% one language will
+spend nearly all its merges on that language's patterns. The minority language never accumulates merges, so its
+words stay split into small fragments and cost several times more tokens each.
+
+Now follow that through to what a user experiences. More tokens per word means: fewer words fit in the context
+window, generation is slower, and — since APIs bill per token — the same paragraph costs several times more to
+process. Real tokenizers show a 2–4× penalty for languages under-represented in their training data. It is not
+a policy decision anyone made; it is a frequency count, doing exactly what it was asked.`,
 },
 
 'llm-attention': {

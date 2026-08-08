@@ -145,7 +145,8 @@ def encode(word):
 
 print("\\nunseen words still encode, just into more pieces:")
 for w in ["cats", "splat"]:
-    print(f"  {w:8s} -> {encode(w)}")`),
+    print(f"  {w:8s} -> {encode(w)}")`,
+      'Watch the merge list form. The early merges are the pairs this corpus repeats most — `at`, `_t`, `_the` — and nothing in the code knows they are English, or that " the" is a word. The last block is the property that makes byte-level BPE robust: a word the tokenizer has never seen does not fail, it simply costs more tokens. There is no unknown input, only an expensive one, and the challenge turns that observation into the reason non-English text costs more to process.'),
 
     quiz('Why do language models struggle to count the letters in a word?',
       ['They see tokens, not characters — the letters of a multi-character token are not individually represented',
