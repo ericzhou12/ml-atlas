@@ -493,23 +493,32 @@ from a trained transformer often barely changes its output.`,
 },
 
 'llm-pretraining': {
-  title: 'Train a character-level language model',
-  prompt: `Build a fixed-context neural language model (embed, concatenate, one hidden layer, softmax) and train it
-until perplexity drops. Then sample from it and watch fluency improve with context length.`,
-  hint: 'This is the Bengio et al. 2003 architecture — no attention, and it still works.',
+  title: 'Train a language model, then check whether it learned anything or just memorized',
+  prompt: `1. Implement the backward pass and train a fixed-context character model — embed, concatenate,
+   one hidden layer, softmax over the next character. Watch perplexity fall, then sample from it.
+2. **Did it learn language, or the corpus?** The last block measures loss on the training text and on held-out
+   sentences drawn from the same small vocabulary. **Predict both numbers before running.** Recall from
+   [the information lesson](#/l/math-information) that a model which has learned nothing scores $\\log V$.`,
+  hint: 'The softmax-plus-cross-entropy gradient is `p - onehot(y)`, divided by the batch size. From there it is the two-layer backward pass you have written before, plus `np.add.at(E, X, ...)` to scatter gradients back into the embedding rows that were used.',
   starter: `import numpy as np
-
-text = ("the quick brown fox jumps over the lazy dog. "
-        "the lazy dog sleeps. the quick fox runs. "
-        "a brown dog jumps over a lazy fox. ") * 40
-
-chars = sorted(set(text)); stoi = {c:i for i,c in enumerate(chars)}
-V, CTX, D = len(chars), 8, 24
-data = np.array([stoi[c] for c in text])
-
 rng = np.random.default_rng(0)
-E  = rng.normal(0, 0.1, (V, D))
-Pe = rng.normal(0, 0.1, (CTX, D))
+
+pool = ["the quick brown fox jumps over the lazy dog. ",
+        "the lazy dog sleeps by the warm fire. ",
+        "a quick fox runs through the tall grass. ",
+        "a brown dog jumps over a lazy fox. ",
+        "the small cat sleeps on the soft rug. ",
+        "a happy bird flies above the green hill. "]
+train_txt = "".join(pool[:4]) * 30          # what the model sees
+held_txt  = "".join(pool[4:])               # same words, sentences it never sees
+
+chars = sorted(set("".join(pool))); stoi = {c: i for i, c in enumerate(chars)}
+V, CTX, D = len(chars), 8, 24
+train = np.array([stoi[c] for c in train_txt])
+held  = np.array([stoi[c] for c in held_txt])
+
+E  = rng.normal(0, 0.1, (V, D))             # token embeddings
+Pe = rng.normal(0, 0.1, (CTX, D))           # positional embeddings
 W1 = rng.normal(0, (CTX*D)**-0.5, (CTX*D, 64))
 W2 = rng.normal(0, 64**-0.5, (64, V))
 
@@ -517,30 +526,60 @@ def softmax(z):
     z = z - z.max(-1, keepdims=True); e = np.exp(z)
     return e / e.sum(-1, keepdims=True)
 
-def batch(n=64):
-    i = rng.integers(0, len(data)-CTX-1, n)
-    return np.stack([data[j:j+CTX] for j in i]), np.array([data[j+CTX] for j in i])
+def batch(d, n=64):
+    i = rng.integers(0, len(d)-CTX-1, n)
+    return np.stack([d[j:j+CTX] for j in i]), np.array([d[j+CTX] for j in i])
 
 for step in range(3001):
-    X, y = batch()
+    X, y = batch(train)
     h0 = (E[X] + Pe[None]).reshape(len(X), -1)
     h1 = np.maximum(0, h0 @ W1)
-    p = softmax(h1 @ W2)
+    p  = softmax(h1 @ W2)
     loss = -np.log(p[np.arange(len(y)), y] + 1e-12).mean()
-    # TODO: backprop into W2, W1, E, Pe and take an SGD step at lr=0.2
+    # TODO: backprop into W2, W1, E and Pe, then take an SGD step at lr = 0.2.
+    #       Use np.add.at(E, X, -lr * dh0) to accumulate into the used embedding rows.
     if step % 750 == 0:
-        print(f"step {step:4d}  loss {loss:.4f}  perplexity {np.exp(loss):6.2f}")`,
+        print(f"step {step:4d}  loss {loss:.4f}  perplexity {np.exp(loss):6.2f}")
+
+assert loss < 0.5, "the model should fit this corpus easily -- check the backward pass"
+print("PASS\\n")
+
+# --- sample from it ---
+ctx, out = [stoi[c] for c in "the quic"], "the quic"
+for _ in range(70):
+    x = np.array(ctx[-CTX:])
+    p = softmax(np.maximum(0, (E[x] + Pe).reshape(1, -1) @ W1) @ W2)[0]
+    nxt = rng.choice(V, p=p)
+    out += chars[nxt]; ctx.append(nxt)
+print("generated:", out)
+
+# --- did it learn language, or this text? ---
+def evaluate(d):
+    X = np.stack([d[j:j+CTX] for j in range(len(d)-CTX-1)])
+    y = np.array([d[j+CTX] for j in range(len(d)-CTX-1)])
+    p = softmax(np.maximum(0, (E[X] + Pe[None]).reshape(len(X), -1) @ W1) @ W2)
+    return float(-np.log(p[np.arange(len(y)), y] + 1e-12).mean())
+
+print(f"\\nloss on the training text : {evaluate(train):.3f}")
+print(f"loss on held-out sentences: {evaluate(held):.3f}")
+print(f"loss of a model that knows nothing (log V): {np.log(V):.3f}")`,
   solution: `import numpy as np
-
-text = ("the quick brown fox jumps over the lazy dog. "
-        "the lazy dog sleeps. the quick fox runs. "
-        "a brown dog jumps over a lazy fox. ") * 40
-
-chars = sorted(set(text)); stoi = {c:i for i,c in enumerate(chars)}
-V, CTX, D = len(chars), 8, 24
-data = np.array([stoi[c] for c in text])
-
 rng = np.random.default_rng(0)
+
+pool = ["the quick brown fox jumps over the lazy dog. ",
+        "the lazy dog sleeps by the warm fire. ",
+        "a quick fox runs through the tall grass. ",
+        "a brown dog jumps over a lazy fox. ",
+        "the small cat sleeps on the soft rug. ",
+        "a happy bird flies above the green hill. "]
+train_txt = "".join(pool[:4]) * 30
+held_txt  = "".join(pool[4:])
+
+chars = sorted(set("".join(pool))); stoi = {c: i for i, c in enumerate(chars)}
+V, CTX, D = len(chars), 8, 24
+train = np.array([stoi[c] for c in train_txt])
+held  = np.array([stoi[c] for c in held_txt])
+
 E  = rng.normal(0, 0.1, (V, D))
 Pe = rng.normal(0, 0.1, (CTX, D))
 W1 = rng.normal(0, (CTX*D)**-0.5, (CTX*D, 64))
@@ -550,21 +589,21 @@ def softmax(z):
     z = z - z.max(-1, keepdims=True); e = np.exp(z)
     return e / e.sum(-1, keepdims=True)
 
-def batch(n=64):
-    i = rng.integers(0, len(data)-CTX-1, n)
-    return np.stack([data[j:j+CTX] for j in i]), np.array([data[j+CTX] for j in i])
+def batch(d, n=64):
+    i = rng.integers(0, len(d)-CTX-1, n)
+    return np.stack([d[j:j+CTX] for j in i]), np.array([d[j+CTX] for j in i])
 
 lr = 0.2
 for step in range(3001):
-    X, y = batch()
+    X, y = batch(train)
     h0 = (E[X] + Pe[None]).reshape(len(X), -1)
     h1 = np.maximum(0, h0 @ W1)
-    p = softmax(h1 @ W2)
+    p  = softmax(h1 @ W2)
     loss = -np.log(p[np.arange(len(y)), y] + 1e-12).mean()
 
-    dlog = p.copy(); dlog[np.arange(len(y)), y] -= 1; dlog /= len(y)
-    dW2 = h1.T @ dlog
-    dh1 = (dlog @ W2.T) * (h1 > 0)
+    dlogits = p.copy(); dlogits[np.arange(len(y)), y] -= 1; dlogits /= len(y)
+    dW2 = h1.T @ dlogits
+    dh1 = (dlogits @ W2.T) * (h1 > 0)
     dW1 = h0.T @ dh1
     dh0 = (dh1 @ W1.T).reshape(len(X), CTX, D)
     W2 -= lr*dW2; W1 -= lr*dW1
@@ -574,12 +613,42 @@ for step in range(3001):
     if step % 750 == 0:
         print(f"step {step:4d}  loss {loss:.4f}  perplexity {np.exp(loss):6.2f}")
 
-ctx = [stoi[c] for c in "the quic"]; out = "the quic"
-for _ in range(80):
-    h = np.maximum(0, (E[np.array(ctx[-CTX:])] + Pe).reshape(1,-1) @ W1)
-    nxt = rng.choice(V, p=softmax(h @ W2)[0])
+assert loss < 0.5
+print("PASS\\n")
+
+ctx, out = [stoi[c] for c in "the quic"], "the quic"
+for _ in range(70):
+    x = np.array(ctx[-CTX:])
+    p = softmax(np.maximum(0, (E[x] + Pe).reshape(1, -1) @ W1) @ W2)[0]
+    nxt = rng.choice(V, p=p)
     out += chars[nxt]; ctx.append(nxt)
-print("\\ngenerated:", out)`,
+print("generated:", out)
+
+def evaluate(d):
+    X = np.stack([d[j:j+CTX] for j in range(len(d)-CTX-1)])
+    y = np.array([d[j+CTX] for j in range(len(d)-CTX-1)])
+    p = softmax(np.maximum(0, (E[X] + Pe[None]).reshape(len(X), -1) @ W1) @ W2)
+    return float(-np.log(p[np.arange(len(y)), y] + 1e-12).mean())
+
+print(f"\\nloss on the training text : {evaluate(train):.3f}")
+print(f"loss on held-out sentences: {evaluate(held):.3f}")
+print(f"loss of a model that knows nothing (log V): {np.log(V):.3f}")`,
+  explain: `Part 1: the loss falls to near zero and the samples read like the training text. Everything in the
+pipeline works — this is a real language model, and it is essentially the architecture Bengio et al. published in
+2003, before attention existed.
+
+Part 2 is the uncomfortable part, and it is worth sitting with. Training loss is around 0.02. Held-out loss is
+around **5.8**, which is *worse* than $\\log V \\approx 3.3$ — the loss of a model that has learned nothing at all
+and guesses uniformly. This model did not learn English. It memorised four sentences, and on anything else it is
+worse than useless, because it is confidently predicting the continuations it memorised.
+
+The lesson claimed that a narrow objective produces broad capability *because the data is broad*. This is that
+claim seen from the other side: the objective here is identical to GPT's, the architecture is a scaled-down
+version of the same idea, and the result is a lookup table. Nothing was wrong with the objective. There were
+four sentences.
+
+That is also why the data pipeline in the lesson matters so much, and why deduplication is one of its stages.
+Repeated text does not add information — it just gives the model more opportunity to do what this one did.`,
 },
 
 'llm-scaling': {
