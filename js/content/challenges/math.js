@@ -733,42 +733,75 @@ Neither answer is wrong; they are answers to different questions. Now you can pr
 whether a method will produce blurry averages or confident narrow output.`,
 },
 'math-optimization': {
-  title: 'Implement SGD, momentum, and Adam — then break them',
-  prompt: `Write all three update rules for an ill-conditioned quadratic. Verify plain GD diverges above
-$\\eta = 2/\\lambda_{\\max}$ exactly as theory predicts, and check how much less sensitive Adam is.`,
-  hint: 'Adam needs bias correction: $\\hat m = m/(1-\\beta_1^t)$, $\\hat v = v/(1-\\beta_2^t)$.',
+  title: 'Implement SGD, momentum and Adam, then find the exact point where SGD breaks',
+  prompt: `Write the three update rules, then use them to check two numerical predictions the lesson made.
+
+1. **The stability bound.** Plain gradient descent should converge below $\\eta = 2/\\lambda_{\\max}$ and diverge
+   above it, with nothing gradual in between. The script narrows in on the boundary by bisection — see how many
+   digits it matches.
+2. **The condition number tax.** The lesson claimed that a condition number of $\\kappa$ costs you roughly
+   $\\kappa$ times as many steps. The last block measures steps-to-converge at several values of $\\kappa$ for
+   each optimizer. Predict the shape of each column before running it.`,
+  hint: 'Momentum: `m = beta*m - lr*g` then `w = w + m`. Adam: update `m` and `v`, divide each by $1-\\beta^t$ to undo the cold start, then step by `lr * mh / (sqrt(vh) + eps)`.',
   starter: `import numpy as np
+np.seterr(over="ignore", invalid="ignore")     # diverging runs overflow on purpose
 
-A = np.array([0.15, 4.0])                 # per-axis curvature; kappa ~ 27
-loss = lambda w: 0.5 * np.sum(A * w**2)
-grad = lambda w: A * w
+def make(kappa):
+    """A bowl whose sharpest direction is kappa times its flattest."""
+    A = np.array([1.0, kappa])
+    return A, (lambda w: 0.5*np.sum(A*w**2)), (lambda w: A*w)
 
-def run(opt, lr, steps=200, beta=0.9):
-    w = np.array([-2.5, 2.0])
+def run(opt, lr, A, loss, grad, steps=4000, beta=0.9, tol=1e-8):
+    """Return the step count at which the loss first drops below tol, or inf."""
+    w = np.array([2.0, 2.0])
     m = np.zeros(2); v = np.zeros(2)
     for t in range(1, steps+1):
         g = grad(w)
         if opt == "sgd":
             pass      # TODO
         elif opt == "momentum":
-            pass      # TODO  (m holds the velocity)
+            pass      # TODO -- m holds the velocity
         elif opt == "adam":
-            pass      # TODO  (b1=0.9, b2=0.999, eps=1e-8, with bias correction)
-        if not np.all(np.isfinite(w)): return np.inf
-    return loss(w)
+            pass      # TODO -- b1=0.9, b2=0.999, eps=1e-8, with the bias correction
+        if not np.all(np.isfinite(w)):
+            return np.inf
+        if loss(w) < tol:
+            return t
+    return np.inf
 
-print(f"theory: plain GD diverges above lr = 2/{A.max()} = {2/A.max():.4f}\\n")
-for lr in [0.1, 0.4, 0.49, 0.51, 0.9]:
-    print(f"lr={lr:<5} sgd={run('sgd',lr):>12.3e}  "
-          f"momentum={run('momentum',lr):>10.3e}  adam={run('adam',lr):>10.3e}")`,
+A, loss, grad = make(4.0)
+assert run("sgd", 0.1, A, loss, grad) < np.inf, "sgd should converge at lr=0.1"
+assert run("momentum", 0.1, A, loss, grad) < np.inf, "momentum should converge at lr=0.1"
+assert run("adam", 0.1, A, loss, grad) < np.inf, "adam should converge at lr=0.1"
+print("PASS -- all three implemented\\n")
+
+# ---------- part 1: locate the stability boundary by bisection ----------
+lo, hi = 0.01, 2.0                       # lo converges, hi does not
+for _ in range(50):
+    mid = 0.5*(lo + hi)
+    if run("sgd", mid, A, loss, grad) < np.inf: lo = mid
+    else: hi = mid
+print(f"measured breaking point : {lo:.8f}")
+print(f"theory, 2/lambda_max    : {2/A.max():.8f}")
+assert abs(lo - 2/A.max()) < 1e-3, "the boundary should sit right on 2/lambda_max"
+
+# ---------- part 2: what a bad condition number costs ----------
+print("\\n kappa |    sgd |  momentum |   adam     (steps to reach loss < 1e-8)")
+for kappa in [1.0, 4.0, 16.0, 64.0, 256.0]:
+    A, loss, grad = make(kappa)
+    safe = 0.9 * 2/A.max()               # just inside the stability bound
+    row = [run(o, safe if o != "adam" else 0.05, A, loss, grad) for o in
+           ("sgd", "momentum", "adam")]
+    print(f" {kappa:5.0f} | {row[0]:6.0f} | {row[1]:9.0f} | {row[2]:6.0f}")`,
   solution: `import numpy as np
+np.seterr(over="ignore", invalid="ignore")
 
-A = np.array([0.15, 4.0])
-loss = lambda w: 0.5 * np.sum(A * w**2)
-grad = lambda w: A * w
+def make(kappa):
+    A = np.array([1.0, kappa])
+    return A, (lambda w: 0.5*np.sum(A*w**2)), (lambda w: A*w)
 
-def run(opt, lr, steps=200, beta=0.9):
-    w = np.array([-2.5, 2.0])
+def run(opt, lr, A, loss, grad, steps=4000, beta=0.9, tol=1e-8):
+    w = np.array([2.0, 2.0])
     m = np.zeros(2); v = np.zeros(2)
     for t in range(1, steps+1):
         g = grad(w)
@@ -783,14 +816,42 @@ def run(opt, lr, steps=200, beta=0.9):
             v = b2*v + (1-b2)*g**2
             mh = m / (1 - b1**t); vh = v / (1 - b2**t)
             w = w - lr * mh / (np.sqrt(vh) + eps)
-        if not np.all(np.isfinite(w)): return np.inf
-    return loss(w)
+        if not np.all(np.isfinite(w)):
+            return np.inf
+        if loss(w) < tol:
+            return t
+    return np.inf
 
-print(f"theory: plain GD diverges above lr = 2/{A.max()} = {2/A.max():.4f}\\n")
-for lr in [0.1, 0.4, 0.49, 0.51, 0.9]:
-    print(f"lr={lr:<5} sgd={run('sgd',lr):>12.3e}  "
-          f"momentum={run('momentum',lr):>10.3e}  adam={run('adam',lr):>10.3e}")`,
-  explain: 'SGD blows up between 0.49 and 0.51, precisely at $2/\\lambda_{\\max}=0.5$. Adam rescales each axis by its own gradient history, so the same learning rate works across a much wider range — that insensitivity is most of why it is the default.',
+A, loss, grad = make(4.0)
+assert run("sgd", 0.1, A, loss, grad) < np.inf
+assert run("momentum", 0.1, A, loss, grad) < np.inf
+assert run("adam", 0.1, A, loss, grad) < np.inf
+print("PASS -- all three implemented\\n")
+
+lo, hi = 0.01, 2.0
+for _ in range(50):
+    mid = 0.5*(lo + hi)
+    if run("sgd", mid, A, loss, grad) < np.inf: lo = mid
+    else: hi = mid
+print(f"measured breaking point : {lo:.8f}")
+print(f"theory, 2/lambda_max    : {2/A.max():.8f}")
+assert abs(lo - 2/A.max()) < 1e-3
+
+print("\\n kappa |    sgd |  momentum |   adam     (steps to reach loss < 1e-8)")
+for kappa in [1.0, 4.0, 16.0, 64.0, 256.0]:
+    A, loss, grad = make(kappa)
+    safe = 0.9 * 2/A.max()
+    row = [run(o, safe if o != "adam" else 0.05, A, loss, grad) for o in
+           ("sgd", "momentum", "adam")]
+    print(f" {kappa:5.0f} | {row[0]:6.0f} | {row[1]:9.0f} | {row[2]:6.0f}")`,
+  explain: `Part 1 lands on $2/\\lambda_{\\max}$ to several decimal places. The bisection works at all only because
+the transition is a genuine cliff: on one side the distance shrinks geometrically, on the other it grows
+geometrically, and there is nothing in between.
+
+Part 2 is the condition-number tax, measured. Once $\\kappa$ is large the SGD column grows in proportion to it —
+336 steps at $\\kappa=64$ becomes 1355 at $\\kappa=256$, four times the conditioning for four times the steps.
+That is what "one sharp direction taxes the whole model" costs in practice. Momentum grows more slowly. Adam barely notices, because dividing by each axis's own gradient history
+undoes the difference in scale between the axes, which is exactly the job it was designed for.`,
 },
 
 'math-numerics': {

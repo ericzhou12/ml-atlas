@@ -2144,224 +2144,235 @@ print("perplexity   :", np.exp(-log_softmax(logits)[target]))`,
   prereq: ['math-derivatives'],
   tags: ['optimization', 'SGD', 'Adam'],
   sections: [
-    tldr(`Training a model is a loop with three lines: compute the loss, compute the gradient, step downhill.
-Everything difficult about it comes down to **how big should the step be?**
+    tldr(`Training a model is a loop of three lines: compute the loss, compute the gradient, step downhill.
+Everything hard about it reduces to one question — **how big should the step be?**
 
-Too big and you overshoot and diverge. Too small and training takes a week. And there is no single right
-answer, because the loss surface is steep in some directions and flat in others *at the same time*. Momentum,
-Adam, learning-rate schedules, and normalization layers are all attacks on that one problem, and knowing which
-problem they solve is more useful than memorising their update rules.`),
+Too big and you overshoot and blow up. Too small and training takes a week. And there is no single right answer,
+because a real loss surface is steep along some directions and nearly flat along others *at the same point*,
+while you only get one step size to share among all of them.
+
+Momentum, Adam, learning-rate schedules, and normalization layers are all attacks on that one problem. Knowing
+which part of it each one attacks is more useful than memorising the update rules.`),
 
     jargon([
       ['$\\theta$ (theta)', 'The parameters — every trainable number in the model, stacked into one long vector. Training means searching over $\\theta$.'],
-      ['loss $\\mathcal{L}(\\theta)$', 'A single number saying how badly the model is doing right now. Lower is better. Always a function of $\\theta$.'],
-      ['$\\arg\\min_\\theta$', '"The value of $\\theta$ that makes what follows smallest." Note: the *argument*, not the minimum value itself.'],
-      ['$\\eta$ (eta)', 'The learning rate — how far to move per step. Often written `lr` in code. The single most consequential hyperparameter.'],
+      ['loss $\\mathcal{L}(\\theta)$', 'One number saying how badly the model is currently doing. Lower is better. It is always a function of $\\theta$.'],
+      ['$\\arg\\min_\\theta$', 'The value of $\\theta$ that makes what follows smallest — the *argument*, not the minimum value itself.'],
+      ['$\\eta$ (eta)', 'The learning rate: how far to move per step. Written `lr` in code. The single most consequential hyperparameter.'],
       ['step / iteration', 'One update of the parameters, using one minibatch.'],
-      ['epoch', 'One full pass over the training set. Many steps.'],
+      ['epoch', 'One full pass over the training set, which is many steps.'],
       ['minibatch $B$', 'The handful of examples (32, 256, …) used to estimate the gradient for one step, instead of the whole dataset.'],
       ['SGD', 'Stochastic Gradient Descent — gradient descent using minibatch estimates. "Stochastic" just means "with randomness in it".'],
-      ['unbiased estimate', 'A noisy measurement that is correct *on average*. Minibatch gradients are noisy but unbiased, which is what makes SGD sound.'],
-      ['momentum', 'Averaging the recent gradients instead of using only the latest one, so the update carries velocity like a rolling ball.'],
-      ['convex', 'Bowl-shaped: any local minimum is *the* global minimum. Convex problems are solved; non-convex ones are gambled on.'],
-      ['condition number', 'Ratio of the sharpest curvature to the flattest. Large = a long narrow valley = slow, awkward optimization.'],
+      ['unbiased estimate', 'A noisy measurement that comes out right on average. Minibatch gradients are noisy but unbiased, which is what makes SGD sound rather than merely convenient.'],
+      ['momentum', 'Averaging recent gradients instead of using only the latest one, so the update carries velocity like a rolling ball.'],
+      ['convex', 'Bowl-shaped, in the precise sense defined below. For convex problems every local minimum is the global one.'],
+      ['condition number', 'The sharpest curvature divided by the flattest. A large value means a long narrow valley, which means slow and awkward optimization.'],
     ]),
 
     t(`## The setup
 
-Training is minimisation, and nothing more exotic. You have parameters $\\theta$, a loss $\\mathcal{L}(\\theta)$
+Training is minimisation and nothing more exotic. You have parameters $\\theta$, a loss $\\mathcal{L}(\\theta)$
 averaged over your data, and you want the parameters that make it smallest:
 
 $$\\theta^* = \\arg\\min_\\theta \\mathcal{L}(\\theta)$$
 
-For a small handful of models — linear regression, some SVMs — you can solve that with algebra and be done. For
-everything else in this atlas there is no closed form, so you iterate:
+For a few models — linear regression, some SVMs — you can solve that with algebra and go home. For everything
+else in this atlas there is no formula, so you iterate:
 
 $$\\theta_{t+1} = \\theta_t - \\eta\\,\\nabla\\mathcal{L}(\\theta_t)$$
 
-Read it left to right: *new parameters = old parameters, minus a small step in the direction of the gradient*.
-The minus sign is the whole idea — the gradient points **uphill**, and we want to go down. $\\eta$ controls how
-far. That is it. Every optimizer in this lesson is a variation on this one line.`),
+Read it left to right: new parameters equal old parameters, minus a small step along the gradient. The minus
+sign is the whole idea — the gradient points uphill, and we want to go down. $\\eta$ says how far. Every
+optimizer in this lesson is a variation on that one line.`),
 
     viz('gradient-descent'),
 
-    t(`## Learning rate: the one hyperparameter that will ruin your day
+    t(`## Learning rate: the hyperparameter that will ruin your day
 
-How big can $\\eta$ be before things break? For once this has an exact answer, and the simplest possible case
+How large can $\\eta$ be before things break? For once there is an exact answer, and the simplest possible case
 gives it away.
 
-Take a one-dimensional parabola, $\\mathcal{L}=\\tfrac12 a\\theta^2$, where $a$ is the curvature. Its gradient is
-$a\\theta$, so a single step does:
+Take a one-dimensional parabola, $\\mathcal{L}=\\tfrac12 a\\theta^2$, where $a$ controls how sharply it curves.
+Its derivative is $a\\theta$, so one step does:
 
 $$\\theta_{t+1} = \\theta_t - \\eta\\, a\\theta_t = (1-\\eta a)\\,\\theta_t$$
 
-Each step multiplies your distance-from-the-minimum by the fixed factor $(1-\\eta a)$. So the behaviour is
-completely determined by that one number:
+Every step multiplies your distance from the minimum by the same factor $(1-\\eta a)$. So the entire behaviour of
+the run is decided by that one number:
 
 | $(1-\\eta a)$ | What happens |
 |---|---|
 | between 0 and 1 | shrinks smoothly toward the minimum |
-| between −1 and 0 | overshoots past the minimum each step, but by less each time — converges while oscillating |
+| between −1 and 0 | overshoots past the minimum each step, but by less each time — converges while zig-zagging |
 | exactly −1 | bounces between two points forever |
-| below −1 | overshoots by *more* each time — **diverges**, exponentially |
+| below −1 | overshoots by *more* every time — diverges, and it diverges exponentially |
 
-Converging requires $|1-\\eta a| < 1$, which rearranges to the stability bound:
+Converging needs $|1-\\eta a| < 1$. Solving that for $\\eta$ gives the stability bound:
 
-$$\\eta < \\frac{2}{a} = \\frac{2}{\\lambda_{\\max}(H)}$$
+$$\\eta < \\frac{2}{a} = \\frac{2}{\\lambda_{\\max}}$$
 
-In words: **the maximum safe learning rate is set by the sharpest curvature in the landscape.** Exceed it and no
-amount of patience will save the run — the divergence is geometric.`),
+where $\\lambda_{\\max}$ is the largest [Hessian eigenvalue](#/l/math-derivatives) — the sharpest curvature
+anywhere in the landscape. Exceed it and no amount of patience saves the run, because the growth is geometric:
+each step makes the next one worse.`),
 
     viz('lr-stability'),
 
-    key(`Here is why that bound is a genuine problem rather than a formula to plug into.
+    key(`Here is why that bound is a real problem rather than a number to plug in.
 
-A real loss surface is not one parabola — it is steep along some directions and nearly flat along others, at the
-same point. But you only get **one** $\\eta$, shared by every parameter. So the learning rate is capped by the
-*sharpest* direction anywhere in the landscape, while progress along the *flattest* direction crawls at
-$\\eta\\lambda_{\\min}$.
+A real loss surface is not one parabola. It is steep along some directions and nearly flat along others, at the
+same point. But you get **one** $\\eta$, shared by every parameter. So the learning rate is capped by the
+*sharpest* direction, while progress along the *flattest* direction crawls at a rate of $\\eta\\lambda_{\\min}$.
 
-The damage is exactly the condition number: if $\\lambda_{\\max}/\\lambda_{\\min} = 1000$, you need roughly 1000×
-more steps than you would in a nicely-rounded bowl. **One badly-behaved direction taxes every parameter in the
-model.**
+The damage is exactly the condition number. If $\\lambda_{\\max}/\\lambda_{\\min} = 1000$, you need roughly 1000
+times more steps than you would in a nicely rounded bowl. **One badly behaved direction taxes every parameter in
+the model.**
 
-Every technique in the rest of this lesson attacks that:
+Everything else in this lesson attacks that:
 
-- **Momentum / Adam** — give different directions different effective step sizes.
-- **Normalization layers** — reshape the landscape so curvature is more uniform to begin with.
-- **Warmup** — start small, because early curvature estimates are unreliable and the sharpest region is often
-  encountered in the first few hundred steps.
-- **Gradient clipping** — survive the occasional sharp cliff without a single step destroying the run.`),
+- **Momentum and Adam** give different directions different effective step sizes.
+- **Normalization layers** reshape the landscape so that curvature is more uniform to begin with.
+- **Warmup** starts $\\eta$ small, because the sharpest region is often met in the first few hundred steps.
+- **Gradient clipping** lets you survive an occasional cliff without one step destroying the run.`),
 
     t(`## Stochastic gradient descent
 
-The gradient in that update rule is defined as an average over your *entire* dataset. For a million examples,
-one step would mean a million forward and backward passes. Absurd.
-
-So estimate it from a small random sample instead — a **minibatch**:
+The gradient in that update rule is defined as an average over your *entire* dataset. With a million examples,
+a single step would need a million forward and backward passes. That is absurd, so estimate it from a small
+random sample instead — a **minibatch**:
 
 $$\\nabla\\mathcal{L}(\\theta) \\approx \\frac{1}{B}\\sum_{i\\in\\text{batch}} \\nabla\\ell_i(\\theta)$$
 
-This is legitimate because of linearity of expectation from the [probability lesson](#/l/math-probability): the
-minibatch gradient is an **unbiased** estimate of the true one. It is wrong on any given step, but it is wrong
-in a way that averages out, and its noise shrinks like $1/\\sqrt{B}$.
+This is legitimate rather than merely convenient, and the reason is the expectation rule from
+[the probability lesson](#/l/math-probability): expectations always add, so the average of $B$ randomly chosen
+per-example gradients has exactly the full-dataset gradient as its expected value. The minibatch gradient is
+**unbiased** — wrong on any given step, but wrong in a way that averages out, with noise shrinking like
+$1/\\sqrt{B}$.
 
-The trade is overwhelmingly favourable. With $B = 256$ out of $N = 10^6$ you get roughly 4000× more steps for
-the same compute. Taking 4000 slightly-wrong steps beats taking one perfect one, essentially always.`),
+The trade is overwhelmingly good. With $B = 256$ out of $N = 10^6$ you get about 4000 times more steps for the
+same compute. Four thousand slightly wrong steps beat one perfect step, essentially always.`),
 
-    intuition(`The noise in SGD is not purely a cost you tolerate — it does useful work.
+    intuition(`The noise in SGD is not only a cost you tolerate. It does useful work.
 
 A perfectly computed gradient is exactly zero at a saddle point, so full-batch gradient descent parks there
-indefinitely. Minibatch noise jostles you off. Likewise, noise makes it hard to settle into a *narrow* minimum
-— you get shaken out — while a *wide* flat one holds you even with jitter. So SGD is quietly biased toward flat
-minima, and flat minima empirically generalise better.
+forever. Minibatch noise jostles you off. Similarly, noise makes it hard to settle into a *narrow* minimum — you
+keep getting shaken out — while a *wide* flat one holds you even with the jitter. So SGD is quietly biased
+toward flat minima, and flat minima tend to generalise better.
 
-This is part of why "just use a huge batch size" underperforms: you compute a cleaner gradient and lose the
-regularizing noise along with it. Very large batch training needs learning-rate scaling and warmup to
-compensate.`),
+This is part of why "just use a huge batch" underperforms: you compute a cleaner gradient and lose the useful
+noise along with the useless noise. Very large batch training has to scale the learning rate up and add warmup
+to compensate.`),
 
     t(`## Momentum
 
-Picture the narrow valley again: gradient descent bounces off the steep side walls while barely advancing along
-the floor. Look at the sequence of gradients — the across-the-valley component keeps **flipping sign**, while
-the along-the-floor component points the **same way** every time.
+Picture the narrow valley again. Gradient descent bounces off the steep side walls while barely advancing along
+the floor. Now look at the sequence of gradients it computed: the across-the-valley component keeps **flipping
+sign** step to step, while the along-the-floor component points the **same way** every time.
 
-That suggests an obvious fix: average the recent gradients instead of using only the latest. Flip-flopping
-components cancel; consistent ones survive and add up. That is momentum:
+That suggests a fix. Average the recent gradients instead of using only the latest one: the flip-flopping
+components cancel each other out, while the consistent ones survive and accumulate. That is momentum:
 
 $$v_{t+1} = \\beta v_t - \\eta\\nabla\\mathcal{L}(\\theta_t), \\qquad \\theta_{t+1} = \\theta_t + v_{t+1}$$
 
-$v$ is a velocity that decays by a factor $\\beta$ each step while accumulating new gradient. The physical
-analogy is exact: a ball with inertia rolling down the surface, rather than a hiker who re-reads the map and
-starts fresh at every step.
+$v$ is a velocity that decays by a factor $\\beta$ each step while collecting new gradient. The physical picture
+is exact: a ball with inertia rolling down the surface, rather than a hiker who re-reads the map and starts from
+scratch every step.
 
-With the standard $\\beta=0.9$, a consistently-pointing direction gets amplified by $\\frac{1}{1-\\beta} = 10\\times$
-compared to plain SGD, while the oscillating directions are damped. You get a bigger effective step exactly where
-a bigger step is safe.
+How much amplification does a consistent direction get? If the gradient $g$ is the same every step, then $v$
+settles at $v = \\beta v - \\eta g$, so $v = -\\eta g/(1-\\beta)$. With the standard $\\beta = 0.9$ that is ten times
+the plain SGD step. Meanwhile an oscillating direction cancels itself and gets damped. You end up taking a bigger
+step exactly where a bigger step is safe.
 
-**Nesterov momentum** is a small refinement: evaluate the gradient at the *look-ahead* position $\\theta_t +
-\\beta v_t$ — where momentum is about to carry you — rather than where you currently are. It notices an upcoming
-overshoot one step earlier. Marginally but consistently better.`),
+**Nesterov momentum** is a small refinement: compute the gradient at the look-ahead position
+$\\theta_t + \\beta v_t$ — where momentum is about to carry you anyway — rather than where you are now. It notices
+an oncoming overshoot one step earlier. Marginally but consistently better.`),
 
     t(`## Adaptive methods: RMSProp and Adam
 
-Momentum helps, but it still applies one global learning rate. The next idea is to give **every parameter its
-own step size**, inferred from its own gradient history.
+Momentum helps but still applies one global learning rate. The next idea is to give **every parameter its own
+step size**, worked out from its own gradient history.
 
-The motivation is concrete: a weight attached to a feature that appears in 1% of examples receives a gradient
-only 1% of the time. It should take bigger steps when it finally gets one. A weight in a constantly-active path
-gets a gradient every step and needs smaller ones. A single $\\eta$ cannot serve both.
+The motivation is concrete. A weight attached to a feature that appears in 1% of examples receives a gradient
+only 1% of the time, so it should take a large step when it finally gets one. A weight in a constantly active
+path receives a gradient every step and needs small ones. A single $\\eta$ cannot serve both.
 
-The heuristic that works: **divide each parameter's step by the typical magnitude of its recent gradients.**
-Large historical gradients ⇒ damp it down. Small ones ⇒ let it move. That is RMSProp.
+The heuristic that works: **divide each parameter's step by the typical size of its own recent gradients.** That
+is RMSProp, and it has a clean consequence worth stating explicitly. If a parameter's gradient has been hovering
+around some size $s$, then dividing by $s$ makes the update come out around $\\pm\\eta$ *regardless of what $s$
+was*. The step size stops depending on how the loss happens to be scaled, which is most of what makes these
+methods easy to tune.
 
-**Adam** is RMSProp plus momentum — it tracks two running averages, one of the gradient (first moment, the
-direction) and one of the squared gradient (second moment, the scale):
+**Adam** is RMSProp plus momentum. It keeps two running averages — one of the gradient, giving direction, and one
+of the squared gradient, giving scale:
 
 $$m_t = \\beta_1 m_{t-1} + (1-\\beta_1)g_t \\qquad v_t = \\beta_2 v_{t-1}+(1-\\beta_2)g_t^2$$
 $$\\hat m_t = \\frac{m_t}{1-\\beta_1^t}, \\quad \\hat v_t = \\frac{v_t}{1-\\beta_2^t}, \\qquad
 \\theta_{t+1} = \\theta_t - \\eta\\frac{\\hat m_t}{\\sqrt{\\hat v_t}+\\epsilon}$$
 
-Line by line: $m_t$ is a running average of the gradient (momentum). $v_t$ is a running average of the gradient
-*squared*, which measures magnitude regardless of sign. The hatted versions correct a startup bias — $m$ and $v$
-begin at zero, so early on they under-report, and dividing by $1-\\beta^t$ compensates until $t$ grows. The final
-line is the update: step in the momentum direction, scaled down by the recent gradient magnitude.
+Line by line. $m_t$ averages the gradient, which is momentum. $v_t$ averages the gradient *squared*, which
+measures magnitude while ignoring sign. The final line steps in the momentum direction, scaled down by the recent
+magnitude. The $\\epsilon$ exists only to stop division by zero for a parameter that has not received a gradient
+yet.
 
-The $\\epsilon$ in the denominator only exists to stop division by zero for parameters that have received no
-gradient yet.
+The hatted versions fix a startup problem. Both averages begin at zero, so early on they under-report badly:
+after one step, $m_1 = (1-\\beta_1)g_1 = 0.1\\,g_1$, a tenth of the gradient it is supposed to be estimating.
+Dividing by $1 - \\beta_1^t = 0.1$ restores it to exactly $g_1$. As $t$ grows, $\\beta^t \\to 0$ and the correction
+fades away on its own.
 
-Defaults $\\beta_1=0.9,\\ \\beta_2=0.999,\\ \\epsilon=10^{-8}$ work remarkably often, which is most of why Adam won:
-it is far less sensitive to getting $\\eta$ exactly right than plain SGD, and that saves an enormous amount of
-tuning time.`),
+The defaults $\\beta_1=0.9$, $\\beta_2=0.999$, $\\epsilon=10^{-8}$ work remarkably often, and that is most of why
+Adam won: it is far less sensitive to getting $\\eta$ exactly right than plain SGD, which saves an enormous amount
+of tuning.`),
 
-    warn(`**Adam has a memory cost.** It stores two extra float32 values per parameter, so optimizer state is
-$8$ bytes/param on top of weights and gradients — often the largest single term in your training memory budget. This is
-what 8-bit optimizers, Adafactor, and Lion are trying to reduce.
+    warn(`**Adam costs memory.** It stores two extra float32 numbers per parameter, so the optimizer state is
+8 bytes per parameter on top of the weights and gradients — often the largest single line item in a training
+memory budget. Reducing it is the entire point of 8-bit optimizers, Adafactor, and Lion.
 
-**AdamW ≠ Adam + L2.** Adding $\\lambda\\|\\theta\\|^2$ to the loss puts the penalty through Adam's adaptive scaling, so
-parameters with large historical gradients get *less* decay — usually not what you want. AdamW applies
-$\\theta \\mathrel{-}= \\eta\\lambda\\theta$ separately, decoupled from the adaptive term. **Use AdamW.** It is the default
-for essentially all transformer training.`),
+**AdamW is not "Adam plus L2".** Adding $\\lambda\\|\\theta\\|^2$ to the loss sends the penalty through Adam's
+adaptive scaling, so parameters with large historical gradients get their decay divided away and end up decaying
+*less* — the opposite of what you wanted. AdamW instead applies $\\theta \\mathrel{-}= \\eta\\lambda\\theta$
+separately, outside the adaptive term. **Use AdamW.** It is the default for essentially all transformer
+training.`),
 
     viz('lr-schedules'),
 
     t(`## Convexity, and how much we should care
 
-A **convex** function is bowl-shaped: pick any two points on it, draw a straight line between them, and the
-function stays below that line. The consequence that matters is a guarantee — *any local minimum is the global
-minimum*. There is nowhere to get stuck. Run any reasonable solver, get the right answer, go home.
+A function is **convex** if, when you pick any two points on its graph and draw the straight line between them,
+the function stays below that line. Bowls are convex; anything with a bump in the middle is not.
 
-Linear regression, logistic regression, SVMs, and Lasso are all convex. This is why those methods felt solid
-and theoretically respectable, and why 1990s ML theory was largely built around them.`),
+The consequence that matters is a guarantee: for a convex function, **any local minimum is the global minimum**.
+There is nowhere to get stuck. Run any reasonable solver, get the right answer, go home.
+
+Linear regression, logistic regression, SVMs, and Lasso are all convex. That is why those methods felt solid and
+theoretically respectable, and why so much of 1990s machine learning theory was built around them.`),
 
     viz('convexity'),
 
-    t(`Neural networks are not convex. Not slightly non-convex — wildly so, with an astronomical number of
-critical points and no guarantee whatsoever that gradient descent finds anything good. On the theory of the day,
-they should not work.
+    t(`Neural networks are not convex. Not slightly — wildly so, with an astronomical number of critical points
+and no guarantee at all that gradient descent finds anything good. By the theory of the time, they should not
+work.
 
 They work anyway, and the reasons are partly understood:
 
-- **Most critical points are saddles, not minima.** As the [derivatives lesson](#/l/math-derivatives) argued,
-  needing all million eigenvalues to be positive is an absurdly strong coincidence. Gradient noise slides off
-  saddles.
-- **Overparameterised networks have vast connected basins of near-optimal loss.** You do not need to find *the*
-  minimum; a huge region is good enough, and many of them turn out to be connected to each other.
+- **Most critical points are saddles rather than minima.** As [the derivatives lesson](#/l/math-derivatives)
+  argued, requiring all million eigenvalues to be positive is an absurd coincidence, and a saddle only needs one
+  downhill direction to escape through. Gradient noise finds it.
+- **Overparameterised networks have huge regions of near-optimal loss.** You do not need to find *the* minimum;
+  an enormous region is good enough, and many of those regions turn out to be connected to one another.
 - **SGD is biased toward flat minima**, and flatness correlates with generalisation.`),
 
-    warn(`Take that list as *current best understanding*, not settled fact. Why non-convex optimization works so
-reliably for deep networks — and why the solutions it finds generalise rather than memorise — is genuinely
-open. Statements you will see asserted confidently in blog posts ("SGD finds flat minima which generalise
-better") have real empirical support and known counterexamples both.
+    warn(`Treat that list as current best understanding, not settled fact. Why non-convex optimization works so
+reliably for deep networks — and why the solutions generalise rather than memorise — is genuinely open. Claims
+you will see stated confidently ("SGD finds flat minima, which generalise better") have real empirical support
+*and* known counterexamples.
 
-Being aware of the gap is useful in practice: it is why deep learning results are established by running the
-experiment rather than by deriving them, and why a technique that works for one architecture and dataset may
-simply not transfer.`),
+Knowing that the gap exists is useful in practice. It is why deep learning results are established by running
+the experiment rather than by deriving them, and why a technique that works beautifully for one architecture and
+dataset may simply not transfer to yours.`),
 
-    code('Optimizers from scratch', `import numpy as np
+    code('Optimizers from scratch, on a deliberately awkward problem', `import numpy as np
 
-# ill-conditioned quadratic: the classic pathological case
-A = np.array([0.15, 4.0])          # curvature per axis; condition number ~27
+# a bowl that is 27x steeper in one direction than the other
+A = np.array([0.15, 4.0])          # curvature per axis
 def loss(w): return 0.5 * np.sum(A * w**2)
 def grad(w): return A * w
 
@@ -2371,10 +2382,10 @@ def run(opt, lr, steps=120, **kw):
     for _ in range(steps):
         g = grad(w)
         if opt == "sgd":
-            w -= lr * g
+            w = w - lr * g
         elif opt == "momentum":
             state["m"] = kw["beta"]*state["m"] - lr*g
-            w += state["m"]
+            w = w + state["m"]
         elif opt == "adam":
             state["t"] += 1
             b1, b2, eps = 0.9, 0.999, 1e-8
@@ -2382,45 +2393,45 @@ def run(opt, lr, steps=120, **kw):
             state["v"] = b2*state["v"] + (1-b2)*g**2
             mh = state["m"]/(1-b1**state["t"])
             vh = state["v"]/(1-b2**state["t"])
-            w -= lr * mh/(np.sqrt(vh)+eps)
+            w = w - lr * mh/(np.sqrt(vh)+eps)
         if not np.all(np.isfinite(w)): return np.inf
     return loss(w)
 
-print(f"stable lr limit for plain GD: {2/A.max():.4f}\\n")
+print(f"condition number      : {A.max()/A.min():.0f}")
+print(f"stable lr for plain GD: {2/A.max():.4f}\\n")
 for name, lr, kw in [("sgd", 0.4, {}), ("sgd", 0.49, {}), ("sgd", 0.51, {}),
                      ("momentum", 0.1, {"beta": 0.9}), ("adam", 0.1, {})]:
     print(f"{name:9s} lr={lr:<5} final loss = {run(name, lr, **kw):.3e}")`,
-      'Note how plain GD is unstable above $2/\\lambda_{\\max}=0.5$, while Adam is nearly insensitive to the conditioning — it rescales each axis by its own gradient history.'),
+      'The two SGD rows either side of 0.5 are the stability bound doing exactly what the algebra said it would: 0.49 converges, 0.51 goes to infinity, and nothing in between is gradual. Adam at the same learning rate does far better than any of them, because it rescales each axis by that axis\'s own gradient history and so stops caring about the condition number.'),
 
-    quiz('Your loss suddenly spikes to NaN at step 4000 of a transformer run. What is the most productive first check?',
-      ['Gradient norm history — look for a spike, then add gradient clipping and possibly more warmup',
+    quiz('Your loss suddenly becomes NaN at step 4000 of a transformer run. What is the most productive first check?',
+      ['The gradient norm history — look for a spike in the steps just before, then add gradient clipping and more warmup',
        'Reduce the batch size',
        'Switch from AdamW to SGD',
        'Add more layers'],
       0,
-      'NaN almost always follows a gradient explosion or an overflow (especially in fp16). Log the gradient norm every step: you will usually see it climb for several steps before the blowup. Standard fixes, in order: clip the global grad norm to ~1.0, lengthen warmup, lower the peak LR, and check for fp16 overflow in attention logits (bf16 avoids most of this).'),
+      'A NaN almost always follows a gradient explosion or a numeric overflow. Log the gradient norm every step and you will usually see it climbing for several steps before the blowup, which tells you it was a genuine instability rather than a single bad batch. The standard fixes, in order: clip the global gradient norm to about 1.0, lengthen the warmup so the early sharp region is crossed slowly, lower the peak learning rate, and check for overflow in fp16 — bf16 has a much wider range and avoids most of it.'),
 
-    recap(`- Write the gradient descent update from memory and explain every symbol in it, including the minus sign.
+    recap(`- Write the gradient descent update from memory and explain every symbol, including the minus sign.
 - Derive the stability bound $\\eta < 2/\\lambda_{\\max}$ from a one-dimensional parabola.
-- Explain why one sharp direction throttles the learning rate for the entire model.
-- Justify minibatching with "unbiased estimate", and name a benefit of the noise beyond saving compute.
-- Say what momentum does to oscillating vs. consistent gradient directions.
-- Read Adam's update and identify which term is momentum, which is per-parameter scaling, and what the bias
-  correction is for.
-- State the difference between AdamW and "Adam plus L2", and which to use.
+- Explain why one sharp direction throttles the learning rate for every parameter in the model.
+- Justify minibatching using "expectations always add", and name a benefit of the noise beyond saving compute.
+- Say what momentum does to oscillating directions versus consistent ones, and compute the $1/(1-\\beta)$
+  amplification.
+- Read Adam's update and point at which term is momentum, which is per-parameter scaling, and what the bias
+  correction fixes.
+- State the difference between AdamW and "Adam plus L2", and say which to use.
 - Say honestly what is and is not understood about why non-convex training works.`),
   ],
   refs: [
-    paper('Adam: A Method for Stochastic Optimization', 'Kingma & Ba', 2014, 'https://arxiv.org/abs/1412.6980', 'The most-cited optimizer paper in ML.'),
+    paper('Adam: A Method for Stochastic Optimization', 'Kingma & Ba', 2014, 'https://arxiv.org/abs/1412.6980', 'The most-cited optimizer paper in ML. Short, and the algorithm box is exactly the equations above.'),
     paper('Decoupled Weight Decay Regularization', 'Loshchilov & Hutter', 2017, 'https://arxiv.org/abs/1711.05101', 'AdamW. Explains precisely why L2-in-the-loss and weight decay differ under adaptive methods.'),
-    blog('Why Momentum Really Works', 'Gabriel Goh', 2017, 'https://distill.pub/2017/momentum/', 'Interactive and genuinely illuminating. Read this one.'),
-    paper('On the Convergence of Adam and Beyond', 'Reddi et al.', 2018, 'https://arxiv.org/abs/1904.09237', 'AMSGrad — where Adam\'s convergence proof breaks and how to patch it.'),
+    blog('Why Momentum Really Works', 'Gabriel Goh', 2017, 'https://distill.pub/2017/momentum/', 'Interactive and genuinely illuminating. If you read one thing from this list, read this.'),
+    paper('On the Convergence of Adam and Beyond', 'Reddi et al.', 2018, 'https://arxiv.org/abs/1904.09237', 'Where Adam\'s convergence proof breaks, and how AMSGrad patches it.'),
     book('Convex Optimization', 'Boyd & Vandenberghe', 2004, 'https://web.stanford.edu/~boyd/cvxbook/', 'Free PDF. The reference for the convex case.'),
-    paper('An overview of gradient descent optimization algorithms', 'Sebastian Ruder', 2016, 'https://arxiv.org/abs/1609.04747', 'A clean survey of everything in this lesson.'),
+    paper('An overview of gradient descent optimization algorithms', 'Sebastian Ruder', 2016, 'https://arxiv.org/abs/1609.04747', 'A clean survey of everything in this lesson, in one place.'),
   ],
 },
-
-/* ---------------------------------------------------------- */
 {
   id: 'math-numerics',
   title: 'Numerical Precision and Conditioning',
