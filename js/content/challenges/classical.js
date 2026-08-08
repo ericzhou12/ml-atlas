@@ -1103,58 +1103,132 @@ Nothing in the output announces any of this. The inertia is an ordinary number a
 assumption lives in the objective — minimising squared distance to a centre makes every cluster implicitly a
 round blob, and a long thin band is not one. Plot the result, always.`,
 },
+
 'ml-evaluation': {
-  title: 'Put a confidence interval on an accuracy',
-  prompt: `Implement the Wilson score interval and use it to answer: with 20 test examples, can you distinguish a
-model that scores 85% from one that scores 75%? Then find how many you would need.`,
-  hint: 'Also try the bootstrap: resample your predictions with replacement 1000 times and take percentiles.',
+  title: 'How many test examples you need, and how to make leakage disappear',
+  prompt: `1. **Confidence intervals.** Implement the interval from the lesson,
+   $\\hat p \\pm 1.96\\sqrt{\\hat p(1-\\hat p)/n}$, and use it to answer a concrete question: with 20 test
+   examples, can you tell an 85% model from a 75% one? Then find roughly how many you would need to.
+2. **Leakage, and the fix.** The last block builds a dataset of **pure noise** — the features have no
+   relationship to the target at all — so the only honest score is 50%. Write \`select_and_score\` twice: once
+   choosing features using the whole dataset, and once choosing them using the training rows only. One version
+   reports a respectable accuracy on nothing.`,
+  hint: 'For part 2, the difference is a single line: the wrong version computes correlations on `X` and `y`, the right one on `X[train]` and `y[train]`. Everything downstream is identical.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
-def wilson(successes, n, z=1.96):
-    """95% confidence interval for a proportion."""
-    # TODO
+# ---------- part 1: how sure are you, really? ----------
+def ci(successes, n, z=1.96):
+    """Return (lo, hi): the 95% interval for a proportion."""
+    # TODO: p_hat plus or minus z * sqrt(p_hat*(1-p_hat)/n)
     return (0.0, 1.0)
 
-print(f"{'n':>6} {'observed':>10} {'95% CI':>24} {'width':>9}")
-for n in [10, 20, 50, 200, 1000]:
+print(f"{'n':>6} {'observed':>10} {'95% interval':>22} {'width':>10}")
+for n in [10, 20, 50, 200, 1000, 5000]:
     s = round(0.85 * n)
-    lo, hi = wilson(s, n)
-    print(f"{n:6d} {s/n:10.1%} {f'[{lo:.1%}, {hi:.1%}]':>24} {(hi-lo)*100:8.1f}pp")
+    lo, hi = ci(s, n)
+    print(f"{n:6d} {s/n:10.1%} {f'[{lo:.1%}, {hi:.1%}]':>22} {(hi-lo)*100:8.1f} pts")
 
-lo85, hi85 = wilson(17, 20)
-lo75, hi75 = wilson(15, 20)
+lo85, hi85 = ci(17, 20)
+lo75, hi75 = ci(15, 20)
 print(f"\\n85% on n=20: [{lo85:.3f}, {hi85:.3f}]")
 print(f"75% on n=20: [{lo75:.3f}, {hi75:.3f}]")
-print("overlapping ->", "cannot distinguish" if hi75 > lo85 else "distinguishable")`,
+print("-> ", "cannot distinguish" if hi75 > lo85 else "distinguishable")
+
+for n in [50, 100, 200, 400, 800, 1600]:
+    if ci(round(.75*n), n)[1] < ci(round(.85*n), n)[0]:
+        print(f"\\nthe intervals first separate at about n = {n}")
+        break
+assert ci(85, 100)[0] > 0.77 and ci(85, 100)[1] < 0.93, "check the interval formula"
+print("PASS\\n")
+
+# ---------- part 2: a score built entirely out of leakage ----------
+n, d = 200, 500
+X = rng.normal(size=(n, d))            # pure noise
+y = rng.integers(0, 2, n)              # unrelated labels. Honest accuracy: 50%.
+train, test = np.arange(150), np.arange(150, 200)
+
+def select_and_score(use_all_rows):
+    rows = np.arange(n) if use_all_rows else train
+    # TODO: correlate each of the d features with y, using only \`rows\`;
+    #       keep the 10 strongest, fit least squares on \`train\`, score on \`test\`.
+    corr = np.zeros(d)
+    top = np.argsort(-np.abs(corr))[:10]
+    w = np.linalg.lstsq(X[np.ix_(train, top)], y[train]*2.0-1, rcond=None)[0]
+    return ((X[np.ix_(test, top)] @ w > 0) == y[test]).mean()
+
+leaky   = select_and_score(use_all_rows=True)
+honest  = select_and_score(use_all_rows=False)
+print(f"features chosen using ALL rows   -> test accuracy {leaky:.3f}")
+print(f"features chosen using TRAIN only -> test accuracy {honest:.3f}")
+print(f"the truth                        -> 0.500, because there is no signal")
+lo, hi = ci(round(honest*50), 50)
+print(f"\\nand with only 50 test rows, the honest score's own interval is "
+      f"[{lo:.2f}, {hi:.2f}] -- wide enough to swallow both numbers.")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
-def wilson(successes, n, z=1.96):
-    if n == 0: return (0.0, 1.0)
+def ci(successes, n, z=1.96):
     p = successes / n
-    denom = 1 + z*z/n
-    centre = (p + z*z/(2*n)) / denom
-    half = z*np.sqrt(p*(1-p)/n + z*z/(4*n*n)) / denom
-    return max(0.0, centre-half), min(1.0, centre+half)
+    half = z * np.sqrt(p * (1 - p) / n)
+    return (max(0.0, p - half), min(1.0, p + half))
 
-print(f"{'n':>6} {'observed':>10} {'95% CI':>24} {'width':>9}")
-for n in [10, 20, 50, 200, 1000]:
+print(f"{'n':>6} {'observed':>10} {'95% interval':>22} {'width':>10}")
+for n in [10, 20, 50, 200, 1000, 5000]:
     s = round(0.85 * n)
-    lo, hi = wilson(s, n)
-    print(f"{n:6d} {s/n:10.1%} {f'[{lo:.1%}, {hi:.1%}]':>24} {(hi-lo)*100:8.1f}pp")
+    lo, hi = ci(s, n)
+    print(f"{n:6d} {s/n:10.1%} {f'[{lo:.1%}, {hi:.1%}]':>22} {(hi-lo)*100:8.1f} pts")
 
-lo85, hi85 = wilson(17, 20); lo75, hi75 = wilson(15, 20)
+lo85, hi85 = ci(17, 20)
+lo75, hi75 = ci(15, 20)
 print(f"\\n85% on n=20: [{lo85:.3f}, {hi85:.3f}]")
 print(f"75% on n=20: [{lo75:.3f}, {hi75:.3f}]")
-print("overlapping ->", "cannot distinguish" if hi75 > lo85 else "distinguishable")
+print("-> ", "cannot distinguish" if hi75 > lo85 else "distinguishable")
 
-for n in range(20, 2000, 20):
-    if wilson(round(0.75*n), n)[1] < wilson(round(0.85*n), n)[0]:
-        print(f"\\nneed n >= {n} for the intervals to separate")
-        break`,
+for n in [50, 100, 200, 400, 800, 1600]:
+    if ci(round(.75*n), n)[1] < ci(round(.85*n), n)[0]:
+        print(f"\\nthe intervals first separate at about n = {n}")
+        break
+assert ci(85, 100)[0] > 0.77 and ci(85, 100)[1] < 0.93
+print("PASS\\n")
+
+n, d = 200, 500
+X = rng.normal(size=(n, d))
+y = rng.integers(0, 2, n)
+train, test = np.arange(150), np.arange(150, 200)
+
+def select_and_score(use_all_rows):
+    rows = np.arange(n) if use_all_rows else train
+    corr = np.array([np.corrcoef(X[rows, j], y[rows])[0, 1] for j in range(d)])
+    top = np.argsort(-np.abs(corr))[:10]
+    w = np.linalg.lstsq(X[np.ix_(train, top)], y[train]*2.0-1, rcond=None)[0]
+    return ((X[np.ix_(test, top)] @ w > 0) == y[test]).mean()
+
+leaky   = select_and_score(use_all_rows=True)
+honest  = select_and_score(use_all_rows=False)
+print(f"features chosen using ALL rows   -> test accuracy {leaky:.3f}")
+print(f"features chosen using TRAIN only -> test accuracy {honest:.3f}")
+print(f"the truth                        -> 0.500, because there is no signal")
+lo, hi = ci(round(honest*50), 50)
+print(f"\\nand with only 50 test rows, the honest score's own interval is "
+      f"[{lo:.2f}, {hi:.2f}] -- wide enough to swallow both numbers.")`,
+  explain: `Part 1: the interval on 20 examples is roughly ±16 points, so 85% and 75% are completely
+indistinguishable — their intervals overlap almost entirely. The gap only becomes real somewhere around
+$n = 400$. Look at the width column: it shrinks like $1/\\sqrt{n}$, so buying half the uncertainty
+costs four times the data. Next time you see two models reported a point or two apart on a small benchmark,
+this is the number to have in mind.
+
+Part 2: the features are noise and the labels are unrelated, so 50% is the ceiling — there is nothing to learn.
+Yet choosing the ten best-correlated features using all 200 rows produces a test accuracy around **76%** —
+on data containing nothing. Doing the identical selection on the training rows alone lands back around chance. No
+model ever trained on the test rows. The leak was in the *selection*: with 500 noise features and 200 rows, some
+of them correlate with the labels by luck, and asking which ones over the whole dataset means the winners are
+partly chosen for matching the test rows' noise.
+
+This is the most common leak in practice, and it applies to anything fitted before the split — scalers,
+imputers, PCA, feature selection, target encoding. The rule that covers all of them: **the split comes first,
+and everything that learns from data happens after it.**`,
 },
-
 'ml-generative-discriminative': {
   title: 'Find the crossover between naive Bayes and logistic regression',
   prompt: `Train both on the same data at increasing sample sizes and find the $n$ at which the discriminative model

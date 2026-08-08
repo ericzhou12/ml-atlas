@@ -2120,10 +2120,8 @@ Neither theme is technically difficult. Both are routinely got wrong in publishe
 Start with the failure. You are building a fraud detector, and 1% of transactions are fraudulent. Here is a
 model:
 
-\\\`\\\`\\\`python
-def predict(transaction):
-    return "not fraud"
-\\\`\\\`\\\`
+    def predict(transaction):
+        return "not fraud"
 
 It is 99% accurate. It is also worthless, and no amount of accuracy reporting will reveal that. Accuracy sums
 over both classes, so a rare class simply cannot move the number.
@@ -2141,8 +2139,11 @@ From those four numbers:
   alarms.* Low precision means your alerts are noise and people stop reading them.
 - **Recall** $= \\frac{TP}{TP+FN}$ — of the real ones, how many did you catch? *This is the cost of misses.*
   Low recall means things slip through.
-- **F1** — the harmonic mean of the two. Convenient for leaderboards, and it papers over exactly the tradeoff
-  you should be making on purpose.
+- **F1** $= \\frac{2\\,\\text{precision}\\cdot\\text{recall}}{\\text{precision}+\\text{recall}}$ — the harmonic mean of
+  the two, which is a kind of average that sits much closer to the smaller number than the ordinary average
+  does. Precision 0.9 and recall 0.1 average to 0.5 but give an F1 of 0.18. That is deliberate: it stops a model
+  from scoring well by being excellent at one and useless at the other. It is convenient for leaderboards, and
+  it papers over exactly the tradeoff you should be making on purpose.
 - **Specificity** $= \\frac{TN}{TN+FP}$ — the mirror image of recall, for the negative class.
 
 Notice that precision and recall trade off directly: lower your threshold and you catch more (recall up) at the
@@ -2226,9 +2227,14 @@ Choose by asking what a doubled error costs you. If it costs exactly twice as mu
 
     t(`## Statistical significance, briefly
 
-Compare two models on the *same* test set with a paired test — McNemar's test for classification, a paired bootstrap
-for anything. Comparing independent accuracy numbers with a two-sample test throws away the pairing and is much less
-powerful.
+Compare two models on the *same* test set with a **paired** test — one that looks at the examples where the two
+models disagreed, rather than at their two overall scores. McNemar's test does this for classification: it
+ignores every example both models got right and both got wrong, and asks only whether the disagreements lean
+one way more than chance would explain. A paired bootstrap works for any metric.
+
+Why bother with pairing? Because most of the variation in a test score comes from which examples happened to be
+in the test set, and *both* models faced the same examples. Comparing two independent accuracy numbers throws
+that shared information away and makes it much harder to detect a real difference.
 
 And report **variance across seeds**. A single training run's number is a sample from a distribution, and for
 reinforcement learning and small-data problems that distribution is alarmingly wide.`),
@@ -2274,7 +2280,8 @@ tr, te = slice(0, 150), slice(150, 200)
 w = np.linalg.lstsq(Xs[tr], target[tr]*2-1, rcond=None)[0]
 acc_leaky = ((Xs[te] @ w > 0) == target[te]).mean()
 print(f"'accuracy' after selecting features on ALL data: {acc_leaky:.3f}")
-print("There is no signal. Any number above 0.5 here is pure leakage.")`),
+print("There is no signal. Any number above 0.5 here is pure leakage.")`,
+      'Three things worth pausing on. In the sweep, raising the threshold pushes accuracy up and recall down — and the always-say-no baseline beats several of the thresholds outright, which is the point. The bootstrap interval shows how wide the uncertainty on a single accuracy number really is. And the last block is leakage in its purest form: `X` is random noise with no relationship to the target whatsoever, but picking the ten features that correlate best *using all 200 rows* smuggles information about the test rows into the choice, and the reported score comes out above chance. Nothing in the code looks wrong, which is why this one catches people.'),
 
     quiz('A fraud model has 99.5% accuracy on a dataset with 0.5% fraud. Your next question should be:',
       ['What are precision and recall? It may be predicting "not fraud" for everything',
