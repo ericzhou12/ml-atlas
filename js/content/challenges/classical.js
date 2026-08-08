@@ -794,14 +794,22 @@ their errors independent buys more than it costs, because the part of the varian
 $(1-\\rho)\\sigma^2/M$ and the part it cannot is $\\rho\\sigma^2$. Attacking $\\rho$ attacks the term that adding
 trees can never touch.`,
 },
+
 'ml-svm-knn': {
-  title: 'Hinge loss vs log loss, and the support vectors',
-  prompt: `Train a linear SVM by subgradient descent on the hinge loss. Count how many points end up as support
-vectors, then delete a non-support point and confirm the solution is unchanged.`,
-  hint: 'The hinge subgradient is $-y\\mathbf{x}$ when the margin $y f(\\mathbf{x}) < 1$, and zero otherwise.',
+  title: 'Find the support vectors, then catch the kernel trick in the act',
+  prompt: `1. **Support vectors.** Train a linear SVM by gradient descent on the hinge loss. Count the support
+   vectors, then delete the point *furthest* from the boundary, refit, and confirm nothing moved.
+2. **The kernel trick, verified.** The polynomial kernel $k(\\mathbf{x},\\mathbf{z}) = (\\mathbf{x}\\cdot\\mathbf{z}+1)^2$
+   claims to be a dot product in a space of quadratic features. Write down that feature map $\\phi$ explicitly
+   for two-dimensional inputs and check that $\\phi(\\mathbf{x})\\cdot\\phi(\\mathbf{z})$ really does equal
+   $k(\\mathbf{x},\\mathbf{z})$, to the last decimal.
+3. Then the last block asks the same question of the RBF kernel, for which no finite $\\phi$ exists — and checks
+   that its similarity table is still a legitimate one.`,
+  hint: 'For part 1, the hinge term contributes a gradient only for points with $y f(\\mathbf{x}) < 1$. For part 2, expand $(x_1z_1 + x_2z_2 + 1)^2$ by hand and read off which functions of $\\mathbf{x}$ appear — remember the cross terms come with a factor of 2, so the feature needs a $\\sqrt{2}$.',
   starter: `import numpy as np
 rng = np.random.default_rng(2)
 
+# ---------- part 1: support vectors ----------
 n = 80
 X = np.vstack([rng.normal([-1.5, -1], 0.7, (n//2, 2)),
                rng.normal([ 1.5,  1], 0.7, (n//2, 2))])
@@ -812,9 +820,10 @@ def train_svm(X, y, C=1.0, steps=4000):
     for t in range(steps):
         lr = 0.05 / (1 + t*0.002)
         margin = y * (X @ w + b)
-        # TODO: subgradient of  0.5||w||^2 + C * mean(max(0, 1 - margin))
+        # TODO: gradient of  0.5*||w||^2 + C * mean(max(0, 1 - margin))
+        # only the points with margin < 1 contribute to the hinge part
         gw = np.zeros(2); gb = 0.0
-        w -= lr * gw; b -= lr * gb
+        w = w - lr * gw; b = b - lr * gb
     return w, b
 
 w, b = train_svm(X, y)
@@ -823,11 +832,44 @@ sv = margins <= 1.0 + 1e-2
 print(f"margin width 2/|w| = {2/np.linalg.norm(w):.4f}")
 print(f"support vectors: {sv.sum()} / {n}")
 
-# delete a NON-support point and refit
-keep = np.ones(n, bool); keep[np.argmax(margins)] = False
+keep = np.ones(n, bool); keep[np.argmax(margins)] = False   # drop the safest point
 w2, b2 = train_svm(X[keep], y[keep])
-print(f"\\nw before {w.round(4)}  after {w2.round(4)}")
-print("PASS" if np.allclose(w, w2, atol=0.05) else "FAIL")`,
+print(f"w before deleting it: {w.round(4)}")
+print(f"w after:              {w2.round(4)}")
+assert np.allclose(w, w2, atol=0.05), "deleting a non-support point must not move the solution"
+print("PASS\\n")
+
+# ---------- part 2: the kernel IS a dot product ----------
+def poly_kernel(a, z):
+    return (a @ z + 1.0) ** 2
+
+def phi(a):
+    """The explicit feature map for the degree-2 polynomial kernel in 2-D."""
+    x1, x2 = a
+    # TODO: return the vector of features whose dot product reproduces poly_kernel
+    return np.zeros(6)
+
+for _ in range(5):
+    a, z = rng.normal(size=2), rng.normal(size=2)
+    direct  = poly_kernel(a, z)
+    lifted  = phi(a) @ phi(z)
+    print(f"  k(x,z) = {direct:9.5f}    phi(x).phi(z) = {lifted:9.5f}")
+    assert abs(direct - lifted) < 1e-9, "the feature map does not match the kernel"
+print("PASS -- one 2-D dot product and a square did the work of a 6-D dot product\\n")
+
+# ---------- part 3: RBF, where no finite phi exists ----------
+def rbf(A, B, gamma=0.5):
+    return np.exp(-gamma * ((A[:, None, :] - B[None, :, :])**2).sum(-1))
+
+pts = rng.normal(size=(40, 2))
+K = rbf(pts, pts)
+eig = np.linalg.eigvalsh(K)
+print(f"RBF similarity table: {K.shape[0]}x{K.shape[1]}")
+print(f"  diagonal entries (a point with itself): {K[0,0]:.3f}")
+print(f"  smallest eigenvalue: {eig.min():.2e}   (must not be negative)")
+print(f"  number of eigenvalues above 1e-8: {(eig > 1e-8).sum()} of {len(eig)}")
+print("Every eigenvalue is >= 0, so this table IS a valid table of dot products")
+print("in SOME space -- one nobody can write down, and nobody needs to.")`,
   solution: `import numpy as np
 rng = np.random.default_rng(2)
 
@@ -844,7 +886,7 @@ def train_svm(X, y, C=1.0, steps=4000):
         active = margin < 1
         gw = w - C * (X[active] * y[active, None]).sum(0) / len(y)
         gb = -C * y[active].sum() / len(y)
-        w -= lr * gw; b -= lr * gb
+        w = w - lr * gw; b = b - lr * gb
     return w, b
 
 w, b = train_svm(X, y)
@@ -855,11 +897,55 @@ print(f"support vectors: {sv.sum()} / {n}")
 
 keep = np.ones(n, bool); keep[np.argmax(margins)] = False
 w2, b2 = train_svm(X[keep], y[keep])
-print(f"\\nw before {w.round(4)}  after {w2.round(4)}")
-print("PASS" if np.allclose(w, w2, atol=0.05) else "FAIL")`,
-  explain: 'Removing the point furthest inside its own margin changes nothing — only the support vectors determine the solution. That sparsity is what makes the kernel trick affordable at prediction time.',
-},
+print(f"w before deleting it: {w.round(4)}")
+print(f"w after:              {w2.round(4)}")
+assert np.allclose(w, w2, atol=0.05)
+print("PASS\\n")
 
+def poly_kernel(a, z):
+    return (a @ z + 1.0) ** 2
+
+def phi(a):
+    x1, x2 = a
+    s = np.sqrt(2.0)
+    return np.array([x1**2, x2**2, s*x1*x2, s*x1, s*x2, 1.0])
+
+for _ in range(5):
+    a, z = rng.normal(size=2), rng.normal(size=2)
+    direct  = poly_kernel(a, z)
+    lifted  = phi(a) @ phi(z)
+    print(f"  k(x,z) = {direct:9.5f}    phi(x).phi(z) = {lifted:9.5f}")
+    assert abs(direct - lifted) < 1e-9
+print("PASS -- one 2-D dot product and a square did the work of a 6-D dot product\\n")
+
+def rbf(A, B, gamma=0.5):
+    return np.exp(-gamma * ((A[:, None, :] - B[None, :, :])**2).sum(-1))
+
+pts = rng.normal(size=(40, 2))
+K = rbf(pts, pts)
+eig = np.linalg.eigvalsh(K)
+print(f"RBF similarity table: {K.shape[0]}x{K.shape[1]}")
+print(f"  diagonal entries (a point with itself): {K[0,0]:.3f}")
+print(f"  smallest eigenvalue: {eig.min():.2e}   (must not be negative)")
+print(f"  number of eigenvalues above 1e-8: {(eig > 1e-8).sum()} of {len(eig)}")
+print("Every eigenvalue is >= 0, so this table IS a valid table of dot products")
+print("in SOME space -- one nobody can write down, and nobody needs to.")`,
+  explain: `Part 1: removing the point sitting furthest inside its own correct side changes the answer by less than
+a rounding error. Its hinge loss was already exactly zero, so it contributed exactly zero gradient, so it was
+never influencing anything. Only the support vectors decide the boundary — and that sparsity is what makes
+kernel prediction affordable, since you only evaluate the kernel against those.
+
+Part 2 is the kernel trick caught in the act. The correct feature map is
+$\\phi(\\mathbf{x}) = (x_1^2,\\ x_2^2,\\ \\sqrt2 x_1x_2,\\ \\sqrt2 x_1,\\ \\sqrt2 x_2,\\ 1)$ — six dimensions of
+quadratic features, with the $\\sqrt2$ factors there because the cross terms appear twice when you expand the
+square. The two columns agree exactly. So computing one 2-D dot product and squaring it gave you, for free, the
+answer to a question about a 6-D space. Scale the same idea to degree 10 in 1000 dimensions and $\\phi$ has
+billions of entries, while the kernel is still one dot product and one power.
+
+Part 3 is why the trick generalises. For the RBF kernel there is no finite $\\phi$ to write out at all, and it
+does not matter: every eigenvalue of its similarity table is non-negative, which is precisely the condition for
+that table to be a table of dot products in *some* space. The algorithm only ever needed the table.`,
+},
 'ml-unsupervised': {
   title: 'k-means, and how much the initialization matters',
   prompt: `Implement Lloyd's algorithm, then run it from 20 random initializations on the same data and report the

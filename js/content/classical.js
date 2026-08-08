@@ -1652,9 +1652,19 @@ Formally, with labels written as $y_i\\in\\{-1,+1\\}$ (a convention that makes t
 
 $$\\min_{\\mathbf{w},b}\\ \\tfrac12\\|\\mathbf{w}\\|^2 \\quad\\text{subject to}\\quad y_i(\\mathbf{w}^{\\mathsf T}\\mathbf{x}_i+b)\\ge 1 \\ \\text{ for every } i$$
 
-The constraint says every point must be correctly classified *and* at least a unit distance from the boundary.
-The margin width works out to $2/\\|\\mathbf{w}\\|$, so **minimising $\\|\\mathbf{w}\\|$ maximises the margin** —
-which is why the objective looks like a regularizer and is in fact the entire point.`),
+The constraint says every point must be correctly classified *and* kept a unit of *score* away from the
+boundary. Note that this is a unit of score, not of distance — and converting between the two is where the
+objective comes from.
+
+The distance from a point to the hyperplane $\\mathbf{w}\\cdot\\mathbf{x}+b = 0$ is
+$|\\mathbf{w}\\cdot\\mathbf{x}+b| \\,/\\, \\|\\mathbf{w}\\|$: the score, divided by the length of $\\mathbf{w}$. (That
+division is just the projection formula from [the vectors lesson](#/l/math-vectors) — $\\mathbf{w}$ is the
+direction perpendicular to the boundary, and dividing by its length converts a dot product into a distance.)
+
+So a point sitting at the constraint boundary with a score of exactly 1 is at distance $1/\\|\\mathbf{w}\\|$, and
+the empty corridor spanning both sides is $2/\\|\\mathbf{w}\\|$ wide. **Making $\\|\\mathbf{w}\\|$ small makes the
+margin wide.** That is why the objective looks like a regularization penalty: here it *is* the goal, not a
+concession to overfitting.`),
 
     viz('svm-margin'),
 
@@ -1691,15 +1701,28 @@ So: define a feature map $\\phi$ that lifts your data somewhere useful, and run 
 objection is cost. A good $\\phi$ might map to thousands of dimensions, or infinitely many, and you cannot store
 an infinite vector.
 
-The trick starts with an observation about the SVM's dual formulation: **the data appears only through inner
-products** $\\mathbf{x}_i^{\\mathsf T}\\mathbf{x}_j$. Never individual vectors — only pairwise inner products.
+The trick starts with an observation about where the solution can possibly live. It turns out that the optimal
+$\\mathbf{w}$ is always a weighted combination of the training points themselves:
 
-Which means if you can compute $\\phi(\\mathbf{x}_i)^{\\mathsf T}\\phi(\\mathbf{x}_j)$ directly, by some shortcut,
-you never need $\\phi(\\mathbf{x})$ itself. Call that shortcut a **kernel**:
+$$\\mathbf{w} = \\sum_i \\alpha_i y_i \\mathbf{x}_i$$
 
-$$k(\\mathbf{x}_i,\\mathbf{x}_j) = \\phi(\\mathbf{x}_i)^{\\mathsf T}\\phi(\\mathbf{x}_j)$$
+That is not an assumption but a consequence — any component of $\\mathbf{w}$ pointing away from all the data
+would increase $\\|\\mathbf{w}\\|$ without changing a single one of the scores $\\mathbf{w}\\cdot\\mathbf{x}_i$, so
+the objective would simply delete it.
 
-and compute it without ever visiting the high-dimensional space at all.`),
+Now substitute that into the prediction and watch what happens:
+
+$$f(\\mathbf{x}) = \\mathbf{w}\\cdot\\mathbf{x} + b = \\sum_i \\alpha_i y_i\\,(\\mathbf{x}_i \\cdot \\mathbf{x}) + b$$
+
+**The data appears only inside dot products.** Individual vectors have vanished from the formula; the only thing
+the algorithm ever asks about the data is "how similar are these two points?" The same is true of the training
+procedure, which needs only the pairwise dot products $\\mathbf{x}_i \\cdot \\mathbf{x}_j$.
+
+So run the whole thing in the lifted space by replacing $\\mathbf{x}_i \\cdot \\mathbf{x}_j$ with
+$\\phi(\\mathbf{x}_i) \\cdot \\phi(\\mathbf{x}_j)$ — and if there is a shortcut for computing *that number*
+directly, you never need $\\phi(\\mathbf{x})$ at all. The shortcut is called a **kernel**:
+
+$$k(\\mathbf{x}_i,\\mathbf{x}_j) = \\phi(\\mathbf{x}_i)\\cdot\\phi(\\mathbf{x}_j)$$`),
 
     viz('kernel-trick'),
 
@@ -1709,14 +1732,21 @@ and compute it without ever visiting the high-dimensional space at all.`),
 | Polynomial | $(\\gamma\\,\\mathbf{x}^{\\mathsf T}\\mathbf{x}'+r)^d$ | all monomials up to degree $d$ |
 | RBF / Gaussian | $\\exp(-\\gamma\\|\\mathbf{x}-\\mathbf{x}'\\|^2)$ | **infinite-dimensional** |
 
-Read the last row slowly. **The RBF kernel computes an inner product in an infinite-dimensional space using one
-exponential of one distance.** You get all the separating power of an infinite feature map for the cost of a
-subtraction, a norm, and an \\\`exp\\\`. That is the trick in its purest form, and it is genuinely startling the
+Read the last row slowly. **The RBF kernel computes a dot product in an infinite-dimensional space using one
+exponential of one distance.** You get the separating power of an infinite feature map for the cost of a
+subtraction, a norm, and an exponential. That is the trick in its purest form, and it is genuinely startling the
 first time.
 
-You are not restricted to this table: any function whose Gram matrix is always positive semi-definite is a valid
-kernel (Mercer's condition), which lets people design kernels for strings, graphs, and molecules where no
-natural vector representation exists.`),
+There is a sanity check hiding in the RBF formula. It equals 1 when the two points coincide and decays toward 0
+as they move apart, so it behaves exactly like a similarity score — which is what a dot product between
+unit-length vectors is. The parameter $\\gamma$ sets how quickly similarity falls off with distance, and that
+single number is the model's whole notion of "nearby".
+
+You are not restricted to this table. Any function whose table of pairwise values is always a valid
+"similarity matrix" — technically, positive semi-definite, meaning it never assigns a negative squared length to
+any combination of points — corresponds to *some* feature map, even if nobody can write it down. This is
+Mercer's condition, and it is what lets people design kernels for strings, graphs, and molecules, where there is
+no natural way to write the object as a vector but there is a natural way to say how similar two of them are.`),
 
     hist(`SVMs with RBF kernels were the state of the art from roughly 1995 to 2012, and there was a real intellectual
 argument that they were the *right* answer: convex, theoretically grounded, strong generalization bounds. Then AlexNet
@@ -1766,7 +1796,8 @@ print(f"\\nsupport vectors: {sv.sum()} / {n}  ({sv.mean():.0%})")
 f = K @ (alpha * y)
 b = np.mean(y[sv] - f[sv])
 print(f"training accuracy: {(np.sign(f + b) == y).mean():.3f}")
-print("\\nA linear model scores ~0.5 here. The kernel does all the work.")`),
+print("\\nA linear model scores ~0.5 here. The kernel does all the work.")`,
+      'Notice what the SVM code never does: it never builds a feature vector. `rbf` produces the matrix K of pairwise similarities, and from there everything — training and prediction alike — is arithmetic on that table. The two rings are not separable by any line in these two dimensions, yet the model classifies them almost perfectly, because the separating surface is flat in a space the code never visits. Also check the support-vector count: only a fraction of the points ended up mattering, and the rest could be deleted with no effect.'),
 
     quiz('You train an RBF-SVM with γ very large. What happens?',
       ['Each support vector influences only its immediate neighbourhood — the boundary fragments into islands and overfits',
