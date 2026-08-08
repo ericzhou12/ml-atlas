@@ -669,43 +669,104 @@ none of this: one row of numbers goes in, the same row comes out, always.`,
 },
 
 'nn-regularization': {
-  title: 'Inverted dropout, and checking the expectation',
-  prompt: `Implement inverted dropout and verify the expected activation is preserved. Then confirm that forgetting
-the $1/(1-p)$ scale shifts the mean at inference — a classic bug.`,
-  hint: 'Scale the survivors by $1/(1-p)$ during training so nothing has to change at test time.',
+  title: 'Inverted dropout, and testing the "implicit ensemble" claim',
+  prompt: `1. Implement inverted dropout and confirm the expected activation is preserved. Then confirm that
+   forgetting the $1/(1-p)$ scaling shifts the mean — the classic bug.
+2. **Is dropout really an ensemble?** The lesson said running the full network at inference *approximates
+   averaging over all the thinned subnetworks*. Test it: push one input through a small network hundreds of
+   times with different random masks, average the answers, and compare against the single full-network answer.
+3. The last block shows what happens if you leave dropout switched on at inference.`,
+  hint: 'The mask is `(rng.random(x.shape) > p)`, which keeps a fraction $1-p$ of the units. Dividing it by $1-p$ raises the survivors so the layer\'s expected output is unchanged.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
 def dropout(x, p, training=True, scale=True):
     if not training or p == 0: return x
     mask = (rng.random(x.shape) > p).astype(float)
-    # TODO: apply the mask, and divide by (1-p) when scale=True
+    # TODO: divide the mask by (1-p) when scale=True, then apply it
     return x * mask
 
 x = np.ones((2000, 64))
+print("mean activation during training (should stay at 1.0):")
 for p in [0.0, 0.2, 0.5, 0.8]:
-    correct = dropout(x, p).mean()
-    buggy   = dropout(x, p, scale=False).mean()
-    print(f"p={p:.1f}  inverted {correct:.4f}   without scaling {buggy:.4f}   "
-          f"(train mean should stay 1.0)")
+    print(f"  p={p:.1f}   inverted {dropout(x, p).mean():.4f}      "
+          f"without the scaling {dropout(x, p, scale=False).mean():.4f}")
+assert abs(dropout(x, 0.5).mean() - 1.0) < 0.02, "the expectation is not preserved"
+print("PASS\\n")
 
-assert abs(dropout(x, 0.5).mean() - 1.0) < 0.02, "expectation not preserved"
-print("\\nPASS")`,
+# ---------- 2. the ensemble claim ----------
+W1 = rng.normal(0, 0.5, (12, 256))
+W2 = np.abs(rng.normal(0, 0.3, (256, 1)))    # positive, so the answer is not near zero
+inp = rng.normal(size=(1, 12))
+P = 0.3
+
+def net(inp, use_dropout):
+    h = np.maximum(0, inp @ W1)
+    h = dropout(h, P, training=use_dropout)
+    return float((h @ W2).ravel()[0])
+
+full = net(inp, use_dropout=False)                 # everything present, no masking
+print(f"the full network's answer:        {full:.4f}")
+for n in [1, 10, 100, 1000, 10000]:
+    avg = np.mean([net(inp, use_dropout=True) for _ in range(n)])
+    print(f"  average over {n:6d} thinned nets: {avg:9.4f}    off by {100*abs(avg-full)/full:5.2f}%")
+
+# ---------- 3. leaving dropout on at inference ----------
+print("\\nsame input, dropout accidentally left ON, five separate calls:")
+print("  ", [round(net(inp, use_dropout=True), 3) for _ in range(5)])
+print("  with dropout correctly off:", [round(net(inp, use_dropout=False), 3) for _ in range(5)])`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
 def dropout(x, p, training=True, scale=True):
     if not training or p == 0: return x
     mask = (rng.random(x.shape) > p).astype(float)
-    if scale: mask /= (1 - p)
+    if scale: mask = mask / (1 - p)
     return x * mask
 
 x = np.ones((2000, 64))
+print("mean activation during training (should stay at 1.0):")
 for p in [0.0, 0.2, 0.5, 0.8]:
-    print(f"p={p:.1f}  inverted {dropout(x,p).mean():.4f}   "
-          f"without scaling {dropout(x,p,scale=False).mean():.4f}")
+    print(f"  p={p:.1f}   inverted {dropout(x, p).mean():.4f}      "
+          f"without the scaling {dropout(x, p, scale=False).mean():.4f}")
 assert abs(dropout(x, 0.5).mean() - 1.0) < 0.02
-print("\\nPASS")`,
+print("PASS\\n")
+
+W1 = rng.normal(0, 0.5, (12, 256))
+W2 = np.abs(rng.normal(0, 0.3, (256, 1)))    # positive, so the answer is not near zero
+inp = rng.normal(size=(1, 12))
+P = 0.3
+
+def net(inp, use_dropout):
+    h = np.maximum(0, inp @ W1)
+    h = dropout(h, P, training=use_dropout)
+    return float((h @ W2).ravel()[0])
+
+full = net(inp, use_dropout=False)
+print(f"the full network's answer:        {full:.4f}")
+for n in [1, 10, 100, 1000, 10000]:
+    avg = np.mean([net(inp, use_dropout=True) for _ in range(n)])
+    print(f"  average over {n:6d} thinned nets: {avg:9.4f}    off by {100*abs(avg-full)/full:5.2f}%")
+
+print("\\nsame input, dropout accidentally left ON, five separate calls:")
+print("  ", [round(net(inp, use_dropout=True), 3) for _ in range(5)])
+print("  with dropout correctly off:", [round(net(inp, use_dropout=False), 3) for _ in range(5)])`,
+  explain: `Part 1: without the $1/(1-p)$ factor the training-time mean drops to exactly $1-p$, so at $p=0.8$ the
+next layer sees activations five times smaller during training than at inference. The scaling exists purely so
+that the two match and inference needs no special case at all.
+
+Part 2 is the ensemble claim, tested. A single thinned subnetwork is off by a few percent; average ten thousand
+of them and the answer lands within a fraction of a percent of what the full network computes in one pass. The
+error shrinks at the $1/\\sqrt{n}$ rate you would expect for averaging away noise. So running the
+full network really is a cheap stand-in for averaging over an exponential number of subnetworks, and you get the
+variance reduction of an ensemble for the cost of one forward pass. (This is worth knowing in the other
+direction too: deliberately keeping dropout on and averaging a few dozen samples, "Monte Carlo dropout", gives
+you a rough uncertainty estimate from a model that was never designed to produce one.)
+
+Part 3 is the failure mode. With dropout left on, the same input gives a different answer every call — the model
+is not broken, it is returning one random ensemble member instead of the average. In a framework this is what
+forgetting \`model.eval()\` does, and the symptom is a model that scores worse than it did in training and is
+non-deterministic for no apparent reason.`,
 },
 
 'nn-losses-training': {

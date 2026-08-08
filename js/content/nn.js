@@ -1169,9 +1169,10 @@ horizontally flipping a photo of text or a road sign destroys the label. Rotatin
 a 9. **Every augmentation is an assertion about invariance, and a wrong one actively teaches your model
 something false.**
 
-**Vision** — flips, crops, colour jitter, rotation. Then the stronger ones: **Mixup** (train on convex combinations of
-images *and* their labels), **CutMix** (paste a patch from one image into another), **RandAugment** (sample from a pool
-of operations with a single magnitude parameter).
+**Vision** — flips, crops, colour jitter, rotation. Then the stronger ones: **Mixup** (blend two images with
+weights that add to 1, and blend their labels by the same weights, so 70% cat plus 30% dog is trained toward a
+label of 0.7 cat and 0.3 dog), **CutMix** (paste a patch from one image into another), **RandAugment** (sample
+from a pool of operations with a single magnitude parameter).
 
 **Text** — harder, because most edits change meaning. Back-translation, synonym substitution, and — increasingly —
 generating paraphrases with a language model.
@@ -1238,11 +1239,13 @@ print("\\nlabel smoothing eps=0.1:")
 print(" one-hot :", np.eye(3)[0])
 print(" smoothed:", smooth(np.eye(3)[None, 0], 0.1)[0].round(4))
 
-# effect on the optimal logit gap
+# what smoothing does to how confident the model is pushed to be
+print("\\nthe logit gap the model is being trained toward:")
 for eps in [0.0, 0.05, 0.1, 0.2]:
     p = 1 - eps + eps/3
-    print(f" eps={eps}: target prob {p:.3f} -> "
-          f"optimal logit gap {np.log(p/((1-p)/2)) if p<1 else np.inf:.2f}")`),
+    gap = np.inf if p >= 1 else np.log(p / ((1-p)/2))
+    print(f"  eps={eps:.2f}: target probability {p:.3f}  ->  gap {gap:.2f}")`,
+      'The last block is the point of label smoothing. With a plain one-hot target the loss is only minimised when the correct probability reaches exactly 1, which requires the correct logit to run off to infinity — so training never stops pushing confidence up. Smoothing sets the target to 0.9 instead, and the loss is then minimised at a *finite* logit gap of about 2.9. The model is given a place to stop.'),
 
     quiz('Why is dropout often set to 0 when pretraining a large language model?',
       ['With trillions of tokens the model is data-limited, not capacity-limited; dropout would waste capacity',
