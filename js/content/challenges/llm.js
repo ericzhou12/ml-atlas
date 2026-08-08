@@ -161,10 +161,15 @@ a policy decision anyone made; it is a frequency count, doing exactly what it wa
 },
 
 'llm-attention': {
-  title: 'Causal self-attention, and why the 1/sqrt(d) matters',
-  prompt: `Implement scaled dot-product attention with a causal mask. Then remove the scaling and show that as
-d_k grows the softmax saturates into a hard argmax — which kills the gradient.`,
-  hint: 'Dot products of random unit-variance vectors have variance d_k, so their standard deviation is sqrt(d_k).',
+  title: 'Build causal attention, break the scaling, then add a KV cache',
+  prompt: `1. Implement scaled dot-product attention with a causal mask. The assertions check that rows sum to 1
+   and that no position can see the future.
+2. **Why the $\\sqrt{d_k}$ is there.** Remove the scaling and watch the softmax saturate into a hard argmax as
+   $d_k$ grows — and then watch the *gradient* vanish along with it, using
+   $\\partial p_i/\\partial z_i = p_i(1-p_i)$ from the softmax derivation.
+3. **The KV cache.** Generate five tokens one at a time, once recomputing everything and once caching past keys
+   and values. Confirm the outputs are identical, then count the work each did.`,
+  hint: 'Masking: build a lower-triangular matrix of ones and use `np.where(mask == 1, scores, -np.inf)`, *before* the softmax — `exp(-inf)` is 0, so those positions get exactly no weight. For the cache, note that a past token\'s key and value never change when a new token is appended.',
   starter: `import numpy as np
 
 def softmax(z, axis=-1):
@@ -174,7 +179,8 @@ def softmax(z, axis=-1):
 
 def attention(X, Wq, Wk, Wv, causal=True, scale=True):
     Q, K, V = X @ Wq, X @ Wk, X @ Wv
-    # TODO: scores = QK^T (scaled), apply the causal mask, softmax, weight V
+    # TODO: scores = Q K^T, divided by sqrt(d_k) when scale=True;
+    #       apply the causal mask when causal=True; softmax; then weight V.
     return X, None
 
 rng = np.random.default_rng(0)
@@ -183,19 +189,53 @@ X = rng.normal(size=(T, d))
 Wq, Wk, Wv = (rng.normal(0, d**-0.5, (d, dk)) for _ in range(3))
 
 out, A = attention(X, Wq, Wk, Wv)
-assert A is not None and A.shape == (T, T), "return the attention matrix too"
-assert np.allclose(A.sum(1), 1.0), "rows must sum to 1"
-assert np.allclose(np.triu(A, 1), 0.0), "causal mask not applied"
-print("PASS\\n")
+assert A is not None and A.shape == (T, T), "return the attention matrix as well"
+assert np.allclose(A.sum(1), 1.0), "each row must sum to 1"
+assert np.allclose(np.triu(A, 1), 0.0), "the causal mask is not applied"
+print("attention matrix (row i = where token i looks):")
 print(np.round(A, 3))
+print("PASS\\n")
 
-print("\\nwithout scaling, as d_k grows:")
-for dk_t in [16, 128, 1024]:
+# ---------- 2. what the scaling prevents ----------
+print(f"{'d_k':>6} {'logit sd':>10} {'max weight':>12} {'gradient p(1-p)':>17}   (unscaled)")
+for dk_t in [16, 128, 1024, 8192]:
     q = rng.normal(size=dk_t); k = rng.normal(size=(8, dk_t))
     raw = k @ q
-    print(f"  d_k={dk_t:5d}  logit sd {raw.std():7.2f}  "
-          f"unscaled max weight {softmax(raw).max():.4f}  "
-          f"scaled {softmax(raw/np.sqrt(dk_t)).max():.4f}")`,
+    p = softmax(raw).max()
+    ps = softmax(raw/np.sqrt(dk_t)).max()
+    print(f"{dk_t:6d} {raw.std():10.2f} {p:12.5f} {p*(1-p):17.2e}"
+          f"      scaled: max {ps:.3f}, grad {ps*(1-ps):.3f}")
+
+# ---------- 3. the KV cache ----------
+def generate_naive(X0, steps):
+    """Recompute keys and values for the whole prefix at every step."""
+    X, work = X0.copy(), 0
+    for _ in range(steps):
+        o, _ = attention(X, Wq, Wk, Wv)
+        work += len(X)                            # keys/values computed this step
+        X = np.vstack([X, o[-1] @ np.linalg.pinv(Wv) ])   # feed the output back in
+    return X, work
+
+def generate_cached(X0, steps):
+    """Compute each token's key and value once, then reuse them."""
+    X, work = X0.copy(), 0
+    Kc, Vc = X @ Wk, X @ Wv
+    work += len(X)
+    for _ in range(steps):
+        q = (X[-1] @ Wq)
+        s = Kc @ q / np.sqrt(dk)
+        o = softmax(s) @ Vc
+        nxt = o @ np.linalg.pinv(Wv)
+        X = np.vstack([X, nxt])
+        Kc = np.vstack([Kc, nxt @ Wk])            # one new key
+        Vc = np.vstack([Vc, nxt @ Wv])            # one new value
+        work += 1
+    return X, work
+
+a, w_naive  = generate_naive(X, 5)
+b, w_cached = generate_cached(X, 5)
+print(f"\\nsame tokens generated either way? {np.allclose(a, b)}")
+print(f"key/value vectors computed -- without a cache: {w_naive}, with one: {w_cached}")`,
   solution: `import numpy as np
 
 def softmax(z, axis=-1):
@@ -205,8 +245,9 @@ def softmax(z, axis=-1):
 
 def attention(X, Wq, Wk, Wv, causal=True, scale=True):
     Q, K, V = X @ Wq, X @ Wk, X @ Wv
+    d_k = Q.shape[-1]
     scores = Q @ K.T
-    if scale: scores = scores / np.sqrt(Q.shape[-1])
+    if scale: scores = scores / np.sqrt(d_k)
     if causal:
         T = scores.shape[0]
         scores = np.where(np.tril(np.ones((T, T))) == 1, scores, -np.inf)
@@ -219,17 +260,65 @@ X = rng.normal(size=(T, d))
 Wq, Wk, Wv = (rng.normal(0, d**-0.5, (d, dk)) for _ in range(3))
 
 out, A = attention(X, Wq, Wk, Wv)
-assert np.allclose(A.sum(1), 1.0) and np.allclose(np.triu(A, 1), 0.0)
-print("PASS\\n"); print(np.round(A, 3))
+assert A is not None and A.shape == (T, T)
+assert np.allclose(A.sum(1), 1.0)
+assert np.allclose(np.triu(A, 1), 0.0)
+print("attention matrix (row i = where token i looks):")
+print(np.round(A, 3))
+print("PASS\\n")
 
-print("\\nwithout scaling, as d_k grows:")
-for dk_t in [16, 128, 1024]:
+print(f"{'d_k':>6} {'logit sd':>10} {'max weight':>12} {'gradient p(1-p)':>17}   (unscaled)")
+for dk_t in [16, 128, 1024, 8192]:
     q = rng.normal(size=dk_t); k = rng.normal(size=(8, dk_t))
     raw = k @ q
-    print(f"  d_k={dk_t:5d}  logit sd {raw.std():7.2f}  "
-          f"unscaled max weight {softmax(raw).max():.4f}  "
-          f"scaled {softmax(raw/np.sqrt(dk_t)).max():.4f}")`,
-  explain: 'At d_k = 1024 the unscaled softmax puts essentially all mass on one key. A saturated softmax has near-zero gradient, so the model could never learn to attend differently. One division fixes it.',
+    p = softmax(raw).max()
+    ps = softmax(raw/np.sqrt(dk_t)).max()
+    print(f"{dk_t:6d} {raw.std():10.2f} {p:12.5f} {p*(1-p):17.2e}"
+          f"      scaled: max {ps:.3f}, grad {ps*(1-ps):.3f}")
+
+def generate_naive(X0, steps):
+    X, work = X0.copy(), 0
+    for _ in range(steps):
+        o, _ = attention(X, Wq, Wk, Wv)
+        work += len(X)
+        X = np.vstack([X, o[-1] @ np.linalg.pinv(Wv)])
+    return X, work
+
+def generate_cached(X0, steps):
+    X, work = X0.copy(), 0
+    Kc, Vc = X @ Wk, X @ Wv
+    work += len(X)
+    for _ in range(steps):
+        q = (X[-1] @ Wq)
+        s = Kc @ q / np.sqrt(dk)
+        o = softmax(s) @ Vc
+        nxt = o @ np.linalg.pinv(Wv)
+        X = np.vstack([X, nxt])
+        Kc = np.vstack([Kc, nxt @ Wk])
+        Vc = np.vstack([Vc, nxt @ Wv])
+        work += 1
+    return X, work
+
+a, w_naive  = generate_naive(X, 5)
+b, w_cached = generate_cached(X, 5)
+print(f"\\nsame tokens generated either way? {np.allclose(a, b)}")
+print(f"key/value vectors computed -- without a cache: {w_naive}, with one: {w_cached}")`,
+  explain: `Part 2 makes the derivation's argument visible in three columns. The logit standard deviation grows
+like $\\sqrt{d_k}$ exactly as predicted, and by $d_k = 1024$ the unscaled softmax is putting essentially all of
+its weight on one key. Then look at the last column: $p(1-p)$ is the softmax's own derivative, and once $p$ is
+pinned at 1 that derivative is effectively zero. The model is not merely attending sharply — it has lost the
+ability to *change* where it attends, because no gradient reaches the scores. Dividing by $\\sqrt{d_k}$ holds the
+logits at unit scale whatever the width, and the scaled columns stay responsive at every $d_k$.
+
+Part 3 is the KV cache. The two routines produce identical tokens, because a past token's key and value do not
+depend on anything that comes after it — recomputing them is pure waste. The work counts show the difference:
+without a cache you recompute the whole prefix at every step, which grows quadratically with the length of what
+you generate; with one, each token is computed once.
+
+The catch is that you are now storing those keys and values, and that store grows with sequence length, layers,
+and heads. For a long conversation the cache can exceed the model's own weights, which is the entire reason
+grouped-query attention exists — several query heads sharing one key/value head shrinks it by the sharing
+factor.`,
 },
 
 'llm-transformer': {
