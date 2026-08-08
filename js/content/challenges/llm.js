@@ -908,10 +908,15 @@ higher rank.`,
 },
 
 'llm-decoding': {
-  title: 'Implement every sampler, and watch the nucleus adapt',
-  prompt: `Write temperature, top-k, top-p and min-p filtering. Then show that top-p keeps one token when the model is
-confident and many when it is not — the adaptivity that made it the default.`,
-  hint: 'For top-p: sort descending, cumulative-sum, keep up to the first index where the cumsum reaches p.',
+  title: 'Implement every sampler, watch the nucleus adapt, then find the hallucination knob',
+  prompt: `1. Write temperature, top-k, top-p and min-p filtering, and read off how many tokens each keeps.
+2. **Why top-p won.** Run top-k and top-p on two different distributions — one where the model is nearly
+   certain, one where it genuinely has no idea. **Predict which filter changes its behaviour and which does
+   not.**
+3. **The tension.** The last block splits the vocabulary into plausible continuations and clearly-wrong ones,
+   and tracks how much probability each group gets as temperature rises. There is no setting that separates
+   them; find that out for yourself.`,
+  hint: 'For top-p: sort the probabilities descending, take a cumulative sum, and keep everything up to and including the first index where that sum reaches $p$. Remember to renormalise after zeroing anything out.',
   starter: `import numpy as np
 
 vocab = ["the","a","this","my","our","cat","dog","quantum","zebra","xylophone"]
@@ -921,15 +926,15 @@ def softmax(z, T=1.0):
     z = z/T; z = z - z.max(); e = np.exp(z); return e/e.sum()
 
 def top_k(p, k):
-    # TODO
+    # TODO: keep the k largest, zero the rest, renormalise
     return p
 
 def top_p(p, thresh):
-    # TODO
+    # TODO: keep the smallest set whose probabilities sum to at least thresh
     return p
 
 def min_p(p, frac):
-    # TODO: keep tokens with prob >= frac * max(prob)
+    # TODO: keep tokens with probability at least frac * max(probability)
     return p
 
 def entropy(p):
@@ -943,10 +948,28 @@ for name, p in [("raw (T=1)", softmax(logits)), ("T=0.5", softmax(logits, 0.5)),
     top3 = ", ".join(f"{vocab[i]}={p[i]:.2f}" for i in np.argsort(-p)[:3])
     print(f"{name:20s} {int((p>0).sum()):5d} {entropy(p):8.3f}  {top3}")
 
-print("\\nnucleus size adapts to confidence:")
-for desc, lg in [("confident", np.array([8.,1.,0.,0.,0.,0.,0.,0.,0.,0.])),
-                 ("uncertain", np.array([1.,.9,.8,.8,.7,.7,.6,.6,.5,.5]))]:
-    print(f"  {desc:10s} -> top-p 0.9 keeps {(top_p(softmax(lg), 0.9) > 0).sum()} tokens")`,
+assert int((top_k(softmax(logits), 3) > 0).sum()) == 3, "top-k should keep exactly k tokens"
+assert abs(top_p(softmax(logits), 0.9).sum() - 1.0) < 1e-9, "renormalise after filtering"
+print("PASS\\n")
+
+# ---------- 2. the adaptivity that made top-p the default ----------
+confident = np.array([9.0, 1.0, 0.5, 0.2, 0.0, -0.5, -1.0, -1.5, -2.0, -2.5])   # "capital of France is"
+uncertain = np.array([1.2, 1.1, 1.0, 1.0, 0.9, 0.9, 0.8, 0.8, 0.7, 0.6])        # "she opened the door and saw"
+
+print(f"{'':14s} {'top-k=5 keeps':>15} {'top-p=0.9 keeps':>17}")
+for name, lg in [("model certain", confident), ("model unsure", uncertain)]:
+    p = softmax(lg)
+    print(f"{name:14s} {int((top_k(p,5)>0).sum()):15d} {int((top_p(p,0.9)>0).sum()):17d}")
+
+# ---------- 3. creativity and hallucination are the same knob ----------
+plausible = slice(0, 7)     # reasonable continuations
+wrong     = slice(7, 10)    # tokens that would be nonsense here
+print(f"\\n{'T':>5} {'P(plausible)':>14} {'P(wrong)':>10} {'distinct tokens sampled in 300 draws':>38}")
+rng = np.random.default_rng(0)
+for T in [0.2, 0.5, 0.8, 1.0, 1.4, 2.0]:
+    p = softmax(logits, T)
+    draws = rng.choice(len(vocab), size=300, p=p)
+    print(f"{T:5.1f} {p[plausible].sum():14.4f} {p[wrong].sum():10.4f} {len(set(draws.tolist())):38d}")`,
   solution: `import numpy as np
 
 vocab = ["the","a","this","my","our","cat","dog","quantum","zebra","xylophone"]
@@ -983,10 +1006,42 @@ for name, p in [("raw (T=1)", softmax(logits)), ("T=0.5", softmax(logits, 0.5)),
     top3 = ", ".join(f"{vocab[i]}={p[i]:.2f}" for i in np.argsort(-p)[:3])
     print(f"{name:20s} {int((p>0).sum()):5d} {entropy(p):8.3f}  {top3}")
 
-print("\\nnucleus size adapts to confidence:")
-for desc, lg in [("confident", np.array([8.,1.,0.,0.,0.,0.,0.,0.,0.,0.])),
-                 ("uncertain", np.array([1.,.9,.8,.8,.7,.7,.6,.6,.5,.5]))]:
-    print(f"  {desc:10s} -> top-p 0.9 keeps {(top_p(softmax(lg), 0.9) > 0).sum()} tokens")`,
+assert int((top_k(softmax(logits), 3) > 0).sum()) == 3
+assert abs(top_p(softmax(logits), 0.9).sum() - 1.0) < 1e-9
+print("PASS\\n")
+
+confident = np.array([9.0, 1.0, 0.5, 0.2, 0.0, -0.5, -1.0, -1.5, -2.0, -2.5])
+uncertain = np.array([1.2, 1.1, 1.0, 1.0, 0.9, 0.9, 0.8, 0.8, 0.7, 0.6])
+
+print(f"{'':14s} {'top-k=5 keeps':>15} {'top-p=0.9 keeps':>17}")
+for name, lg in [("model certain", confident), ("model unsure", uncertain)]:
+    p = softmax(lg)
+    print(f"{name:14s} {int((top_k(p,5)>0).sum()):15d} {int((top_p(p,0.9)>0).sum()):17d}")
+
+plausible = slice(0, 7)
+wrong     = slice(7, 10)
+print(f"\\n{'T':>5} {'P(plausible)':>14} {'P(wrong)':>10} {'distinct tokens sampled in 300 draws':>38}")
+rng = np.random.default_rng(0)
+for T in [0.2, 0.5, 0.8, 1.0, 1.4, 2.0]:
+    p = softmax(logits, T)
+    draws = rng.choice(len(vocab), size=300, p=p)
+    print(f"{T:5.1f} {p[plausible].sum():14.4f} {p[wrong].sum():10.4f} {len(set(draws.tolist())):38d}")`,
+  explain: `Part 2 is the argument that made top-p the default, in four numbers. Top-k keeps exactly five tokens in
+both situations, because five is what you asked for — so when the model is certain it forces four bad options
+into the pool, and when the model is genuinely uncertain it throws away good ones. Top-p keeps **one** token in
+the confident case and nearly the whole vocabulary in the uncertain case, without being told which situation it
+is in. It reads the model's own confidence off the distribution.
+
+Part 3 is the tension the lesson warned about, and it is the reason there is no "creativity without
+hallucination" setting. Follow the three columns together: as temperature rises, the number of distinct tokens
+sampled goes up — that is the diversity you wanted — and the probability mass on the clearly-wrong tokens goes up
+right alongside it, by a larger factor. Nothing in the sampler can tell the difference, because "surprising and
+good" and "surprising and wrong" are both just low-probability tokens. Turning the temperature down suppresses
+both.
+
+This is why the practical defaults split by task rather than by taste: temperature 0 for extraction and code,
+where any surprise is a bug, and 0.7–1.0 with top-p for writing, where you are knowingly buying diversity and
+paying for it in reliability.`,
 },
 
 'llm-prompting': {
