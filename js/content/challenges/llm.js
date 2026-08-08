@@ -652,22 +652,51 @@ Repeated text does not add information — it just gives the model more opportun
 },
 
 'llm-scaling': {
-  title: 'Find the compute-optimal model size',
-  prompt: `Using the Chinchilla parametric loss, write a function that finds the optimal parameter/token split for a
-given FLOP budget. Then check where GPT-3 and Llama-3 sit relative to it.`,
-  hint: 'Compute is C = 6ND. Sweep N on a log grid, set D = C/(6N), and take the argmin of the loss.',
+  title: 'Predict a big model from small ones, then find the compute-optimal split',
+  prompt: `1. **The claim that justifies the spending.** Pretend you can only afford small runs. Fit a power law to
+   four cheap measurements and use it to predict the loss of a run **1000× larger**, then check the prediction
+   against the truth. This is exactly what a lab does before committing to a frontier run.
+2. **How to spend a budget.** Write \`optimal(budget)\`, which finds the parameter/token split minimising loss
+   subject to $C = 6ND$. Then look at where GPT-3, Chinchilla and Llama-3 actually sit.`,
+  hint: 'A power law is a straight line in log-log space: $\\log(L - E) = \\log A - \\alpha \\log N$. So subtract the floor, take logs of both axes, and fit a straight line with `np.polyfit`. For part 2, sweep $N$ on a log grid, set $D = C/(6N)$, and keep the best.',
   starter: `import numpy as np
 
+# the Chinchilla fitted form -- we will treat it as "the truth" and try to rediscover it
 E, A, alpha, B, beta = 1.69, 406.4, 0.34, 410.7, 0.28
 L = lambda N, D: E + A/N**alpha + B/D**beta
 
+# ---------- 1. extrapolating from cheap runs ----------
+small_N = np.array([3e7, 1e8, 3e8, 1e9])          # four models you can actually afford
+D_fixed = 2e11
+rng = np.random.default_rng(0)
+measured = np.array([L(n, D_fixed) for n in small_N]) * (1 + rng.normal(0, 0.002, 4))
+
+def fit_power_law(N, loss, floor):
+    """Return (A_hat, alpha_hat) fitting loss = floor + A * N**(-alpha)."""
+    # TODO: subtract the floor, take logs of both, fit a line, convert back
+    return 0.0, 0.0
+
+A_hat, a_hat = fit_power_law(small_N, measured, E + B/D_fixed**beta)
+print(f"fitted from 4 small runs:  A = {A_hat:8.1f}   alpha = {a_hat:.4f}")
+print(f"the true values:           A = {A:8.1f}   alpha = {alpha:.4f}\\n")
+
+big_N = 1e12                                       # 1000x the largest one you fitted on
+pred  = E + B/D_fixed**beta + A_hat * big_N**(-a_hat)
+truth = L(big_N, D_fixed)
+print(f"predicted loss at {big_N:.0e} params: {pred:.4f}")
+print(f"actual loss                        : {truth:.4f}")
+print(f"error: {abs(pred-truth):.5f} nats, from data spanning only 30x")
+assert abs(pred - truth) < 0.02, "the extrapolation should be accurate to a couple of hundredths"
+print("PASS\\n")
+
+# ---------- 2. spending a budget ----------
 def optimal(budget):
-    """Return (loss, N, D) minimizing L subject to 6ND = budget."""
-    # TODO
-    return np.inf, 0, 0
+    """Return (loss, N, D) minimising L subject to 6*N*D = budget."""
+    # TODO: sweep N over a log grid, set D from the budget, keep the lowest loss
+    return np.inf, 0.0, 0.0
 
 def fmt(x):
-    for div, s in [(1e12,"T"), (1e9,"B"), (1e6,"M")]:
+    for div, s in [(1e12, "T"), (1e9, "B"), (1e6, "M")]:
         if x >= div: return f"{x/div:.1f}{s}"
     return f"{x:.0f}"
 
@@ -676,19 +705,43 @@ for lg in [20, 21, 22, 23, 24]:
     loss, N, D = optimal(10**lg)
     print(f"  1e{lg:<7} {fmt(N):>9} {fmt(D):>9} {D/max(N,1):>10.1f} {loss:>8.4f}")
 
-print("\\nreal models:")
+print("\\nreal models, at the compute they actually used:")
 for name, N, D in [("GPT-3", 175e9, 300e9), ("Chinchilla", 70e9, 1.4e12),
                    ("Llama-3-8B", 8e9, 15e12)]:
     opt_loss, oN, oD = optimal(6*N*D)
     print(f"  {name:12s} {D/N:7.1f} tok/param   loss {L(N,D):.4f}   "
-          f"optimal would be {fmt(oN)} params at loss {opt_loss:.4f}")`,
+          f"best possible at that budget: {fmt(oN)} params, loss {opt_loss:.4f}")`,
   solution: `import numpy as np
 
 E, A, alpha, B, beta = 1.69, 406.4, 0.34, 410.7, 0.28
 L = lambda N, D: E + A/N**alpha + B/D**beta
 
+small_N = np.array([3e7, 1e8, 3e8, 1e9])
+D_fixed = 2e11
+rng = np.random.default_rng(0)
+measured = np.array([L(n, D_fixed) for n in small_N]) * (1 + rng.normal(0, 0.002, 4))
+
+def fit_power_law(N, loss, floor):
+    y = np.log(loss - floor)
+    x = np.log(N)
+    slope, intercept = np.polyfit(x, y, 1)
+    return float(np.exp(intercept)), float(-slope)
+
+A_hat, a_hat = fit_power_law(small_N, measured, E + B/D_fixed**beta)
+print(f"fitted from 4 small runs:  A = {A_hat:8.1f}   alpha = {a_hat:.4f}")
+print(f"the true values:           A = {A:8.1f}   alpha = {alpha:.4f}\\n")
+
+big_N = 1e12
+pred  = E + B/D_fixed**beta + A_hat * big_N**(-a_hat)
+truth = L(big_N, D_fixed)
+print(f"predicted loss at {big_N:.0e} params: {pred:.4f}")
+print(f"actual loss                        : {truth:.4f}")
+print(f"error: {abs(pred-truth):.5f} nats, from data spanning only 30x")
+assert abs(pred - truth) < 0.02
+print("PASS\\n")
+
 def optimal(budget):
-    best = (np.inf, 0, 0)
+    best = (np.inf, 0.0, 0.0)
     for lgN in np.arange(7, 13, 0.005):
         N = 10**lgN
         D = budget / (6*N)
@@ -698,22 +751,41 @@ def optimal(budget):
     return best
 
 def fmt(x):
-    for div, s in [(1e12,"T"), (1e9,"B"), (1e6,"M")]:
+    for div, s in [(1e12, "T"), (1e9, "B"), (1e6, "M")]:
         if x >= div: return f"{x/div:.1f}{s}"
     return f"{x:.0f}"
 
 print(f"{'budget':>10} {'params':>9} {'tokens':>9} {'tok/param':>10} {'loss':>8}")
 for lg in [20, 21, 22, 23, 24]:
     loss, N, D = optimal(10**lg)
-    print(f"  1e{lg:<7} {fmt(N):>9} {fmt(D):>9} {D/N:>10.1f} {loss:>8.4f}")
+    print(f"  1e{lg:<7} {fmt(N):>9} {fmt(D):>9} {D/max(N,1):>10.1f} {loss:>8.4f}")
 
-print("\\nreal models:")
+print("\\nreal models, at the compute they actually used:")
 for name, N, D in [("GPT-3", 175e9, 300e9), ("Chinchilla", 70e9, 1.4e12),
                    ("Llama-3-8B", 8e9, 15e12)]:
     opt_loss, oN, oD = optimal(6*N*D)
     print(f"  {name:12s} {D/N:7.1f} tok/param   loss {L(N,D):.4f}   "
-          f"optimal: {fmt(oN)} params, loss {opt_loss:.4f}")`,
-  explain: 'The optimum sits near 20 tokens per parameter. GPT-3 at 1.7 is far undertrained; Llama-3-8B at 1875 is deliberately overtrained, trading a little loss for permanently cheaper inference.',
+          f"best possible at that budget: {fmt(oN)} params, loss {opt_loss:.4f}")`,
+  explain: `Part 1 is the reason frontier training is fundable. Four small runs, spanning a factor of 30 in size,
+with measurement noise on top — and the fitted exponent lands on the true one, letting you predict the loss of a
+model a *thousand times* larger to within a rounding error. That is not a property of models in general; it is a
+property of power laws, which are straight lines in log-log space, and straight lines extrapolate.
+
+Sit with what this buys. Before Kaplan et al., committing \\$100M to a training run meant hoping. After, you run
+a ladder of cheap models over a weekend, fit a line, and know roughly what you are buying. The scaling law did
+not make models better — it made the spending decision rational, and the spending is what made the models better.
+
+Part 2: the optimal split keeps parameters and tokens growing together — every tenfold increase in budget buys
+roughly three times the parameters and three times the data, rather than pouring it all into size. That balance
+is Chinchilla's central finding. (The exact ratio this parametric form gives drifts from about 40 to about 100
+tokens per parameter across these budgets; the widely quoted "20 tokens per parameter" comes from the paper's
+other two estimation methods. The ratio is fit-dependent — the *balance* is the robust result.)
+
+Then look at the three real models. GPT-3 sits at 1.7 tokens per parameter — trained under the earlier Kaplan
+recipe, and a smaller model on the same compute would have scored better. Chinchilla sits right on the optimum,
+which was the paper's demonstration. And Llama-3-8B sits at nearly 2000, a hundred times "optimal" — which is not
+a mistake but a different objective. It gives up a little loss to be permanently cheaper to serve, and if you are
+answering billions of requests, that trade is not close.`,
 },
 
 'llm-finetuning': {
