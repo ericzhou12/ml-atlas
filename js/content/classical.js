@@ -1334,21 +1334,45 @@ low-bias, high-variance base learners, which is precisely what averaging fixes.`
 
     t(`## Bagging and random forests
 
-**Bagging** = **B**ootstrap **AGG**regat**ING**. Draw $M$ resamples of your data (each the same size, sampled
-with replacement so some rows repeat and others are absent), train a tree on each, and average their
-predictions.
+**Bagging** = **B**ootstrap **AGG**regat**ING**. Draw $M$ resamples of your data — each the same size as the
+original, sampled *with replacement*, so some rows appear twice and others not at all — train a tree on each,
+and average their predictions.
 
-Why should that help? Because averaging kills variance — but only under a condition worth knowing exactly.
-Average $M$ estimators, each with variance $\\sigma^2$ and pairwise correlation $\\rho$, and the result has
-variance:
+(How many rows get left out? A particular row survives one draw with probability $1 - 1/n$, and there are $n$
+draws, so it is absent from a resample with probability $(1-1/n)^n$. For any decent $n$ that is about $1/e
+\\approx 0.37$. Hence the recurring 37%.)
+
+Why should averaging help? Because it cancels variance — but only under a condition worth knowing exactly.
+Average $M$ estimators, each with variance $\\sigma^2$ and correlation $\\rho$ between any pair, and the average
+has variance
 
 $$\\underbrace{\\rho\\sigma^2}_{\\text{does not shrink}} + \\underbrace{\\frac{1-\\rho}{M}\\sigma^2}_{\\text{shrinks to nothing}}$$
 
 Look at the two terms. The second vanishes as $M$ grows — throw enough trees at it and it disappears. The first
-does **not**. It is a floor set entirely by how correlated the trees are with each other.
+does **not**. It is a floor, set entirely by how much the trees agree with each other.
 
-So the win does not come from *more* trees, past a point. **It comes from making the trees disagree.** Two
-hundred nearly-identical trees are barely better than one.`),
+So past a certain point the win does not come from *more* trees. **It comes from making the trees disagree.**
+Two hundred nearly-identical trees are barely better than one.`),
+
+    deriv('Where the two-term variance formula comes from', `This uses only the variance rules from [the probability lesson](#/l/math-probability), extended one step: when two variables are *not* independent, the variance of their sum picks up a covariance term.
+
+$$\\text{Var}(A + B) = \\text{Var}(A) + \\text{Var}(B) + 2\\,\\text{Cov}(A, B)$$
+
+Take $M$ tree predictions $T_1, \\ldots, T_M$, each with variance $\\sigma^2$, and each pair having correlation $\\rho$ — which means $\\text{Cov}(T_i, T_j) = \\rho\\sigma^2$ for $i \\neq j$. Sum them all:
+
+$$\\text{Var}\\Big(\\sum_i T_i\\Big) = \\underbrace{M\\sigma^2}_{M \\text{ variance terms}} + \\underbrace{M(M-1)\\,\\rho\\sigma^2}_{\\text{one covariance per ordered pair}}$$
+
+The average is that sum divided by $M$, and dividing a random quantity by $M$ divides its variance by $M^2$:
+
+$$\\text{Var}\\Big(\\frac{1}{M}\\sum_i T_i\\Big) = \\frac{M\\sigma^2 + M(M-1)\\rho\\sigma^2}{M^2} = \\frac{\\sigma^2}{M} + \\frac{(M-1)\\rho\\sigma^2}{M}$$
+
+Rearrange into the two-term form by writing $\\frac{M-1}{M} = 1 - \\frac{1}{M}$:
+
+$$= \\rho\\sigma^2 + \\frac{1-\\rho}{M}\\sigma^2$$
+
+Now read the two special cases. At $\\rho = 0$ — perfectly independent trees — this is $\\sigma^2/M$, the familiar "averaging $M$ independent things divides the variance by $M$". At $\\rho = 1$ — identical trees — it is $\\sigma^2$, and averaging achieves exactly nothing, which is obviously right since all $M$ copies are the same model.
+
+Everything real sits in between, and the formula says precisely how much of the benefit survives.`),
 
     key(`**Random forests** are bagging plus one addition aimed squarely at that $\\rho\\sigma^2$ floor: at each
 split, only a random subset of features is even considered (typically $\\sqrt{d}$ of them for classification).
@@ -1520,9 +1544,10 @@ forest = [build(*(lambda i: (Xtr[i], ytr[i]))(rng.integers(0, split, split)), 0,
           for _ in range(25)]
 pred = np.mean([predict(t, Xte) for t in forest], axis=0)
 print(f"\\nforest of 25 deep trees: test {((pred > .5) == yte).mean():.3f}")
-print("(deep single trees overfit; averaging them does not)")`),
+print("(deep single trees overfit; averaging them does not)")`,
+      'Two things to read here. The depth sweep shows a single tree doing exactly what the lesson predicted: training accuracy climbs toward 1.0 while test accuracy peaks early and then falls, because a depth-12 tree on 300 points is carving out leaves around individual noisy labels. Then the forest, built from twenty-five of those same overfitting depth-12 trees, beats every single tree in the table. Nothing made the individual trees better — the resampling made their mistakes different, and different mistakes cancel when you average.'),
 
-    quiz('Random forest gets 0.85 AUC; gradient boosting with the same features gets 0.88 but only after careful tuning. What does this suggest?',
+    quiz('A random forest scores 0.85 out of the box. Gradient boosting on the same features reaches 0.88, but only after you tune the learning rate, depth, and number of rounds together. What does this suggest?',
       ['Normal behavior — boosting usually edges out forests but is far more sensitive to hyperparameters',
        'The forest is broken',
        'The boosting model is overfitting',

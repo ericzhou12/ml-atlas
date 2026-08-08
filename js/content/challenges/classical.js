@@ -615,27 +615,37 @@ $p(1-p)$ from the sigmoid is still sitting in the squared-error gradient, and in
 Cross-entropy's logarithms cancel it exactly. A model trained with squared error would be stuck hardest on the
 examples it most needs to fix.`,
 },
+
 'ml-trees-ensembles': {
-  title: 'Grow a regression stump, then boost it',
-  prompt: `Write a depth-1 regression tree that picks the best split by variance reduction, then boost a hundred of
-them on residuals. Compare the learning rate's effect on overfitting.`,
-  hint: 'Each new stump is fit to the *residuals* $y - F_{m-1}(x)$, and added with a shrinkage factor.',
+  title: 'Boost a hundred stumps, then watch decorrelation lower the variance floor',
+  prompt: `Both halves of the lesson, made measurable.
+
+1. **Boosting.** Write \`fit_stump\`, which picks the split minimising squared error, then boost a hundred of
+   them on residuals. Compare learning rates and round counts, and find where boosting starts overfitting.
+2. **Decorrelation.** The second block builds ensembles two ways — letting each stump see both features, or
+   forcing it to use one feature chosen at random — and measures the variance of the ensemble's prediction as
+   the number of trees grows. The lesson said averaging cannot go below a floor of $\\rho\\sigma^2$.
+   **Predict which of the two ends up with the lower floor, and whether the individual trees got better or
+   worse.**`,
+  hint: 'For the stump: given a threshold, the best constant on each side is that side\'s *mean*, and the error is the summed squared deviation from those means. For boosting, each new stump is fit to the current residuals $y - F_{m-1}(x)$ and added with a shrinkage factor.',
   starter: `import numpy as np
 rng = np.random.default_rng(14)
 
+# ---------- part 1: boosting ----------
 truth = lambda x: np.sin(x*1.6)*1.2 + 0.3*x
 x = rng.uniform(-2.5, 2.5, 60)
 y = truth(x) + rng.normal(0, 0.25, 60)
 xt = np.linspace(-2.5, 2.5, 500); yt = truth(xt)
 
 def fit_stump(x, resid):
-    """Return (threshold, left_value, right_value) minimizing squared error."""
+    """Return (threshold, left_value, right_value) minimising squared error."""
     best = None
     for thr in np.quantile(x, np.linspace(0.05, 0.95, 30)):
         L, R = x <= thr, x > thr
         if L.sum() < 2 or R.sum() < 2: continue
-        # TODO: compute left/right means and the total squared error
-        err = np.inf; lm = rm = 0.0
+        # TODO: the best constant on each side, and the resulting squared error
+        lm = rm = 0.0
+        err = np.inf
         if best is None or err < best[0]:
             best = (err, thr, lm, rm)
     return best[1], best[2], best[3]
@@ -645,16 +655,54 @@ def boost(M, lr):
     pred = np.full_like(y, base)
     stumps = []
     for _ in range(M):
-        thr, lm, rm = fit_stump(x, y - pred)
+        thr, lm, rm = fit_stump(x, y - pred)      # fit the CURRENT residuals
         stumps.append((thr, lm, rm))
-        pred += lr * np.where(x <= thr, lm, rm)
-    F = lambda q: base + sum(lr*np.where(q <= t, l, r) for t, l, r in stumps)
-    return F
+        pred = pred + lr * np.where(x <= thr, lm, rm)
+    return lambda q: base + sum(lr*np.where(q <= t, l, r) for t, l, r in stumps)
 
-for M, lr in [(10, 0.3), (100, 0.3), (100, 1.0), (400, 1.0)]:
+print("  rounds   lr      train      test")
+for M, lr in [(10, 0.3), (100, 0.3), (400, 0.3), (100, 1.0), (400, 1.0)]:
     F = boost(M, lr)
-    print(f"M={M:4d} lr={lr:.1f}  train {np.mean((F(x)-y)**2):.4f}  "
-          f"test {np.mean((F(xt)-yt)**2):.4f}")`,
+    print(f"  {M:6d}  {lr:.1f}   {np.mean((F(x)-y)**2):.4f}   {np.mean((F(xt)-yt)**2):.4f}")
+assert np.mean((boost(400, 1.0)(x)-y)**2) < np.mean((boost(10, 0.3)(x)-y)**2), \\
+    "more rounds must always fit the training data better"
+print("\\n(noise floor on train is 0.0625; anything below it is fitting noise)\\n")
+
+# ---------- part 2: why forests hide features from their own trees ----------
+n, R, MMAX = 100, 150, 32
+f2 = lambda X: np.sin(1.5*X[:, 0]) + 0.8*X[:, 1]
+probe = np.array([0.7, -0.4])          # one fixed input to watch
+
+def stump_at(Xb, yb, feats, q):
+    best = None
+    for j in feats:
+        for thr in np.quantile(Xb[:, j], np.linspace(.15, .85, 10)):
+            L = Xb[:, j] <= thr
+            if L.sum() < 4 or (~L).sum() < 4: continue
+            lm, rm = yb[L].mean(), yb[~L].mean()
+            e = ((yb[L]-lm)**2).sum() + ((yb[~L]-rm)**2).sum()
+            if best is None or e < best[0]: best = (e, j, thr, lm, rm)
+    _, j, thr, lm, rm = best
+    return lm if q[j] <= thr else rm
+
+for label, n_feat in [("each stump sees both features", 2),
+                      ("each stump sees ONE random feature", 1)]:
+    P = np.zeros((R, MMAX))
+    for r in range(R):
+        X = rng.uniform(-2, 2, (n, 2)); yy = f2(X) + rng.normal(0, .3, n)
+        for m in range(MMAX):
+            idx = rng.integers(0, n, n)                     # bootstrap resample
+            feats = [0, 1] if n_feat == 2 else [int(rng.integers(0, 2))]
+            P[r, m] = stump_at(X[idx], yy[idx], feats, probe)
+    C = np.corrcoef(P.T)
+    rho = (C.sum() - np.trace(C)) / (MMAX*(MMAX-1))
+    s2 = P[:, 0].var()
+    print(f"{label}")
+    print(f"   one tree's variance sigma^2 = {s2:.4f},  average correlation rho = {rho:.3f}")
+    print(f"   the formula's floor, rho*sigma^2 = {rho*s2:.4f}")
+    for M in [1, 2, 4, 8, 16, 32]:
+        print(f"     M={M:3d} trees ->  ensemble variance {P[:, :M].mean(1).var():.4f}")
+    print()`,
   solution: `import numpy as np
 rng = np.random.default_rng(14)
 
@@ -681,16 +729,71 @@ def boost(M, lr):
     for _ in range(M):
         thr, lm, rm = fit_stump(x, y - pred)
         stumps.append((thr, lm, rm))
-        pred += lr * np.where(x <= thr, lm, rm)
+        pred = pred + lr * np.where(x <= thr, lm, rm)
     return lambda q: base + sum(lr*np.where(q <= t, l, r) for t, l, r in stumps)
 
-for M, lr in [(10, 0.3), (100, 0.3), (100, 1.0), (400, 1.0)]:
+print("  rounds   lr      train      test")
+for M, lr in [(10, 0.3), (100, 0.3), (400, 0.3), (100, 1.0), (400, 1.0)]:
     F = boost(M, lr)
-    print(f"M={M:4d} lr={lr:.1f}  train {np.mean((F(x)-y)**2):.4f}  "
-          f"test {np.mean((F(xt)-yt)**2):.4f}")`,
-  explain: 'Small learning rate with many trees generalizes better than few trees with a large one — the same shrinkage principle as in gradient descent. At `lr=1.0, M=400` train error keeps falling while test error rises: boosting *can* overfit, unlike random forests.',
-},
+    print(f"  {M:6d}  {lr:.1f}   {np.mean((F(x)-y)**2):.4f}   {np.mean((F(xt)-yt)**2):.4f}")
+assert np.mean((boost(400, 1.0)(x)-y)**2) < np.mean((boost(10, 0.3)(x)-y)**2)
+print("\\n(noise floor on train is 0.0625; anything below it is fitting noise)\\n")
 
+n, R, MMAX = 100, 150, 32
+f2 = lambda X: np.sin(1.5*X[:, 0]) + 0.8*X[:, 1]
+probe = np.array([0.7, -0.4])
+
+def stump_at(Xb, yb, feats, q):
+    best = None
+    for j in feats:
+        for thr in np.quantile(Xb[:, j], np.linspace(.15, .85, 10)):
+            L = Xb[:, j] <= thr
+            if L.sum() < 4 or (~L).sum() < 4: continue
+            lm, rm = yb[L].mean(), yb[~L].mean()
+            e = ((yb[L]-lm)**2).sum() + ((yb[~L]-rm)**2).sum()
+            if best is None or e < best[0]: best = (e, j, thr, lm, rm)
+    _, j, thr, lm, rm = best
+    return lm if q[j] <= thr else rm
+
+for label, n_feat in [("each stump sees both features", 2),
+                      ("each stump sees ONE random feature", 1)]:
+    P = np.zeros((R, MMAX))
+    for r in range(R):
+        X = rng.uniform(-2, 2, (n, 2)); yy = f2(X) + rng.normal(0, .3, n)
+        for m in range(MMAX):
+            idx = rng.integers(0, n, n)
+            feats = [0, 1] if n_feat == 2 else [int(rng.integers(0, 2))]
+            P[r, m] = stump_at(X[idx], yy[idx], feats, probe)
+    C = np.corrcoef(P.T)
+    rho = (C.sum() - np.trace(C)) / (MMAX*(MMAX-1))
+    s2 = P[:, 0].var()
+    print(f"{label}")
+    print(f"   one tree's variance sigma^2 = {s2:.4f},  average correlation rho = {rho:.3f}")
+    print(f"   the formula's floor, rho*sigma^2 = {rho*s2:.4f}")
+    for M in [1, 2, 4, 8, 16, 32]:
+        print(f"     M={M:3d} trees ->  ensemble variance {P[:, :M].mean(1).var():.4f}")
+    print()`,
+  explain: `Part 1: training error falls monotonically with more rounds, exactly as "each tree fits what is still
+wrong" predicts — and it sails straight through the noise floor of $0.25^2 = 0.0625$, which is the point at
+which it has stopped learning the function and started learning the noise. Test error tells the real story:
+it improves, bottoms out, and then climbs. This is the asymmetry from the lesson — **boosting will overfit if
+you let it**, so it needs early stopping, while a random forest does not.
+
+Part 2 is the decorrelation argument, measured. Read three numbers from each block:
+
+- **One tree alone gets worse when you hide a feature** — $\\sigma^2$ rises from about 0.41 to about 0.52. You
+  crippled the base learner, and it shows.
+- **The correlation collapses** — $\\rho$ falls from about 0.21 to about 0.05, because trees forced onto
+  different features cannot make the same mistakes.
+- **The ensemble ends up better anyway** — at 32 trees the variance is about 0.099 with both features and about
+  0.045 with one. Compare each against its own predicted floor $\\rho\\sigma^2$: the first has almost reached
+  0.085 and has stopped improving, while the second still has room down to 0.028.
+
+That is the whole design of a random forest in three lines. Weakening each individual tree in a way that makes
+their errors independent buys more than it costs, because the part of the variance that averaging can remove is
+$(1-\\rho)\\sigma^2/M$ and the part it cannot is $\\rho\\sigma^2$. Attacking $\\rho$ attacks the term that adding
+trees can never touch.`,
+},
 'ml-svm-knn': {
   title: 'Hinge loss vs log loss, and the support vectors',
   prompt: `Train a linear SVM by subgradient descent on the hinge loss. Count how many points end up as support
