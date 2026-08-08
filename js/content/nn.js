@@ -308,8 +308,11 @@ Not a constant-factor improvement — a factor of a billion.
 Where does that come from? A single observation. The chain rule says the gradient at an early layer is a product
 of local derivatives along the whole path back from the loss. Nearby parameters share almost all of that path. So
 if you compute the products *once*, walking backwards from the loss and accumulating, every parameter gets its
-gradient from work that was already done for the parameters after it. **Backprop is dynamic programming applied
-to the chain rule.**`),
+gradient from work that was already done for the parameters after it.
+
+That pattern — solve a problem once, store the answer, and reuse it instead of recomputing — is called dynamic
+programming, and **backpropagation is dynamic programming applied to the chain rule.** The billion-fold speedup
+comes from nothing more exotic than refusing to compute the same product twice.`),
 
     t(`## The two-phase structure
 
@@ -475,7 +478,7 @@ print(f"output      = {out.data:.6f}")
 print(f"dout/dw1    = {w1.grad:.6f}   (expect x1 * (1-tanh^2) = {2.0*(1-np.tanh(n.data)**2):.6f})")
 print(f"dout/dw2    = {w2.grad:.6f}")
 print(f"dout/db     = {b.grad:.6f}")`,
-      'This is the core of Karpathy\'s micrograd. Real frameworks operate on tensors rather than scalars and fuse operations for speed, but the structure — build a graph, topologically sort, apply local derivatives in reverse — is identical.'),
+      'Read `__mul__` closely, because it is the whole algorithm in four lines. The forward part computes the product. The `_backward` closure it leaves behind knows one fact — that the derivative of $ab$ with respect to $a$ is $b$ — and multiplies that by whatever gradient arrives from downstream. It has no idea what network it is part of. Note the `+=` rather than `=`: if a value feeds into two places, its gradient is the *sum* of the contributions from both, and forgetting that is the single most common bug in a hand-written backward pass.'),
 
     warn(`**Debugging a hand-written backward pass.** Always gradient-check against central differences (see the
 [derivatives lesson](#/l/math-derivatives)). Relative error below $10^{-5}$ in float64 means you are fine; above

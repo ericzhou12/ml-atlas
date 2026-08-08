@@ -132,10 +132,14 @@ gradient descent can find such descriptions on its own, for problems far harder 
 },
 
 'nn-backprop': {
-  title: 'Write a scalar autodiff engine',
-  prompt: `Complete the \`Value\` class so \`backward()\` computes correct gradients through a small expression graph.
-Verify against central differences.`,
-  hint: 'Each op sets a `_backward` closure that *accumulates* into `self.grad` — accumulation matters when a value is used twice.',
+  title: 'Write a scalar autodiff engine, and find the bug that catches everyone',
+  prompt: `Complete the three \`_backward\` closures so that \`backward()\` computes correct gradients through any
+expression built from these operations. Each closure needs exactly two things, as the lesson said: the local
+derivative of its own operation, and the gradient arriving from downstream.
+
+Three checks follow, and the second is the interesting one — it uses the same value in more than one place. A
+version that passes check 1 and fails check 2 has the single most common bug in hand-written backward passes.`,
+  hint: 'Local derivatives: for `a+b`, both inputs receive the incoming gradient unchanged. For `a*b`, each input receives the incoming gradient times *the other* input. For `tanh`, multiply by $1-\\tanh^2$. And write `+=`, not `=` — think about what should happen to `x` in `x*x`.',
   starter: `import numpy as np
 
 class Value:
@@ -179,18 +183,34 @@ class Value:
         self.grad = 1.0
         for v in reversed(topo): v._backward()
 
-# --- check: y = tanh(w1*x1 + w2*x2 + b), used twice ---
+def numeric(f, at, eps=1e-6):
+    return (f(at + eps) - f(at - eps)) / (2*eps)
+
+# --- check 1: one neuron ---
 x1, x2 = Value(2.0), Value(-1.0)
 w1, w2, b = Value(0.5), Value(1.5), Value(0.3)
-n = x1*w1 + x2*w2 + b
-out = n.tanh()
+out = (x1*w1 + x2*w2 + b).tanh()
 out.backward()
+e1 = numeric(lambda W: np.tanh(2.0*W - 1.5 + 0.3), 0.5)
+print(f"dout/dw1:  yours {w1.grad:.8f}   numeric {e1:.8f}")
+assert abs(w1.grad - e1) < 1e-5, "the gradient through the neuron is wrong"
 
-def numeric(f, eps=1e-6):
-    a = f(0.5+eps); c = f(0.5-eps); return (a-c)/(2*eps)
-expected = numeric(lambda W: np.tanh(2.0*W + (-1.0)*1.5 + 0.3))
-print(f"dout/dw1 analytic {w1.grad:.8f}   numeric {expected:.8f}")
-print("PASS" if abs(w1.grad - expected) < 1e-5 else "FAIL")`,
+# --- check 2: a value used more than once. This is where += matters. ---
+x = Value(1.7)
+y = x*x + x
+y.backward()
+e2 = numeric(lambda v: v*v + v, 1.7)
+print(f"\\nd(x*x + x)/dx:  yours {x.grad:.8f}   numeric {e2:.8f}   (2x+1 = {2*1.7+1:.2f})")
+assert abs(x.grad - e2) < 1e-5, "a reused value must ACCUMULATE its gradient: use += , not ="
+
+# --- check 3: a deeper chain ---
+a, bb = Value(0.8), Value(-0.4)
+z = ((a*bb + a).tanh() * a + bb).tanh()
+z.backward()
+e3 = numeric(lambda v: np.tanh(np.tanh(v*(-0.4) + v)*v + (-0.4)), 0.8)
+print(f"\\ndeeper chain, dz/da:  yours {a.grad:.8f}   numeric {e3:.8f}")
+assert abs(a.grad - e3) < 1e-5, "the chain rule is not composing correctly"
+print("\\nPASS -- all three")`,
   solution: `import numpy as np
 
 class Value:
@@ -203,7 +223,7 @@ class Value:
         other = other if isinstance(other, Value) else Value(other)
         out = Value(self.data + other.data, (self, other))
         def _b():
-            self.grad  += out.grad          # d(a+b)/da = 1
+            self.grad += out.grad
             other.grad += out.grad
         out._backward = _b
         return out
@@ -212,8 +232,8 @@ class Value:
         other = other if isinstance(other, Value) else Value(other)
         out = Value(self.data * other.data, (self, other))
         def _b():
-            self.grad  += other.data * out.grad
-            other.grad += self.data  * out.grad
+            self.grad += other.data * out.grad
+            other.grad += self.data * out.grad
         out._backward = _b
         return out
 
@@ -236,17 +256,44 @@ class Value:
         self.grad = 1.0
         for v in reversed(topo): v._backward()
 
+def numeric(f, at, eps=1e-6):
+    return (f(at + eps) - f(at - eps)) / (2*eps)
+
 x1, x2 = Value(2.0), Value(-1.0)
 w1, w2, b = Value(0.5), Value(1.5), Value(0.3)
 out = (x1*w1 + x2*w2 + b).tanh()
 out.backward()
+e1 = numeric(lambda W: np.tanh(2.0*W - 1.5 + 0.3), 0.5)
+print(f"dout/dw1:  yours {w1.grad:.8f}   numeric {e1:.8f}")
+assert abs(w1.grad - e1) < 1e-5
 
-eps = 1e-6
-f = lambda W: np.tanh(2.0*W - 1.5 + 0.3)
-expected = (f(0.5+eps) - f(0.5-eps)) / (2*eps)
-print(f"dout/dw1 analytic {w1.grad:.8f}   numeric {expected:.8f}")
-print("PASS" if abs(w1.grad - expected) < 1e-5 else "FAIL")`,
-  explain: 'The `+=` in each `_backward` is the part people get wrong. If a value feeds two downstream nodes, its gradient is the *sum* of both contributions — assignment instead of accumulation silently drops one path.',
+x = Value(1.7)
+y = x*x + x
+y.backward()
+e2 = numeric(lambda v: v*v + v, 1.7)
+print(f"\\nd(x*x + x)/dx:  yours {x.grad:.8f}   numeric {e2:.8f}   (2x+1 = {2*1.7+1:.2f})")
+assert abs(x.grad - e2) < 1e-5
+
+a, bb = Value(0.8), Value(-0.4)
+z = ((a*bb + a).tanh() * a + bb).tanh()
+z.backward()
+e3 = numeric(lambda v: np.tanh(np.tanh(v*(-0.4) + v)*v + (-0.4)), 0.8)
+print(f"\\ndeeper chain, dz/da:  yours {a.grad:.8f}   numeric {e3:.8f}")
+assert abs(a.grad - e3) < 1e-5
+print("\\nPASS -- all three")`,
+  explain: `Checks 1 and 3 confirm that the chain rule composes correctly through arbitrary expressions — and note
+that nothing in your code knew what expression it was part of. Each closure knew one local derivative and
+multiplied it by whatever arrived from downstream. Correct gradients for the whole graph fell out of that alone,
+which is exactly the locality the lesson emphasised.
+
+Check 2 is the one worth remembering. In \`x*x + x\` the value \`x\` feeds three separate places, and the true
+derivative is $2x + 1 = 4.4$. If your closures assign with \`=\`, whichever contribution lands last silently
+overwrites the others and you get 1, or 3.4, but never the sum. The rule is: **when a value is used in several
+places, its gradient is the sum of what each use sends back.**
+
+This bug is nasty precisely because it rarely crashes and usually does not look wrong — the model still trains,
+just toward the wrong thing. Comparing against finite differences is how you catch it, which is why every
+framework's test suite is full of the exact comparison you just ran.`,
 },
 
 'nn-activations': {
