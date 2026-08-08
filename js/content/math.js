@@ -1069,213 +1069,256 @@ print("\\ncondition number:", round(S[0] / S[-1], 1))`,
   mins: 25, level: 'foundations',
   tags: ['calculus', 'gradients'],
   sections: [
-    tldr(`Training a model means repeatedly asking one question: *if I nudge this parameter slightly, does the
-loss go up or down, and by how much?* The **derivative** is the answer for one parameter; the **gradient** is
-the answer for all of them at once, packaged as a vector.
+    tldr(`Training a model means asking one question over and over: *if I nudge this number a little, does the
+loss go up or down, and by how much?* The **derivative** answers it for one number. The **gradient** answers it
+for all of them at once, packaged as a vector with one entry per parameter.
 
-The gradient has a property that makes the whole enterprise work: it points in the direction of steepest
-increase. So to make the loss go down, step the other way. That is the entirety of gradient descent, and
-everything else in optimization is an argument about how big the step should be.`),
+The gradient has one property that makes the whole enterprise work: it points in the direction the loss
+increases fastest. So to decrease the loss, step the opposite way. That is all of gradient descent. Everything
+else in optimization is an argument about how big the step should be.
+
+The other half of the lesson is the chain rule, because a neural network is functions inside functions, and the
+chain rule says their derivatives get **multiplied**. Multiplying many numbers together is unstable, and that
+one fact predicts most of the things that go wrong during training.`),
 
     jargon([
-      ['derivative $f\'(x)$', 'The slope of $f$ at the point $x$. How fast the output moves when you wiggle the input.'],
-      ['partial derivative $\\partial f/\\partial x_i$', 'The slope with respect to *one* input while all the others are held frozen. The curly $\\partial$ instead of $d$ is the only thing signalling "there are other variables around".'],
-      ['gradient $\\nabla f$', 'All the partial derivatives collected into one vector, in the same order as the inputs. Pronounced "grad f"; the $\\nabla$ symbol is called *nabla* or *del*. Same shape as the parameter vector.'],
-      ['$\\lim_{h\\to 0}$', '"What value does this expression approach as $h$ shrinks toward zero?" A way of saying "infinitely small nudge" without dividing by literal zero.'],
-      ['level set / contour', 'The set of points where $f$ has the same value — the rings on a topographic map.'],
-      ['chain rule', 'How to differentiate nested functions. Derivatives of the pieces get *multiplied* together.'],
-      ['Hessian', 'The matrix of all second derivatives. Describes curvature: how the slope itself is changing.'],
-      ['saddle point', 'A place where the gradient is zero but it is neither a peak nor a valley — uphill in some directions, downhill in others. Like the middle of a horse saddle, or a mountain pass.'],
-      ['Taylor series', 'Approximating a curvy function near a point by a polynomial: a line, then a parabola, then a cubic, each one closer.'],
+      ['derivative $f\'(x)$', 'The slope of $f$ at the point $x$: how fast the output moves when you wiggle the input.'],
+      ['$\\lim_{h\\to 0}$', 'Read as "what value does this approach as $h$ shrinks toward zero?" It is how you say "an infinitely small nudge" without literally dividing by zero.'],
+      ['partial derivative $\\partial f/\\partial x_i$', 'The slope with respect to *one* input while every other input is held frozen. The curly $\\partial$ instead of $d$ is the only thing announcing "there are other variables in this function".'],
+      ['gradient $\\nabla f$', 'All the partial derivatives collected into one vector, in the same order as the inputs. Say "grad f"; the $\\nabla$ symbol is called nabla. It has the same shape as the parameter vector.'],
+      ['contour / level set', 'The set of input points where $f$ takes the same value — the rings on a topographic map.'],
+      ['chain rule', 'The rule for differentiating a function of a function. The derivatives of the pieces get multiplied together.'],
+      ['Hessian', 'The matrix of all second derivatives. It describes curvature: how fast the slope itself is changing, and in which directions.'],
+      ['critical point', 'A point where the gradient is exactly zero. Could be a minimum, a maximum, or neither.'],
+      ['saddle point', 'A critical point that is neither a peak nor a valley — uphill in some directions and downhill in others, like a mountain pass.'],
+      ['Taylor series', 'A way of approximating a curvy function near a point using a line, then a parabola, then a cubic, each one closer than the last.'],
     ]),
 
     t(`## What a derivative is
 
 $$f'(x) = \\lim_{h\\to 0}\\frac{f(x+h)-f(x)}{h}$$
 
-Unpack that fraction before worrying about the limit. $f(x+h) - f(x)$ is "how much the output changed"; $h$ is
-"how much the input changed". Their ratio is rise over run — a slope. The $\\lim_{h\\to 0}$ says: shrink the run
-toward nothing, so the answer describes the function *at the point* rather than over an interval.
+Look at the fraction before worrying about the limit. The numerator $f(x+h)-f(x)$ is how much the output
+changed; the denominator $h$ is how much the input changed. Their ratio is rise over run, which is a slope. The
+$\\lim_{h\\to 0}$ then shrinks the run toward nothing, so the answer describes the function *at the point*
+instead of averaged over an interval.
 
-There are three ways to read the result, all correct, and you want all three available:
+There are three ways to read the number that comes out. All three are correct, and you want all three
+available:
 
-1. **Slope** of the tangent line at $x$. The picture.
-2. **Rate of change**: "if I nudge $x$ by a small $\\epsilon$, $f$ changes by about $f'(x)\\,\\epsilon$." The
-   sentence you say out loud.
-3. **Best local linear approximation**: $f(x+h) \\approx f(x) + f'(x)h$. The one that generalizes.
+1. **The slope** of the tangent line at $x$. This is the picture.
+2. **A rate of change**: nudge $x$ by a small amount $\\epsilon$ and $f$ changes by about $f'(x)\\,\\epsilon$.
+   This is the sentence you say out loud.
+3. **The best straight-line stand-in** near $x$: $f(x+h) \\approx f(x) + f'(x)\\,h$. This is the one that
+   generalizes.
 
-Reading 3 is the one that survives into higher dimensions and the one optimization actually uses. It says:
-*near this point, pretend the function is a straight line — this is the right straight line.* Every gradient
-step you will ever take is a bet on that pretence being good enough over the distance you moved.`),
+Reading 3 is what optimization actually uses. It says: near this point, pretend the function is a straight
+line, and here is the right straight line. Every gradient step you will ever take is a bet that the pretence
+still holds over the distance you moved.`),
 
     viz('derivative-tangent'),
 
-    t(`## Gradients: derivatives in many variables
+    t(`## Gradients: one derivative per parameter
 
-A neural network's loss does not depend on one number, it depends on millions. So we need a derivative per
-parameter. For $f: \\mathbb{R}^d \\to \\mathbb{R}$ — read that as "takes $d$ numbers, returns one number", which
-is exactly the type of a loss function — the **gradient** collects them all:
+A network's loss does not depend on one number. It depends on millions. So we need one derivative per
+parameter, and the way to get them is to differentiate with respect to one input at a time while treating the
+others as constants. That is a **partial derivative**, and there is nothing new in it — it is the single-variable
+derivative you already know, applied while the rest of the inputs sit still.`),
+
+    steps('A partial derivative, worked out', [
+      { h: 'Take a function of two inputs', md: `$f(x, y) = x^2 y + 3y$. There is no single "the derivative" here, because there are two directions you could move.` },
+      { h: 'Freeze $y$ and differentiate in $x$', md: `Treat $y$ as if it were a fixed number like 7. Then $x^2y$ is (constant)$\\cdot x^2$, whose derivative is $2xy$, and $3y$ is a constant, whose derivative is 0. So $\\partial f/\\partial x = 2xy$.` },
+      { h: 'Now freeze $x$ and differentiate in $y$', md: `Now $x^2y$ is (constant)$\\cdot y$, with derivative $x^2$, and $3y$ has derivative 3. So $\\partial f/\\partial y = x^2 + 3$.` },
+      { h: 'Stack them into the gradient', md: `$\\nabla f(x,y) = (2xy,\\ x^2+3)$. At the point $(1, 2)$ that is $(4, 4)$: moving in $x$ and moving in $y$ each raise $f$ at the same rate there.` },
+    ]),
+
+    t(`In general, for $f: \\mathbb{R}^d \\to \\mathbb{R}$ — read that as "takes $d$ numbers, returns one number",
+which is exactly the type signature of a loss function — the gradient is
 
 $$\\nabla f(\\mathbf{x}) = \\left(\\frac{\\partial f}{\\partial x_1},\\ \\ldots,\\ \\frac{\\partial f}{\\partial x_d}\\right)$$
 
-Each **partial derivative** $\\partial f/\\partial x_i$ answers a narrow question: "how does $f$ change if I move
-along axis $i$ only, holding every other coordinate fixed?" On its own that is unremarkable — it is just an
-ordinary derivative with the other variables treated as constants.
+Each entry on its own is unremarkable. The interesting part is what the vector as a whole turns out to mean.`),
 
-The interesting thing is what happens when you stack them into a vector. The gradient then acquires two
-properties that are not at all obvious from the definition, and both are load-bearing:`),
+    key(`Two properties of the gradient, neither obvious from the definition, both load-bearing:
 
-    key(`1. **$\\nabla f$ points in the direction of steepest ascent**, and $\\|\\nabla f\\|$ is how steep.
-2. **$\\nabla f$ is perpendicular to the level set** (contour line) through that point.
+1. **$\\nabla f$ points in the direction of steepest increase**, and its length $\\|\\nabla f\\|$ is how steep
+   that is.
+2. **$\\nabla f$ is perpendicular to the contour** through that point.
 
-Property 1 is why gradient descent moves along $-\\nabla f$. Property 2 is why the descent direction and the contours
-meet at right angles in every picture you have seen.`),
+Property 1 is why gradient descent steps along $-\\nabla f$. Property 2 is why, in every picture of gradient
+descent you have seen, the arrows cross the contour rings at right angles.`),
 
-    viz('gradient-field'),
+    t(`Both properties come from one calculation, and it only uses the dot product from
+[the first lesson](#/l/math-vectors).
 
-    deriv('Why the gradient is the steepest direction', `The **directional derivative** of $f$ along a unit vector $\\mathbf{u}$ is
+Pick a direction to walk in: a unit vector $\\mathbf{u}$. How fast does $f$ change as you walk that way? Take the
+same rise-over-run limit, but move along $\\mathbf{u}$ instead of along an axis:
 
 $$D_{\\mathbf{u}}f = \\lim_{h\\to 0}\\frac{f(\\mathbf{x}+h\\mathbf{u})-f(\\mathbf{x})}{h} = \\nabla f \\cdot \\mathbf{u}$$
 
-We want the $\\mathbf{u}$ maximizing this, subject to $\\|\\mathbf{u}\\|=1$. By the geometric form of the dot product,
+The right-hand equality is the chain rule doing its job, worked out in the derivation below. Take it for now and
+look at what it says: **the rate of change in any direction is the gradient dotted with that direction.** So now
+use the geometric form of the dot product, with $\\|\\mathbf{u}\\| = 1$:
 
-$$\\nabla f\\cdot\\mathbf{u} = \\|\\nabla f\\|\\,\\|\\mathbf{u}\\|\\cos\\theta = \\|\\nabla f\\|\\cos\\theta$$
+$$D_{\\mathbf{u}}f = \\|\\nabla f\\|\\,\\|\\mathbf{u}\\|\\cos\\theta = \\|\\nabla f\\|\\cos\\theta$$
 
-which is maximized when $\\cos\\theta = 1$, i.e. $\\mathbf{u}$ points along $\\nabla f$. ∎
+The only thing you control is $\\theta$, the angle between your direction and the gradient. That expression is
+biggest when $\\cos\\theta = 1$, meaning you walk *along* the gradient — property 1. It is zero when
+$\\cos\\theta = 0$, meaning you walk perpendicular to the gradient — and walking without changing $f$ is exactly
+what staying on a contour means, which is property 2. And it is most negative at $\\cos\\theta = -1$: the fastest
+way down is straight against the gradient, which is what gradient descent does.`),
 
-The same computation gives property 2: moving along a level set means $f$ does not change, so $D_{\\mathbf u}f = 0$,
-so $\\nabla f\\cdot\\mathbf{u}=0$ — the gradient is orthogonal to every direction that stays on the contour.`),
+    viz('gradient-field'),
+
+    deriv('Why the directional derivative equals $\\nabla f \\cdot \\mathbf{u}$', `Define $g(h) = f(\\mathbf{x} + h\\mathbf{u})$, a plain single-variable function of $h$. Then $D_{\\mathbf{u}}f$ is exactly $g'(0)$.
+
+Each coordinate of the input is $x_i + h u_i$, so as $h$ changes, coordinate $i$ changes at rate $u_i$. The multivariable chain rule (the next section covers the single-variable version; this is the same statement with a sum over inputs) gives
+
+$$g'(h) = \\sum_{i=1}^{d} \\frac{\\partial f}{\\partial x_i}\\Big|_{\\mathbf{x}+h\\mathbf{u}} \\cdot u_i$$
+
+Read that sum: each input contributes its own sensitivity $\\partial f/\\partial x_i$ times how fast that input is moving, $u_i$. Setting $h = 0$ and recognising the sum as a dot product:
+
+$$g'(0) = \\sum_i \\frac{\\partial f}{\\partial x_i}u_i = \\nabla f(\\mathbf{x}) \\cdot \\mathbf{u} \\qquad \\blacksquare$$
+
+This is worth noticing as a pattern: the gradient is defined by $d$ separate axis-aligned questions, but it silently answers the question for *every* direction at once.`),
 
     t(`## The chain rule is the whole of backpropagation
 
-Real models are functions inside functions inside functions. The chain rule tells you how to differentiate
-those, and the punchline is that the derivatives **multiply**:
+Real models are functions inside functions inside functions. The chain rule says how to differentiate those, and
+the punchline is that the derivatives get **multiplied**:
 
 $$\\frac{d}{dx}g(h(x)) = g'(h(x))\\cdot h'(x)$$
 
-The sentence version: *how sensitive the final output is to $x$* equals *how sensitive $g$ is to its input*
-times *how sensitive $h$ is to $x$*. Sensitivities compound, the same way percentage changes compound.
+In words: how sensitive the final output is to $x$ equals how sensitive $g$ is to its input, times how sensitive
+$h$ is to $x$. Sensitivities compound, the way percentage changes compound — a 10% increase followed by a 10%
+increase multiplies to 1.21×, it does not add to 1.2×.
 
-A neural network is a deep composition — layer $L$ applied to layer $L-1$ applied to … applied to the input. So
-the gradient with respect to an *early* parameter is a product of many local derivatives, one per layer it has
-to travel back through. That product structure is not a detail; it explains almost every training pathology you
-will ever meet.`),
+A neural network is a deep composition: the last layer applied to the layer before it, applied to the one before
+that, all the way down to the input. So the derivative of the loss with respect to an *early* parameter is a
+product of one local derivative per layer that the signal has to travel back through. That product structure is
+not a technicality. It explains most of the ways training fails.`),
 
     viz('chain-rule'),
 
     warn(`Multiplying many numbers together is unstable in a way that adding them is not.
 
-If each factor in the chain is slightly less than 1 — say 0.8 — then after 30 layers the product is
-$0.8^{30} \\approx 0.001$. The gradient reaching the early layers is a thousandth of what the late layers see,
-so they barely learn. These are **vanishing gradients**. If each factor is slightly more than 1, the same
-arithmetic runs the other way and the gradient explodes into \`NaN\`.
+Suppose every factor in the chain is a little under 1 — say 0.8. After 30 layers the product is
+$0.8^{30} \\approx 0.001$. The gradient arriving at the earliest layers is a thousandth of what the last layers
+see, so those early layers barely move. These are **vanishing gradients**.
 
-Neither is a bug in backpropagation. It is what exponentials do. Every fix you will meet — careful
-initialization, normalization layers, residual connections, ReLU instead of sigmoid — is ultimately a scheme
-for keeping those per-layer factors near 1.`),
+Now suppose every factor is a little over 1 — say 1.2. Then $1.2^{30} \\approx 237$, and after a hundred layers
+the number overflows to \`NaN\`. These are **exploding gradients**.
+
+Neither is a bug in backpropagation; it is simply what exponentials do. Notice how narrow the safe zone is: the
+factors have to sit near 1, and 0.8 is not near enough. Every fix you will meet later — careful initialization,
+normalization layers, residual connections, ReLU instead of sigmoid — is ultimately a scheme for keeping those
+per-layer factors close to 1.`),
 
     t(`## Second derivatives: curvature
 
-The derivative tells you the slope. The **second** derivative tells you how the slope is changing — whether you
-are in a tight bowl or on a gentle plain. In many variables, the second derivatives form a matrix called the
-**Hessian**:
+The first derivative gives the slope. The **second** derivative gives how fast the slope is changing — whether
+you are in a tight bowl or on a gentle plain. With many inputs there is a second derivative for each *pair* of
+directions, and they form a matrix called the **Hessian**:
 
 $$H_{ij} = \\frac{\\partial^2 f}{\\partial x_i \\partial x_j}$$
 
-Entry $(i,j)$ answers "as I move along axis $j$, how fast does the slope along axis $i$ change?" Reading its
-[eigenvalues](#/l/math-eigen-svd) — the curvatures along its natural axes — classifies any point where the
-gradient is zero:
+Read entry $(i,j)$ as: take the slope along axis $i$, then ask how fast *that slope* changes as you move along
+axis $j$. The diagonal entries ($i = j$) are the ordinary "how curved is it along this axis" numbers; the
+off-diagonal ones say whether the directions interact. The Hessian is always symmetric, because doing the two
+differentiations in the other order gives the same answer.
 
-- All eigenvalues **positive** → curves upward in every direction → local **minimum** (a bowl).
-- All **negative** → curves downward everywhere → local **maximum** (a dome).
-- **Mixed signs** → up in some directions, down in others → a **saddle point** (a mountain pass).`),
+The Hessian classifies any critical point. Look at its [eigenvalues](#/l/math-eigen-svd) — the curvatures along
+its own natural axes:
 
-    intuition(`Here is a counting argument worth internalising. For a point to be a local minimum, *all* $d$
-Hessian eigenvalues must come out positive. In a $d$-dimensional loss landscape with $d$ in the millions, that
-is like asking a million coin flips to all land heads — vanishingly unlikely. A point with a zero gradient is
-overwhelmingly likely to be a **saddle**, not a minimum.
+- All eigenvalues **positive**: curves upward in every direction, so it is a local **minimum** (a bowl).
+- All **negative**: curves downward everywhere, so it is a local **maximum** (a dome).
+- **Mixed signs**: up in some directions, down in others — a **saddle point**.`),
 
-This reframed the field around 2014. The folk worry had been "deep networks get stuck in bad local minima." The
-better description is: bad local minima are rare, saddles and long flat plateaus are everywhere, and the noise
-in stochastic gradient descent is usually enough to slide off a saddle. That is a much more optimistic picture,
-and it matches what practitioners actually observe.`),
+    intuition(`Here is a counting argument worth keeping. For a critical point to be a local minimum, *all* $d$
+Hessian eigenvalues have to come out positive. In a loss landscape with $d$ in the millions, that is like asking
+a million coin flips to all land heads. So a point where the gradient vanishes is overwhelmingly likely to be a
+**saddle**, not a minimum.
 
-    t(`## Taylor series: the approximation hierarchy
+This reframed the field around 2014. The old worry was "deep networks get stuck in bad local minima". The better
+description is that bad local minima are rare, while saddles and long flat plateaus are everywhere — and the
+randomness in stochastic gradient descent is usually enough to slide off a saddle, since a saddle only needs one
+downhill direction to escape through. That is a much more optimistic picture, and it matches what practitioners
+observe.`),
 
-A Taylor series builds better and better approximations of a curvy function near a point, by adding polynomial
-terms one at a time:
+    t(`## Taylor series: where "small learning rate" comes from
+
+A Taylor series approximates a curvy function near a point by adding polynomial corrections one at a time:
 
 $$f(x+h) = \\underbrace{f(x)}_{\\text{a flat guess}} + \\underbrace{f'(x)h}_{\\text{a line}} + \\underbrace{\\tfrac{1}{2}f''(x)h^2}_{\\text{a parabola}} + \\tfrac{1}{6}f'''(x)h^3 + \\cdots$$
 
-Each term corrects the previous one, and each involves a higher derivative and a higher power of $h$ — the
-distance you moved. That second factor is the important one: if $h$ is small, $h^2$ is *very* small, so the
-later terms fade out fast and truncating early is safe.
+Each term uses a higher derivative and a higher power of $h$, the distance you moved. That second factor is what
+makes the series useful: if $h = 0.01$ then $h^2 = 0.0001$, so the later terms fade out fast and cutting the
+series short is safe *provided $h$ is small*.
 
-Which is exactly the trade every optimizer makes:
+Every optimizer is a choice of where to cut:
 
-| Truncate at | You are assuming the loss is | Which method believes this |
+| Cut after | You are assuming the loss nearby is | Methods that assume it |
 |---|---|---|
-| order 0 | flat | random search |
-| order 1 | a straight line / plane | gradient descent, SGD, Adam |
-| order 2 | a parabola / bowl | Newton's method, L-BFGS, K-FAC |
+| the constant term | flat | random search |
+| the linear term | a straight line or plane | gradient descent, SGD, Adam |
+| the quadratic term | a parabola or bowl | Newton's method, L-BFGS |
 
-Both approximations are only valid **near** $x$, and "near" is doing all the work. Take a step too big and the
-straight line you extrapolated along stopped describing the function some distance back. That is the honest
-reason learning rates must be small — not numerical superstition, but the radius over which your linear
-approximation is still telling the truth.`),
+And here is the payoff. Both approximations are only valid *near* $x$, and how near depends on how curved the
+function is. Take a step so large that the straight line you extrapolated along stopped describing the function
+partway through, and the step can easily make the loss worse. That is the honest reason learning rates have to
+be small: not tradition, but the distance over which your linear approximation is still telling the truth.`),
 
     viz('taylor-approx'),
 
-    code('Gradients by hand, by finite difference, and by autograd', `import numpy as np
+    code('The chain rule by hand, checked numerically', `import numpy as np
+
+x = np.array([1.0, 2.0, -1.0])     # a fixed input
+y = 0.7                            # the target
 
 def f(w):
-    """A small loss: least squares with a nonlinearity."""
-    x = np.array([1.0, 2.0, -1.0])
-    y = 0.7
-    pred = np.tanh(w @ x)
-    return (pred - y) ** 2
+    """A tiny loss: squared error after a tanh."""
+    return (np.tanh(w @ x) - y) ** 2
 
 def grad_analytic(w):
-    x = np.array([1.0, 2.0, -1.0])
-    y = 0.7
-    z = w @ x
-    pred = np.tanh(z)
-    # dL/dw = dL/dpred * dpred/dz * dz/dw   <- the chain rule, factor by factor
-    return 2 * (pred - y) * (1 - pred**2) * x
+    z    = w @ x                   # step 1: the linear part
+    pred = np.tanh(z)              # step 2: the squashing
+    # loss = (pred - y)^2, so peel the composition apart one layer at a time:
+    dL_dpred = 2 * (pred - y)      # derivative of the square
+    dpred_dz = 1 - pred**2         # derivative of tanh
+    dz_dw    = x                   # derivative of w @ x with respect to w
+    return dL_dpred * dpred_dz * dz_dw     # <- the chain rule: multiply them
 
 def grad_numeric(w, h=1e-6):
+    """Nudge each weight in turn and watch the loss. No calculus involved."""
     g = np.zeros_like(w)
     for i in range(len(w)):
         e = np.zeros_like(w); e[i] = h
-        g[i] = (f(w + e) - f(w - e)) / (2 * h)     # central difference
+        g[i] = (f(w + e) - f(w - e)) / (2 * h)
     return g
 
 w = np.array([0.3, -0.5, 0.8])
-print("analytic:", grad_analytic(w).round(8))
-print("numeric :", grad_numeric(w).round(8))
-print("max abs difference:", np.abs(grad_analytic(w) - grad_numeric(w)).max())
+print("by chain rule:", grad_analytic(w).round(8))
+print("by nudging   :", grad_numeric(w).round(8))
+print("they agree to", f"{np.abs(grad_analytic(w) - grad_numeric(w)).max():.1e}")`,
+      'Two ways to get the same numbers. The chain-rule version is what a framework computes and it is fast; the nudging version needs two extra evaluations per parameter and would be hopeless for a real model, but it needs no derivation and so makes an excellent cross-check. Comparing them is called gradient checking, and it is the standard way to catch a mistake in a hand-written backward pass.'),
 
-# gradient checking: the standard sanity test for a hand-written backward pass
-rel = np.abs(grad_analytic(w) - grad_numeric(w)).max() / (np.abs(grad_analytic(w)).max() + 1e-12)
-print("relative error:", f"{rel:.2e}", "->", "PASS" if rel < 1e-5 else "FAIL")`,
-      'Gradient checking with central differences is how you verify a hand-written backward pass. The central difference has $O(h^2)$ error versus $O(h)$ for the forward difference, so it is worth the extra function evaluation. Too small an $h$ and floating-point cancellation ruins it — $10^{-5}$ to $10^{-7}$ is the usable window in float64.'),
-
-    quiz('A deep sigmoid network trains fine for 3 layers but stops learning at 20. The most likely cause is:',
-      ["Gradients vanish: σ' ≤ 0.25, so 20 layers multiply to at most 0.25²⁰ ≈ 10⁻¹²",
-       'The learning rate is too high',
-       'There is not enough training data',
-       'The loss function is wrong'],
+    quiz('A 20-layer network uses sigmoid activations. The derivative of a sigmoid is never larger than 0.25. What happens to the gradient reaching the first layer?',
+      ['It is multiplied by at most 0.25 twenty times over, giving roughly $10^{-12}$ — the first layer barely learns',
+       'It is 20 times larger than the gradient at the last layer',
+       'It is unaffected; each layer gets its own independent gradient',
+       'It explodes toward NaN'],
       0,
-      "Each sigmoid contributes a factor of at most 0.25 to the backward product, and typically much less since it saturates. Over 20 layers this annihilates the gradient reaching the early weights. Historically this is exactly what blocked deep networks until ReLU (gradient of 1 on the positive side), better initialization, and residual connections arrived. See the [vanishing gradients figure](#/l/nn-backprop)."),
+      'Backpropagation multiplies one factor per layer, so a ceiling of 0.25 per layer means a ceiling of $0.25^{20} \\approx 10^{-12}$ over twenty of them — and in practice it is even smaller, because a sigmoid only reaches 0.25 at its steepest point. Historically this is exactly what blocked deep networks until ReLU (whose derivative is 1 on the positive side), better initialization, and residual connections arrived. The fix in every case is the same: keep the per-layer factor near 1.'),
 
-    recap(`- Give all three readings of a derivative, and say which one optimization relies on.
-- Explain what a gradient is in terms of an array of parameters, and why $-\\nabla f$ is the direction to step.
-- Say why the gradient is perpendicular to the contour lines, without hand-waving.
-- Explain vanishing and exploding gradients as a fact about **multiplying many numbers**, and predict the
-  behaviour from the size of a typical factor.
-- Read the Hessian's eigenvalue signs to classify a critical point, and explain why saddles dominate minima in
-  high dimensions.
-- Justify small learning rates by pointing at the truncated Taylor series rather than at tradition.`),
+    recap(`- Give all three readings of a derivative, and say which one optimization depends on.
+- Compute a partial derivative by freezing the other variables, and assemble a gradient.
+- Explain why $-\\nabla f$ is the direction to step, using $\\nabla f \\cdot \\mathbf{u} = \\|\\nabla f\\|\\cos\\theta$.
+- Say why the gradient is perpendicular to the contours, without hand-waving.
+- Explain vanishing and exploding gradients as a fact about multiplying many numbers, and predict which one you
+  will get from the size of a typical factor.
+- Read the signs of the Hessian's eigenvalues to classify a critical point, and say why saddles vastly outnumber
+  minima in high dimensions.
+- Justify a small learning rate by pointing at the truncated Taylor series rather than at tradition.`),
   ],
   refs: [
     video('Essence of Calculus', '3Blue1Brown', 2017, 'https://www.3blue1brown.com/topics/calculus', 'Builds the geometric picture of derivatives from scratch.'),

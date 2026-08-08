@@ -262,42 +262,65 @@ find a better rank-3 approximation, all of them worse than simply truncating the
 "provably best" in the lesson buys you — permission to stop searching.`,
 },
 'math-derivatives': {
-  title: 'Gradient checking with central differences',
-  prompt: `Write \`numeric_grad(f, x)\` using central differences, then use it to verify an analytic gradient. Sweep
-the step size $h$ and find the value that minimizes error — you should see truncation error and floating-point
-cancellation fighting each other.`,
-  hint: 'Central difference: $(f(x+h)-f(x-h))/2h$. Truncation error falls as $h^2$; rounding error grows as $1/h$.',
+  title: 'Derive a gradient, check it by nudging, and test the steepest-descent claim',
+  prompt: `Two things the lesson claimed, both testable in code.
+
+1. **The chain rule.** Write \`analytic_grad(w)\` for $f(\\mathbf{w}) = \\sum_i \\tanh(w_i)^2$ by peeling the
+   composition apart, then write \`numeric_grad\` with central differences and confirm the two agree. Useful
+   facts: the derivative of $u^2$ is $2u$, and the derivative of $\\tanh(u)$ is $1 - \\tanh(u)^2$.
+2. **Steepest ascent.** The last block takes 2000 random unit directions and measures how fast $f$ rises along
+   each one, then compares the best of them against the gradient direction. Predict the outcome before running.
+
+The step-size sweep in between is there to show that a smaller $h$ is not always a better $h$ — watch what the
+error does at the bottom.`,
+  hint: 'Central difference along axis $i$: nudge only that coordinate, $(f(x + h\\mathbf{e}_i) - f(x - h\\mathbf{e}_i)) / 2h$. For the analytic gradient, $\\partial f/\\partial w_i$ only involves $w_i$, because the sum has no cross terms.',
   starter: `import numpy as np
 
 def f(w):
-    return np.sum(np.tanh(w) ** 2) + 0.5 * np.sum(w ** 2)
+    return np.sum(np.tanh(w) ** 2)
 
 def analytic_grad(w):
-    t = np.tanh(w)
-    return 2 * t * (1 - t**2) + w
+    # TODO: chain rule. Outer function is u^2, inner is tanh(w_i).
+    return np.zeros_like(w)
 
 def numeric_grad(f, x, h=1e-5):
     g = np.zeros_like(x)
-    # TODO: fill g[i] with the central difference along axis i
+    # TODO: central difference, one coordinate at a time
     return g
 
 w = np.array([0.3, -1.2, 0.8, 2.0])
 err = np.abs(analytic_grad(w) - numeric_grad(f, w)).max()
-print("max abs error:", err)
-print("PASS" if err < 1e-7 else "FAIL")
+print("max disagreement:", f"{err:.2e}", "->", "PASS" if err < 1e-7 else "FAIL")
 
+# --- how the step size h affects the numeric estimate ---
 print("\\nstep size sweep:")
 for h in [1e-1, 1e-3, 1e-5, 1e-7, 1e-9, 1e-11]:
     e = np.abs(analytic_grad(w) - numeric_grad(f, w, h)).max()
-    print(f"  h={h:.0e}  error {e:.3e}")`,
+    print(f"  h={h:.0e}   error {e:.3e}")
+
+# --- is the gradient really the steepest direction? ---
+g = analytic_grad(w)
+eps = 1e-6
+rate_along_grad = (f(w + eps * g / np.linalg.norm(g)) - f(w)) / eps
+
+rng = np.random.default_rng(0)
+best_random = -np.inf
+for _ in range(2000):
+    u = rng.normal(size=w.shape)
+    u = u / np.linalg.norm(u)                  # a random direction of length 1
+    best_random = max(best_random, (f(w + eps * u) - f(w)) / eps)
+
+print(f"\\nrise per unit step along the gradient: {rate_along_grad:.6f}")
+print(f"best of 2000 random directions:       {best_random:.6f}")
+print(f"predicted maximum, ||grad f||:        {np.linalg.norm(g):.6f}")`,
   solution: `import numpy as np
 
 def f(w):
-    return np.sum(np.tanh(w) ** 2) + 0.5 * np.sum(w ** 2)
+    return np.sum(np.tanh(w) ** 2)
 
 def analytic_grad(w):
     t = np.tanh(w)
-    return 2 * t * (1 - t**2) + w
+    return 2 * t * (1 - t**2)
 
 def numeric_grad(f, x, h=1e-5):
     g = np.zeros_like(x)
@@ -308,13 +331,37 @@ def numeric_grad(f, x, h=1e-5):
 
 w = np.array([0.3, -1.2, 0.8, 2.0])
 err = np.abs(analytic_grad(w) - numeric_grad(f, w)).max()
-print("max abs error:", err, "->", "PASS" if err < 1e-7 else "FAIL")
+print("max disagreement:", f"{err:.2e}", "->", "PASS" if err < 1e-7 else "FAIL")
 
 print("\\nstep size sweep:")
 for h in [1e-1, 1e-3, 1e-5, 1e-7, 1e-9, 1e-11]:
     e = np.abs(analytic_grad(w) - numeric_grad(f, w, h)).max()
-    print(f"  h={h:.0e}  error {e:.3e}")`,
-  explain: 'Error is minimized around $h \\approx 10^{-5}$ to $10^{-6}$ in float64. Larger $h$ leaves truncation error; smaller $h$ subtracts two nearly-equal numbers and loses significant digits. This is the sweet spot every gradient-checking routine targets.',
+    print(f"  h={h:.0e}   error {e:.3e}")
+
+g = analytic_grad(w)
+eps = 1e-6
+rate_along_grad = (f(w + eps * g / np.linalg.norm(g)) - f(w)) / eps
+
+rng = np.random.default_rng(0)
+best_random = -np.inf
+for _ in range(2000):
+    u = rng.normal(size=w.shape)
+    u = u / np.linalg.norm(u)
+    best_random = max(best_random, (f(w + eps * u) - f(w)) / eps)
+
+print(f"\\nrise per unit step along the gradient: {rate_along_grad:.6f}")
+print(f"best of 2000 random directions:       {best_random:.6f}")
+print(f"predicted maximum, ||grad f||:        {np.linalg.norm(g):.6f}")`,
+  explain: `Part 1 is gradient checking, the standard way to catch a mistake in a hand-derived backward pass.
+The sweep shows why $h$ cannot simply be made tiny: down at $h=10^{-11}$, $f(x+h)$ and $f(x-h)$ agree in almost
+every digit, so subtracting them keeps the noise and throws away the signal. Somewhere around $10^{-5}$ to
+$10^{-6}$ is the sweet spot in float64 — the reason is [floating point](#/l/math-numerics).
+
+Part 2 is the steepest-ascent property, measured rather than asserted. Two thousand random directions and not
+one of them beats the gradient, and the gradient's own rate lands exactly on $\\|\\nabla f\\|$ — which is what
+$\\|\\nabla f\\|\\cos\\theta$ predicts at $\\cos\\theta = 1$. Note also how far short the random directions fall:
+in higher dimensions that gap grows, for the same $1/\\sqrt{d}$ reason as in the first lesson. That is why
+nobody optimizes by guessing directions.`,
 },
 
 'math-jacobian': {
