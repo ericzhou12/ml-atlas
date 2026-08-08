@@ -177,7 +177,8 @@ gen = relu(zs @ Wd1 + bd1) @ Wd2 + bd2
 print("\\nsamples decoded from N(0,1):")
 for z, g in zip(zs.ravel(), gen):
     print(f"  z={z:+.2f} -> ({g[0]:+.3f}, {g[1]:+.3f})")
-print("\\nThey land on the data manifold — that is what the KL term bought.")`),
+print("\\nThey land on the data manifold — that is what the KL term bought.")`,
+      'Two lines carry the whole idea. `z = mu + sd*eps` is the reparameterization trick: the randomness enters through `eps`, which does not depend on any weight, so a gradient can pass straight through a sampling step that would otherwise be a dead end. And the KL line is what makes the latent space samplable at all — without it the encoder would scatter codes wherever it liked and most of the prior would decode to nothing. Watch the two loss terms move in opposite directions as training proceeds; that tension is the model.'),
 
     quiz('You set the KL weight β to 0 in a VAE. What have you built?',
       ['A plain autoencoder — good reconstructions, but sampling from the prior produces garbage',
@@ -317,7 +318,8 @@ for label, kw in [
     print("    trajectory: " + "  ".join(f"t={t}:{m:+.2f}" for t, m, _ in hist))
 
 print("\\nAn over-trained discriminator saturates and starves the generator of gradient.")
-print("The non-saturating loss is what makes early training work at all.")`),
+print("The non-saturating loss is what makes early training work at all.")`,
+      'The three runs are one working configuration and two failures. Note that neither failure is a bug in the code — the balanced run and the over-trained-discriminator run share every line except the number of discriminator steps. That is the thing to take away about GANs: the same implementation succeeds or collapses depending on a balance between two networks that nothing in the objective maintains for you.'),
 
     quiz('Why did diffusion models displace GANs for image generation?',
       ['Diffusion optimizes a stable regression objective and covers modes by construction; GANs need a delicate adversarial balance and can collapse',
@@ -539,7 +541,8 @@ for steps in [5, 20, 100]:
     assign = ((s[:,None,:]-MU[None])**2).sum(-1).argmin(1)
     frac = np.bincount(assign, minlength=3)/len(s)
     print(f"  {steps:3d} DDIM steps -> {np.round(frac*100,1)}%  "
-          f"mean dist to nearest mode {np.sqrt(((s-MU[assign])**2).sum(1)).mean():.3f}")`),
+          f"mean dist to nearest mode {np.sqrt(((s-MU[assign])**2).sum(1)).mean():.3f}")`,
+      'Notice how little the network is asked to do. It never sees a clean sample paired with a label, never learns a likelihood, and never learns to generate. It answers exactly one question — *how much noise is in this, given how far along the schedule we are* — and generation is what you get by running that answer backwards from pure noise. The training loop is a plain regression, which is most of why diffusion is so much more stable to train than a GAN.'),
 
     quiz('Why must a diffusion model be trained across many noise levels rather than one?',
       ['At low noise the score is only defined near the data; at high noise it is uninformative. Sampling needs both.',
