@@ -118,7 +118,8 @@ for size, p in [(224,16), (224,8), (448,16), (448,8), (1024,16)]:
     print(f"{size:7d} {p:6d} {n:8d} {fl:13.3e} {fl/(4*196*196*d):8.1f}x")
 
 print("\\nHalving patch size: 4x tokens, 16x attention cost.")
-print("This is why Swin's windowed attention exists.")`),
+print("This is why Swin's windowed attention exists.")`,
+      'The cost table is the whole design constraint of a vision transformer. Attention is quadratic in the number of tokens and the number of tokens is quadratic in resolution, so cost goes as the *fourth* power of the linear image size — halving the patch size costs 16×. That is why 16×16 patches on 224-pixel images became the standard configuration, and why every high-resolution vision-language model needs a trick (tiling, resampling, pixel shuffle) to avoid paying that bill directly.'),
 
     quiz('A ViT and a ResNet are trained on 5,000 images. Which likely wins, and why?',
       ['The ResNet — its built-in locality and translation equivariance are correct priors that the ViT must learn from data it does not have',
@@ -259,7 +260,8 @@ sims = class_emb @ query_img
 p = softmax(sims / 0.07)
 print("\\nzero-shot prediction:")
 for c, s, pp in zip(classes, sims, p):
-    print(f"  'a photo of a {c}':  sim {s:+.3f}  p {pp:.3f}")`),
+    print(f"  'a photo of a {c}':  sim {s:+.3f}  p {pp:.3f}")`,
+      'The loss is symmetric for a reason: it asks both \'which caption goes with this image?\' and \'which image goes with this caption?\', and averaging the two keeps either modality from dominating the embedding space. Note also where the negatives come from — the other examples in the same batch, at no extra cost — which is why contrastive training is unusually sensitive to batch size and why CLIP-scale runs use very large ones.'),
 
     quiz('CLIP scores 76% zero-shot on ImageNet without ever seeing an ImageNet label. How?',
       ['It learned a general image–language alignment; class names are just text, so it can be conditioned on any label set expressible in words',
@@ -406,7 +408,8 @@ for name, n in [
     total = text_only + n
     print(f"{name:30s} {n:8d} {(total/text_only)**2:23.1f}x")
 
-print("\\nHigh resolution is expensive quadratically. Hence resamplers and pooling.")`),
+print("\\nHigh resolution is expensive quadratically. Hence resamplers and pooling.")`,
+      'Two numbers to compare. The projector is a rounding error in parameter count next to the language model, which is why this style of vision-language model is cheap to build — you freeze both large components and train the small bridge between them. But the token table shows where the cost actually lands: image tokens sit in the context window alongside text and attention is quadratic in the total, so a high-resolution image is dramatically more expensive than its pixel count suggests.'),
 
     quiz('A VLM describes a kitchen photo and mentions a sink that is not there. What is the most likely cause?',
       ['Language prior overriding weak visual evidence — kitchens usually have sinks in the caption distribution',

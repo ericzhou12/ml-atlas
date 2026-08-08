@@ -333,7 +333,8 @@ for n_seeds in [1, 3, 10, 30]:
     se = np.sqrt(np.var(a)/n_seeds + np.var(b)/n_seeds) if n_seeds > 1 else float('nan')
     verdict = "?" if n_seeds == 1 else ("significant" if abs(diff) > 2*se else "not significant")
     print(f"  {n_seeds:2d} seed(s): observed diff {diff:+.4f}  {verdict}")
-print("\\nWith one seed you cannot distinguish a 1% effect from noise.")`),
+print("\\nWith one seed you cannot distinguish a 1% effect from noise.")`,
+      'Two results here, and both change how you should spend a compute budget. Random search beats grid search because most hyperparameters do not matter much — a grid wastes its samples exploring the unimportant ones at fixed values of the important ones, while random sampling gives every dimension a distinct value on every trial. Then the seed-variance block shows the size of the noise floor: if retraining the same configuration moves the score by more than the difference between two configurations, you have not measured anything yet.'),
 
     quiz('You try 200 hyperparameter configurations and report the best validation score as your result. What is wrong?',
       ['The best of 200 noisy estimates is biased upward — you need a separate held-out set for the final number',

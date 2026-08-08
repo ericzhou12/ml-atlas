@@ -127,9 +127,28 @@ query = l2(class_emb[1] + rng.normal(0, 0.4, D))
 p = softmax(class_emb @ query / 0.07)
 print("\\nzero-shot prediction (true class: cat):")
 for c, pp in zip(classes, p):
-    print(f"  a photo of a {c:5s}  p={pp:.3f}")`,
-},
+    print(f"  a photo of a {c:5s}  p={pp:.3f}")
 
+assert classes[int(np.argmax(p))] == "cat", "the caption matching the image should win"
+assert p.max() > 0.8, "and it should win clearly, not by a nose"
+print("\\nPASS")`,
+  explain: `The contrastive loss is doing something worth stating plainly: it never learns what a cat *is*. It only learns
+to make matching image–text pairs score higher than mismatched ones, and every other caption in the batch serves
+as a negative example for free. That is what makes the objective cheap — a batch of $N$ pairs supplies $N$
+positives and $N^2-N$ negatives at no extra cost, which is why CLIP-style training pushes batch sizes into the
+tens of thousands. Watch the chance-level column fall as the batch grows: a larger batch is a genuinely harder
+problem, and that is the point.
+
+Then zero-shot classification falls out with no classifier at all. Write each class name as a caption, embed
+them, and pick whichever sits closest to the image. Nothing was trained on these labels — the model is being
+asked the same question it was always asked, *which of these captions goes with this image*, and classification
+is that question with the candidate captions supplied by you.
+
+That is the real difference from a conventional image classifier, and it is the generative-versus-discriminative
+distinction from [earlier](#/l/ml-generative-discriminative) in a new setting: a fixed 1000-way classifier can
+only ever emit one of its 1000 classes, while a shared embedding space can be asked about any category you can
+describe in words.`,
+},
 'vis-vlm': {
   title: 'Build the projector and budget the token cost',
   prompt: `Implement a LLaVA-style two-layer projector from vision features into the language model's embedding space,

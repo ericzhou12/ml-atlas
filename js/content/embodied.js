@@ -166,7 +166,8 @@ print("deviation vs horizon (no recovery data):")
 d = rollout(w, steps=75)
 for h in [10, 20, 40, 75]:
     print(f"  T={h:3d}: deviation {d[h-1]:.4f}   T^2 scaling would predict "
-          f"{d[9]*(h/10)**2:.4f}")`),
+          f"{d[9]*(h/10)**2:.4f}")`,
+      'Watch the error grow with the length of the rollout rather than staying flat. That is compounding distribution shift: each small mistake moves the robot slightly off the states the demonstrations covered, where the policy is less reliable, which produces a larger mistake. Supervised learning assumes test inputs look like training inputs, and a policy that acts on its own outputs breaks that assumption by construction.'),
 
     quiz('A behavior-cloned policy has 99% per-step accuracy but fails 60% of episodes over a 200-step horizon. Why is this not a contradiction?',
       ['Errors compound: one mistake moves the robot off the demonstrated distribution, where accuracy is lower, and the deviation grows',
@@ -316,7 +317,8 @@ print("effective decision points over a 400-step episode:")
 for k in [1, 8, 20, 50]:
     print(f"  chunk k={k:3d}: {400//k:4d} decisions   "
           f"compounding error ~ (T/k)^2 = {(400/k)**2:9.0f}")
-print("\\nChunking shortens the effective horizon, which attacks the quadratic term directly.")`),
+print("\\nChunking shortens the effective horizon, which attacks the quadratic term directly.")`,
+      'This is [mean-versus-median](#/l/nn-losses-training) again, with a steering wheel. When two demonstrators go around an obstacle on opposite sides, squared error trains the policy toward the *average* action — straight into the obstacle, which neither demonstrator would ever do. A head that samples from a distribution instead of predicting a summary statistic can pick one mode and commit, which is precisely why modern policies use diffusion or discretized action heads.'),
 
     quiz('Why does Diffusion Policy outperform an MSE-regression policy on the same demonstrations?',
       ['It models a distribution over actions and can sample one mode, rather than predicting the mean of several valid behaviors',
@@ -479,7 +481,8 @@ for name, forwards, per_forward, chunk in rows:
 
 print("\\nAutoregressive token decoding costs one forward pass PER DIMENSION.")
 print("A flow-matching expert emits the whole chunk in a few passes, which is")
-print("the difference between 5 Hz and 50 Hz control.")`),
+print("the difference between 5 Hz and 50 Hz control.")`,
+      'The frequency table is the practical constraint. Emitting actions as tokens lets you reuse a language model wholesale, but each control step now costs a sequence of autoregressive decodes, and a robot needs its next action in milliseconds. That single arithmetic is why action chunking exists — predict a short sequence of future actions per forward pass — and why VLA papers report control frequency as prominently as success rate.'),
 
     quiz('Why do VLAs co-train on web vision-language data rather than just fine-tuning a VLM on robot data?',
       ['Fine-tuning only on robot data causes the model to forget the semantic knowledge it was chosen for',
@@ -647,7 +650,8 @@ print("horizons plus a learned value function beat long rollouts.\\n")
 print("to get 1M policy-training steps:")
 print(f"  model-free, real robot at 10 Hz : {1e6/10/3600:8.1f} hours of robot time")
 print(f"  model-based, 5k real + imagined : {5e3/10/3600:8.2f} hours of robot time")
-print(f"  speedup: {1e6/5e3:.0f}x fewer real interactions")`),
+print(f"  speedup: {1e6/5e3:.0f}x fewer real interactions")`,
+      'The gap in the interaction column is why anyone tolerates the complexity of learning a model. Model-free methods need environment steps, and environment steps on real hardware cost wall-clock time and wear; a learned model lets you spend cheap simulated steps instead. The catch is in the second half — the planner exploits errors in the model, so a good model is not enough, you need one that is honest about where it is uncertain.'),
 
     quiz('Why does Dreamer imagine only ~15 steps ahead rather than full episodes?',
       ['Model error compounds with horizon, so a policy optimized on long rollouts learns to exploit the model rather than solve the task',
@@ -827,7 +831,8 @@ for n in range(10, 600, 10):
         if b.mean() > a.mean(): wins += 1
     if wins/2000 >= 0.80:
         print(f"  n = {n} trials per condition")
-        break`),
+        break`,
+      'The widths are the point. Robot evaluations typically run 10–50 trials, and at $n=20$ the interval on a success rate is roughly ±20 percentage points — wide enough to swallow most reported improvements. That is the same $1/\\\\sqrt{n}$ arithmetic as [in evaluation](#/l/ml-evaluation), and it is why comparing two robot papers by their headline numbers is usually comparing noise.'),
 
     quiz('A paper reports 85% success on a new manipulation task, over 20 trials. What is the appropriate reading?',
       ['The 95% CI is roughly [64%, 95%] — consistent with anything from mediocre to excellent, and not comparable to another paper\'s number',

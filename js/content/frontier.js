@@ -152,7 +152,8 @@ for sp in [0.0, 0.5, 0.8, 0.95, 0.99]:
 
 print("\\nDense features (sparsity 0): only ~4 stored, near-orthogonally.")
 print("Sparse features (0.95+): many more packed in, accepting interference.")
-print("The model is choosing compression over fidelity, and it is right to.")`),
+print("The model is choosing compression over fidelity, and it is right to.")`,
+      'This is the geometry from [the first lesson](#/l/math-vectors) doing real work. With more features than dimensions, the model cannot give each one its own axis, so it packs them into directions that are nearly but not exactly orthogonal — accepting a little interference in exchange for representing far more than $d$ things. Watch which features get clean directions and which get squeezed: importance and sparsity decide, and that is why a single neuron so rarely corresponds to a single concept.'),
 
     quiz('Why do sparse autoencoders use a hidden layer WIDER than their input?',
       ['The hypothesis is that the model stores more features than it has dimensions, so recovering them needs an overcomplete basis',
@@ -311,7 +312,8 @@ for va in [0.95, 0.85, 0.70, 0.60]:
 print("\\nagent success vs steps:")
 print(f"{'per-step':>9}" + "".join(f"{s:>8}" for s in [5,10,20,50]))
 for p in [0.90, 0.95, 0.99, 0.999]:
-    print(f"{p:9.3f}" + "".join(f"{p**s:8.3f}" for s in [5,10,20,50]))`),
+    print(f"{p:9.3f}" + "".join(f"{p**s:8.3f}" for s in [5,10,20,50]))`,
+      'The comparison to make is between spending compute at training time and at inference time. Training compute is paid once and amortised over every request; inference compute is paid per request, forever. That is why the crossover depends entirely on how many times you expect to serve the model, and why the same technique can be obviously correct for a research demo and obviously wrong for a product with millions of users.'),
 
     quiz('Best-of-64 with a verifier performs worse than best-of-16. What is happening?',
       ['With more candidates you increasingly select for whatever exploits the verifier rather than what is correct',
@@ -468,7 +470,8 @@ for n in [2**k for k in (10, 13, 16, 19)]:
     attn = 4*n*n*d*L
     ssm  = 20*n*d*L
     kv   = 2*L*8*128*n*2/1e9
-    print(f"{n:9d} {attn:18.3e} {ssm:14.3e} {kv:15.2f}")`),
+    print(f"{n:9d} {attn:18.3e} {ssm:14.3e} {kv:15.2f}")`,
+      'The decay curve is the whole tradeoff in one line. A state-space model compresses the past into a fixed-size state, so information necessarily fades with distance — cheap and constant-memory, but genuinely lossy. Attention keeps every token and can retrieve any of them exactly, at quadratic cost. The recall test at the end is what separates them in practice, and it is why the strongest current designs interleave both rather than choosing.'),
 
     quiz('Why do hybrid models interleave a few attention layers among many SSM layers?',
       ['A fixed-size state cannot losslessly recall arbitrary earlier tokens; a few attention layers restore exact lookup cheaply',
@@ -646,7 +649,8 @@ for T in np.arange(0.5, 5, 0.05):
     e = ece(p, k)
     if e < best_e: best_T, best_e = T, e
 print(f"\\ntemperature scaling: T={best_T:.2f} reduces ECE "
-      f"{ece(c,k):.4f} -> {best_e:.4f}")`),
+      f"{ece(c,k):.4f} -> {best_e:.4f}")`,
+      'The reliability table is the diagnostic. A well-calibrated model\'s confidence and accuracy track each other down the rows; an overconfident one shows accuracy consistently below the bin it claimed. Note that this is entirely independent of accuracy — a model can be excellent and badly calibrated, or mediocre and honest — which is why calibration needs measuring separately rather than being inferred from a benchmark score.'),
 
     quiz('Why does RLHF tend to make a model less well calibrated than its base version?',
       ['Human raters prefer confident-sounding answers, so confidence gets reinforced independently of correctness',
