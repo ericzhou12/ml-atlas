@@ -397,8 +397,9 @@ The fixes:
 
 - **Per-group scales.** One scale per 64 or 128 weights. This is the "g=64" in GPTQ/AWQ checkpoint names, and it
   contains the damage locally. Costs a little metadata.
-- **GPTQ** — quantize column by column, using approximate second-order information to adjust the remaining weights to
-  compensate for the error already introduced.
+- **GPTQ** — quantize one column at a time, and after each one, nudge the *not-yet-quantized* weights to cancel
+  the error just introduced. It works out how to nudge them from curvature information, which is why the
+  Hessian appears in that paper.
 - **AWQ** — observes that a small fraction of weights are salient (identified via activation magnitude) and protects
   them by scaling before quantization.
 - **SmoothQuant** — migrates activation outliers into the weights, where they are easier to handle.
@@ -406,10 +407,14 @@ The fixes:
 
     key(`**Weights quantize far more easily than activations.** Weight-only 4-bit is close to lossless on most models;
 activation quantization to 8 bits needs care, and to 4 bits is a research problem. This is why almost all deployed
-quantization is weight-only (W4A16), despite the fact that quantizing both would let you use integer tensor cores.
+quantization is weight-only — written **W4A16**, meaning 4-bit weights and 16-bit activations — even though
+quantizing both would let you run the matmuls on integer hardware and go faster still.
 
-**Quantization-aware training** (fake-quantize during training, with a straight-through estimator on the backward
-pass) recovers more accuracy than post-training quantization, at the cost of a training run.`),
+**Quantization-aware training** recovers more accuracy than post-training quantization, at the cost of a training
+run. The trick it needs is worth knowing: rounding has a derivative of zero almost everywhere, so gradients cannot
+flow through it. The fix — the *straight-through estimator* — is to round in the forward pass and then simply
+pretend, on the backward pass, that the rounding was the identity function. It is not the true derivative of
+anything, and it works well enough that it is used everywhere quantization meets gradients.`),
 
     t(`## Pruning
 
