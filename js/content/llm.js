@@ -1531,9 +1531,37 @@ originate.
 context. 200–500 tokens with overlap is a common starting point, but structure-aware chunking (by section, by
 function) beats fixed windows when the documents have structure.
 
-**Semantic search misses exact matches.** Embeddings are poor at rare identifiers, product codes, and names. **Hybrid
-search** — combining BM25 keyword scores with dense similarity via reciprocal rank fusion — is materially better than
-either alone and is the single highest-value improvement to a naive pipeline.
+**Semantic search misses exact matches.** Embeddings are poor at rare identifiers, product codes, and names — a
+model that has learned "error E1234" and "error E1235" are similar strings will happily return the wrong one.
+**Hybrid search** fixes this by running a keyword search alongside the embedding search and combining the two.
+It is the single highest-value improvement to a naive pipeline, and both halves are simple enough to state
+here.
+
+**How keyword search scores a document — BM25.** It is three intuitions multiplied together, and each one is
+something you would have invented yourself.
+
+- **Term frequency.** A document containing the query word many times is probably more about it. But the tenth
+  occurrence tells you much less than the second, so the count is passed through a saturating function
+  $\\frac{tf(k_1+1)}{tf + k_1}$ rather than used raw. The constant $k_1$ (around 1.5) sets how fast it saturates.
+- **Inverse document frequency.** A word appearing in every document distinguishes nothing. Weight each word by
+  roughly $\\log\\frac{N}{df}$, where $df$ is how many documents contain it — so "the" counts for almost nothing
+  and "Chinchilla" counts for a lot. This is the same $-\\log p$ [surprise](#/l/math-information) as before: a
+  rare word carries more information about which document you want.
+- **Length normalization.** A long document contains more of every word by accident, so divide by its length
+  relative to the average, mixed in with a knob $b$ (around 0.75) controlling how aggressively.
+
+Sum that over the query's words and you have BM25. No training, no embeddings, and it beats dense retrieval
+whenever the user typed the exact token that appears in the document.
+
+**How to combine two rankings — reciprocal rank fusion.** BM25 returns scores in the range 0 to 30-ish; cosine
+similarity returns 0 to 1. Adding them directly is meaningless, and calibrating them against each other is
+fiddly and breaks whenever either system changes.
+
+RRF sidesteps the problem by throwing the scores away and keeping only the **ranks**. Each list contributes
+$\\frac{1}{k + \\text{rank}}$ to every document it ranked, with $k \\approx 60$, and the contributions are summed.
+A document ranked first by either system gets a large contribution; one ranked highly by *both* wins outright.
+Because only order is used, the two systems never need to agree on what a score means — which is why RRF is the
+default way to fuse retrieval systems in practice.
 
 **The query is not the document.** Users ask "why is my build failing" and the document says "compilation error
 E1234." Fixes: HyDE (have the model write a hypothetical answer and embed *that*), query rewriting, or multi-query

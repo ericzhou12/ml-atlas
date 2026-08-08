@@ -1177,24 +1177,30 @@ agreement, and a systematically biased model agrees with itself.`,
 },
 
 'llm-rag': {
-  title: 'Build hybrid retrieval with reciprocal rank fusion',
-  prompt: `Implement BM25 and combine it with dense similarity using RRF. Find a query where keyword search wins and
-one where dense search wins, and confirm the hybrid gets both right.`,
-  hint: 'RRF needs no score calibration: sum 1/(k + rank) across rankings, with k around 60.',
+  title: 'Build BM25 and dense retrieval, find where each one fails, then fuse them',
+  prompt: `The lesson claimed hybrid search is the single highest-value fix to a naive pipeline. Earn that claim.
+
+1. **BM25.** Implement the keyword scorer from the lesson: saturating term frequency, inverse document
+   frequency, length normalization.
+2. **Two queries, two failures.** One query uses an exact rare identifier; the other uses synonyms that never
+   appear in the target document. **Predict which retriever fails on which** before running.
+3. **Reciprocal rank fusion.** Combine the two rankings using only their ranks, and check the hybrid gets both
+   queries right.`,
+  hint: 'BM25 per matching word: $\\log\\frac{N}{df} \\cdot \\frac{tf(k_1+1)}{tf + k_1(1-b+b\\cdot dl/\\overline{dl})}$. For RRF, walk each ranking from best to worst and add $1/(k+\\text{rank})$ to that document, with rank counted from 1.',
   starter: `import numpy as np, re
 from collections import Counter
 
 docs = [
  "The transformer architecture was introduced in Attention Is All You Need in 2017.",
  "LoRA freezes pretrained weights and injects trainable low-rank matrices.",
- "BPE tokenization merges the most frequent adjacent pair of symbols repeatedly.",
+ "Build failure E1234 is raised when the manifest omits a required field.",
  "Chinchilla found compute-optimal training uses about 20 tokens per parameter.",
- "FlashAttention reduces attention memory from quadratic to linear by tiling.",
+ "FlashAttention cuts latency sharply and reduces attention memory by tiling.",
  "RMSNorm removes mean-subtraction from LayerNorm and is used in Llama.",
 ]
 tok = lambda s: re.findall(r"[a-z0-9]+", s.lower())
 N = len(docs)
-avgdl = np.mean([len(tok(d)) for d in docs])
+avgdl = float(np.mean([len(tok(d)) for d in docs]))
 df = Counter(w for d in docs for w in set(tok(d)))
 
 def bm25(query, k1=1.5, b=0.75):
@@ -1203,43 +1209,76 @@ def bm25(query, k1=1.5, b=0.75):
         tf, dl = Counter(tok(d)), len(tok(d))
         for w in tok(query):
             if w not in tf: continue
-            # TODO: idf * tf*(k1+1) / (tf + k1*(1-b+b*dl/avgdl))
+            # TODO: add idf * saturating-tf * length-normalisation to scores[i]
             pass
     return scores
 
+# A stand-in for a trained embedding model: words are grouped into topics, so
+# "quicker" and "latency" land in the same dimension even though they never co-occur.
+TOPICS = {
+  "speed":   ["fast","faster","quick","quicker","speed","latency","slow","cuts","sharply"],
+  "memory":  ["memory","ram","storage","tiling","reduces"],
+  "tuning":  ["lora","freezes","pretrained","finetune","finetuning","adapter","low","rank"],
+  "scaling": ["chinchilla","compute","optimal","tokens","parameter","scaling","training"],
+  "arch":    ["transformer","attention","architecture","layernorm","rmsnorm","llama"],
+  "errors":  ["failure","error","raised","manifest","omits","required","field","build"],
+}
+TLIST = sorted(TOPICS)
+w2t = {w: i for i, t in enumerate(TLIST) for w in TOPICS[t]}
+
+def embed(s):
+    v = np.zeros(len(TLIST))
+    for w in tok(s):
+        if w in w2t: v[w2t[w]] += 1
+    n = np.linalg.norm(v)
+    return v / n if n else v
+
+DOC_VECS = np.array([embed(d) for d in docs])
+def dense(query):
+    return DOC_VECS @ embed(query)
+
 def rrf(*rankings, k=60):
+    """Each ranking is an array of doc indices, best first."""
     score = np.zeros(N)
-    # TODO: for each ranking, add 1/(k + rank + 1) to the doc at that rank
+    # TODO: add 1/(k + rank) for each document, with rank starting at 1
     return score
 
-vocab = sorted({w for d in docs for w in tok(d)})
-vi = {w:i for i,w in enumerate(vocab)}
-W = np.random.default_rng(0).normal(size=(len(vocab), 32))
-def embed(s):
-    ws = [vi[w] for w in tok(s) if w in vi]
-    if not ws: return np.zeros(32)
-    v = W[ws].mean(0); return v/(np.linalg.norm(v)+1e-9)
-D = np.stack([embed(d) for d in docs])
+def rank(scores):
+    """Best first, and a retriever with no signal at all returns nothing --
+       just as a real search engine returns no results rather than every document."""
+    return [int(i) for i in np.argsort(-scores) if scores[i] > 1e-12]
 
-for q in ["how many tokens per parameter?", "what does LoRA freeze?"]:
-    s_sparse, s_dense = bm25(q), D @ embed(q)
+queries = ["what causes E1234",
+           "how do I make generation quicker"]
+for q in queries:
+    sb, sd = bm25(q), dense(q)
+    rb, rd = rank(sb), rank(sd)
+    rh = rank(rrf(rb, rd))
     print(f"\\nQ: {q}")
-    for name, s in [("BM25", s_sparse), ("dense", s_dense), ("hybrid", rrf(s_sparse, s_dense))]:
-        print(f"  {name:8s} -> {docs[int(np.argmax(s))][:60]}...")`,
+    for name, r in [("BM25", rb), ("dense", rd), ("hybrid", rh)]:
+        print(f"  {name:8s} -> {docs[r[0]][:62] if r else '(no results)'}")
+
+assert rank(bm25(queries[0]))[0] == 2, "BM25 should nail the exact identifier"
+assert rank(dense(queries[0])) == [],  "dense has no signal for a bare identifier"
+assert rank(dense(queries[1]))[0] == 4, "dense should match 'quicker' to 'latency'"
+assert rank(bm25(queries[1])) == [],   "BM25 has no signal when no words overlap"
+assert rank(rrf(rank(bm25(queries[0])), rank(dense(queries[0]))))[0] == 2
+assert rank(rrf(rank(bm25(queries[1])), rank(dense(queries[1]))))[0] == 4
+print("\\nPASS -- the hybrid gets both")`,
   solution: `import numpy as np, re
 from collections import Counter
 
 docs = [
  "The transformer architecture was introduced in Attention Is All You Need in 2017.",
  "LoRA freezes pretrained weights and injects trainable low-rank matrices.",
- "BPE tokenization merges the most frequent adjacent pair of symbols repeatedly.",
+ "Build failure E1234 is raised when the manifest omits a required field.",
  "Chinchilla found compute-optimal training uses about 20 tokens per parameter.",
- "FlashAttention reduces attention memory from quadratic to linear by tiling.",
+ "FlashAttention cuts latency sharply and reduces attention memory by tiling.",
  "RMSNorm removes mean-subtraction from LayerNorm and is used in Llama.",
 ]
 tok = lambda s: re.findall(r"[a-z0-9]+", s.lower())
 N = len(docs)
-avgdl = np.mean([len(tok(d)) for d in docs])
+avgdl = float(np.mean([len(tok(d)) for d in docs]))
 df = Counter(w for d in docs for w in set(tok(d)))
 
 def bm25(query, k1=1.5, b=0.75):
@@ -1248,32 +1287,78 @@ def bm25(query, k1=1.5, b=0.75):
         tf, dl = Counter(tok(d)), len(tok(d))
         for w in tok(query):
             if w not in tf: continue
-            idf = np.log((N - df[w] + 0.5)/(df[w] + 0.5) + 1)
-            scores[i] += idf * tf[w]*(k1+1) / (tf[w] + k1*(1-b+b*dl/avgdl))
+            idf = np.log(N / df[w])
+            scores[i] += idf * (tf[w]*(k1+1)) / (tf[w] + k1*(1 - b + b*dl/avgdl))
     return scores
+
+TOPICS = {
+  "speed":   ["fast","faster","quick","quicker","speed","latency","slow","cuts","sharply"],
+  "memory":  ["memory","ram","storage","tiling","reduces"],
+  "tuning":  ["lora","freezes","pretrained","finetune","finetuning","adapter","low","rank"],
+  "scaling": ["chinchilla","compute","optimal","tokens","parameter","scaling","training"],
+  "arch":    ["transformer","attention","architecture","layernorm","rmsnorm","llama"],
+  "errors":  ["failure","error","raised","manifest","omits","required","field","build"],
+}
+TLIST = sorted(TOPICS)
+w2t = {w: i for i, t in enumerate(TLIST) for w in TOPICS[t]}
+
+def embed(s):
+    v = np.zeros(len(TLIST))
+    for w in tok(s):
+        if w in w2t: v[w2t[w]] += 1
+    n = np.linalg.norm(v)
+    return v / n if n else v
+
+DOC_VECS = np.array([embed(d) for d in docs])
+def dense(query):
+    return DOC_VECS @ embed(query)
 
 def rrf(*rankings, k=60):
     score = np.zeros(N)
     for r in rankings:
-        for rank, idx in enumerate(np.argsort(-r)):
-            score[idx] += 1/(k + rank + 1)
+        for pos, doc in enumerate(r):
+            score[doc] += 1.0 / (k + pos + 1)
     return score
 
-vocab = sorted({w for d in docs for w in tok(d)})
-vi = {w:i for i,w in enumerate(vocab)}
-W = np.random.default_rng(0).normal(size=(len(vocab), 32))
-def embed(s):
-    ws = [vi[w] for w in tok(s) if w in vi]
-    if not ws: return np.zeros(32)
-    v = W[ws].mean(0); return v/(np.linalg.norm(v)+1e-9)
-D = np.stack([embed(d) for d in docs])
+def rank(scores):
+    """Best first, and a retriever with no signal at all returns nothing --
+       just as a real search engine returns no results rather than every document."""
+    return [int(i) for i in np.argsort(-scores) if scores[i] > 1e-12]
 
-for q in ["how many tokens per parameter?", "what does LoRA freeze?"]:
-    s_sparse, s_dense = bm25(q), D @ embed(q)
+queries = ["what causes E1234",
+           "how do I make generation quicker"]
+for q in queries:
+    sb, sd = bm25(q), dense(q)
+    rb, rd = rank(sb), rank(sd)
+    rh = rank(rrf(rb, rd))
     print(f"\\nQ: {q}")
-    for name, s in [("BM25", s_sparse), ("dense", s_dense), ("hybrid", rrf(s_sparse, s_dense))]:
-        print(f"  {name:8s} -> {docs[int(np.argmax(s))][:60]}...")`,
-  explain: 'Dense retrieval misses rare exact terms; BM25 misses paraphrases. RRF combines rankings without needing the two score scales to be comparable, which is why it is the standard hybrid-search recipe.',
+    for name, r in [("BM25", rb), ("dense", rd), ("hybrid", rh)]:
+        print(f"  {name:8s} -> {docs[r[0]][:62] if r else '(no results)'}")
+
+assert rank(bm25(queries[0]))[0] == 2
+assert rank(dense(queries[0])) == []
+assert rank(dense(queries[1]))[0] == 4
+assert rank(bm25(queries[1])) == []
+assert rank(rrf(rank(bm25(queries[0])), rank(dense(queries[0]))))[0] == 2
+assert rank(rrf(rank(bm25(queries[1])), rank(dense(queries[1]))))[0] == 4
+print("\\nPASS -- the hybrid gets both")`,
+  explain: `The two queries are chosen to break one retriever each, and they are not artificial — they are the two
+things that actually go wrong in production RAG.
+
+The first asks about **E1234**. That string appears in exactly one document and nowhere else, so its inverse
+document frequency is enormous and BM25 finds it instantly. An embedding model has no idea what E1234 is; it is a
+rare token whose vector is close to nothing in particular, and dense retrieval has no signal to work with. This
+is the identifier problem: product codes, error numbers, SKUs, and names are precisely where embeddings are
+weakest.
+
+The second asks how to make generation **quicker**, and the answer document says **latency**. The two share no
+words at all, so BM25 scores it zero — as far as keyword matching is concerned the document is irrelevant.
+The embedding puts "quicker" and "latency" in the same place, which is the entire point of embeddings.
+
+Then RRF: because it uses only ranks, it never has to reconcile a BM25 score of 4.1 with a cosine of 0.83. A
+document that either system ranks first gets a big contribution, so the hybrid inherits both strengths and neither
+failure. That is why it is the standard fusion method, and why "add hybrid search" is usually the first fix worth
+making to a retrieval pipeline that is missing answers.`,
 },
 
 'llm-moe': {
