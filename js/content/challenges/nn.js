@@ -440,31 +440,60 @@ quietly cost a network much of its capacity, and why the fix is prevention — w
 activation like GELU that keeps a gradient path open on the negative side.`,
 },
 'nn-initialization': {
-  title: 'Derive the He factor empirically',
-  prompt: `Propagate a signal through 25 layers at several initialization scales and find, by search, the standard
-deviation that keeps activation variance constant. Compare it to $\\sqrt{2/n}$.`,
-  hint: 'ReLU zeroes half the distribution, halving the variance — the factor of 2 is compensating for exactly that.',
+  title: 'Find the variance-preserving scale by search, and rediscover the factor of 2',
+  prompt: `The lesson derived $\\sigma^2 = 2/n$ for ReLU and $1/n$ without it. Do not take that on trust — find both
+numbers by experiment.
+
+1. Write \`best_std\`, which searches a range of initialization scales and returns the one whose activations are
+   the same size at layer 25 as at layer 1.
+2. Run it once with ReLU and once with no activation at all. Compare each answer against $\\sqrt{2/n}$ and
+   $\\sqrt{1/n}$. **The ratio between your two answers is the thing to look at.**
+3. The last block shows what being slightly wrong costs, by depth.`,
+  hint: 'For each candidate `std`, run `propagate` and score it by how far `stds[-1]/stds[0]` is from 1. A log-spaced grid, `np.logspace(-2.2, -0.7, 60)`, covers the useful range.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
 def propagate(std, depth=25, width=256, act="relu"):
+    """Push a unit-variance input through depth layers; return each layer's std."""
     h = rng.normal(0, 1, (128, width))
     stds = []
     for _ in range(depth):
         W = rng.normal(0, std, (width, width))
         z = h @ W
-        h = np.maximum(0, z) if act == "relu" else np.tanh(z)
+        h = np.maximum(0, z) if act == "relu" else z      # "linear" = no activation at all
         stds.append(h.std())
     return np.array(stds)
 
 n = 256
-print(f"{'scheme':14s} {'std':>10} " + "".join(f"{'L'+str(d):>11}" for d in [1,5,10,25]))
+print(f"{'scheme':10s} {'std':>9} " + "".join(f"{'L'+str(d):>12}" for d in [1, 5, 10, 25]))
 for name, std in [("tiny", 0.01), ("xavier", np.sqrt(1/n)), ("he", np.sqrt(2/n)), ("big", 1.0)]:
     s = propagate(std)
-    print(f"{name:14s} {std:10.5f} " + "".join(f"{s[d-1]:11.3e}" for d in [1,5,10,25]))
+    print(f"{name:10s} {std:9.5f} " + "".join(f"{s[d-1]:12.3e}" for d in [1, 5, 10, 25]))
 
-# TODO: search over std to find the value keeping std(L25) closest to std(L1)
-print("\\nsearching for the variance-preserving scale...")`,
+def best_std(act, width=256):
+    """Return the initialization std whose signal is the same size at the top as the bottom."""
+    # TODO: score each candidate by |stds[-1]/stds[0] - 1| and keep the best
+    return 0.0
+
+for act, formula, name in [("relu",   np.sqrt(2/n), "sqrt(2/n)  (He)"),
+                           ("linear", np.sqrt(1/n), "sqrt(1/n)  (Xavier)")]:
+    found = best_std(act)
+    print(f"\\n{act}:  search found std = {found:.5f}")
+    print(f"        the formula says   {formula:.5f}   ({name})")
+    assert abs(found - formula) / formula < 0.25, f"the search for {act} is off"
+
+print(f"\\nratio between the two answers: {best_std('relu')/best_std('linear'):.3f}"
+      f"   (sqrt(2) = {np.sqrt(2):.3f})")
+print("PASS\\n")
+
+# ---------- what does being slightly wrong cost? ----------
+print("activation std at the top of the stack, when the scale is off by 10%:")
+print(f"{'depth':>7} {'exactly right':>15} {'10% too small':>15} {'10% too big':>14}")
+for depth in [5, 10, 25, 50]:
+    a = propagate(np.sqrt(2/n),        depth)[-1]
+    b = propagate(0.9*np.sqrt(2/n),    depth)[-1]
+    c = propagate(1.1*np.sqrt(2/n),    depth)[-1]
+    print(f"{depth:7d} {a:15.3e} {b:15.3e} {c:14.3e}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -474,26 +503,61 @@ def propagate(std, depth=25, width=256, act="relu"):
     for _ in range(depth):
         W = rng.normal(0, std, (width, width))
         z = h @ W
-        h = np.maximum(0, z) if act == "relu" else np.tanh(z)
+        h = np.maximum(0, z) if act == "relu" else z      # "linear" = no activation at all
         stds.append(h.std())
     return np.array(stds)
 
 n = 256
-print(f"{'scheme':14s} {'std':>10} " + "".join(f"{'L'+str(d):>11}" for d in [1,5,10,25]))
+print(f"{'scheme':10s} {'std':>9} " + "".join(f"{'L'+str(d):>12}" for d in [1, 5, 10, 25]))
 for name, std in [("tiny", 0.01), ("xavier", np.sqrt(1/n)), ("he", np.sqrt(2/n)), ("big", 1.0)]:
     s = propagate(std)
-    print(f"{name:14s} {std:10.5f} " + "".join(f"{s[d-1]:11.3e}" for d in [1,5,10,25]))
+    print(f"{name:10s} {std:9.5f} " + "".join(f"{s[d-1]:12.3e}" for d in [1, 5, 10, 25]))
 
-best, best_score = None, np.inf
-for std in np.linspace(0.02, 0.15, 200):
-    s = propagate(std)
-    if not np.all(np.isfinite(s)) or s[-1] == 0: continue
-    score = abs(np.log(s[-1] / s[0]))
-    if score < best_score: best_score, best = score, std
+def best_std(act, width=256):
+    best = (np.inf, 0.0)
+    for std in np.logspace(-2.2, -0.7, 60):
+        s = propagate(std, act=act, width=width)
+        if not np.all(np.isfinite(s)) or s[0] == 0:
+            continue
+        score = abs(s[-1]/s[0] - 1.0)
+        if score < best[0]:
+            best = (score, std)
+    return best[1]
 
-print(f"\\nempirical variance-preserving std: {best:.5f}")
-print(f"He formula sqrt(2/n):              {np.sqrt(2/n):.5f}")
-print(f"Xavier sqrt(1/n):                  {np.sqrt(1/n):.5f}")`,
+for act, formula, name in [("relu",   np.sqrt(2/n), "sqrt(2/n)  (He)"),
+                           ("linear", np.sqrt(1/n), "sqrt(1/n)  (Xavier)")]:
+    found = best_std(act)
+    print(f"\\n{act}:  search found std = {found:.5f}")
+    print(f"        the formula says   {formula:.5f}   ({name})")
+    assert abs(found - formula) / formula < 0.25, f"the search for {act} is off"
+
+print(f"\\nratio between the two answers: {best_std('relu')/best_std('linear'):.3f}"
+      f"   (sqrt(2) = {np.sqrt(2):.3f})")
+print("PASS\\n")
+
+print("activation std at the top of the stack, when the scale is off by 10%:")
+print(f"{'depth':>7} {'exactly right':>15} {'10% too small':>15} {'10% too big':>14}")
+for depth in [5, 10, 25, 50]:
+    a = propagate(np.sqrt(2/n),        depth)[-1]
+    b = propagate(0.9*np.sqrt(2/n),    depth)[-1]
+    c = propagate(1.1*np.sqrt(2/n),    depth)[-1]
+    print(f"{depth:7d} {a:15.3e} {b:15.3e} {c:14.3e}")`,
+  explain: `Part 1: the search never sees a formula. It tries scales and keeps whichever one leaves the signal the
+same size after twenty-five layers — and it lands on $\\sqrt{2/n}$ with ReLU and $\\sqrt{1/n}$ with no activation,
+which are He and Xavier, recovered from nothing but a measurement. The ratio between the two comes out at about
+$\\sqrt2$, and it is there for exactly the reason the derivation gave: ReLU discards half the signal, so you must
+start with twice the variance.
+
+Worth knowing why the control uses no activation rather than tanh, since Xavier is usually stated for tanh. The
+derivation assumes the activation is roughly a straight line near zero, which tanh only is while the signal stays
+small. Run the same search with \`np.tanh\` and it returns a noticeably larger number, because tanh squashes as
+well as passes, and the extra scale is compensating for that squashing. Xavier's $1/n$ is the *linear* answer, and
+tanh borrows it on the assumption that it is behaving linearly.
+
+Part 2 is why the exponent matters more than the value. A 10% error in the scale is invisible at depth 5 and has
+moved the signal by orders of magnitude by depth 50, because the error is applied once per layer and compounds.
+That is the whole reason this has a formula rather than a rule of thumb — "close enough" is not a category that
+survives being raised to the fiftieth power.`,
 },
 
 'nn-normalization': {

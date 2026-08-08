@@ -757,8 +757,7 @@ before residual connections existed to paper over the problem.`),
 
 $$\\text{Var}(z) = n\\,\\sigma^2\\,\\mathbb{E}[x^2]$$
 
-Now suppose $x = \\text{ReLU}(y)$ where $y$ is symmetric about zero with variance $v$. Half the mass is zeroed, and the
-surviving half contributes its full second moment:
+Now suppose $x = \\text{ReLU}(y)$ where $y$ is spread symmetrically about zero with variance $v$. ReLU sets the negative half to zero, so exactly half the values contribute nothing to $\\mathbb{E}[x^2]$ while the positive half contribute the same squares they always did:
 
 $$\\mathbb{E}[x^2] = \\mathbb{E}[\\max(0,y)^2] = \\tfrac12\\mathbb{E}[y^2] = \\tfrac12 v$$
 
@@ -776,8 +775,9 @@ Initialization matters less than it used to, because normalization layers and re
 moderate mistakes. But the details still show up in every serious training recipe:
 
 - **Biases at zero.** Except forget gates in LSTMs, which are initialized to 1 so the cell remembers by default.
-- **Scaled residual init.** GPT-2 scales the weights of layers writing into the residual stream by $1/\\sqrt{2L}$, so
-  that the residual stream's variance does not grow with depth.
+- **Scaled residual init.** In a residual network every block *adds* its output to a running total (the "residual
+  stream"), so with $L$ blocks all contributing, that total's variance grows with $L$. GPT-2 scales the weights of
+  the layers writing into it by $1/\\sqrt{2L}$ to cancel exactly that growth.
 - **Embeddings** often use $\\mathcal{N}(0, 0.02)$, which is the transformer default and not derived from anything in
   particular.
 - **LayerNorm** starts with $\\gamma=1,\\beta=0$ (identity).
@@ -808,7 +808,8 @@ for s in ["tiny", "xavier", "he", "big"]:
     print(f"{s:8s} " + "".join(f"{st[d-1]:<10.3e}" for d in [1, 5, 10, 25]))
 
 print("\\n'he' holds steady with ReLU. 'xavier' halves the variance each layer")
-print("(that is the missing factor of 2). 'tiny' and 'big' are unusable.")`),
+print("(that is the missing factor of 2). 'tiny' and 'big' are unusable.")`,
+      'Read across the rows. `he` stays at roughly the same scale from layer 1 to layer 25 — that is what the formula was designed to do. `xavier`, which is the same formula without the factor of 2, shrinks steadily, because each ReLU throws away half the variance and nothing puts it back. `tiny` and `big` are the same failure in its obvious form, and they show why the exponent matters more than the base: being off by a factor of a few per layer is fatal after twenty-five of them.'),
 
     quiz('Why does He initialization use 2/n while Xavier uses 1/n?',
       ['ReLU zeroes half its inputs, halving the variance; the factor of 2 compensates',
