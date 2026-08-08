@@ -42,7 +42,14 @@ def rollout(w, steps=75):
 print(f"{'demos':>7} {'collection noise':>18} {'final dev':>11} {'mean dev':>10}")
 for n, noise in [(2, 0.0), (2, 0.15), (10, 0.0), (10, 0.15), (50, 0.15)]:
     d = rollout(fit(*collect(n, noise)))
-    print(f"{n:7d} {noise:18.2f} {d[-1]:11.4f} {d.mean():10.4f}")`,
+    print(f"{n:7d} {noise:18.2f} {d[-1]:11.4f} {d.mean():10.4f}")
+
+w0 = fit(*collect(20, noise=0.0))
+w1 = fit(*collect(20, noise=0.08))
+assert rollout(w1)[1] < rollout(w0)[1], \\
+    "adding noise to the demonstrations should reduce drift, not increase it"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -80,7 +87,14 @@ d = rollout(w, steps=75)
 print("\\ndeviation vs horizon (no recovery data):")
 for h in [10, 20, 40, 75]:
     print(f"  T={h:3d}: {d[h-1]:.4f}   quadratic scaling would predict "
-          f"{d[9]*(h/10)**2:.4f}")`,
+          f"{d[9]*(h/10)**2:.4f}")
+
+w0 = fit(*collect(20, noise=0.0))
+w1 = fit(*collect(20, noise=0.08))
+assert rollout(w1)[1] < rollout(w0)[1], \\
+    "adding noise to the demonstrations should reduce drift, not increase it"
+print("\\nPASS")
+`,
   explain: 'Noise during collection widens the covered state distribution, so the policy has seen states near where it drifts. That is why teleoperators are told to make mistakes and correct them.',
 },
 
@@ -116,7 +130,14 @@ for k in range(2):
 print("\\naction chunking shortens the effective horizon:")
 for k in [1, 8, 20, 50]:
     print(f"  chunk k={k:3d}: {400//k:4d} decisions over 400 steps   "
-          f"(T/k)^2 = {(400/k)**2:9.0f}")`,
+          f"(T/k)^2 = {(400/k)**2:9.0f}")
+
+assert abs(A.mean()) < 0.15, "the two modes cancel, so their mean is near zero"
+assert (np.abs(A) < 0.4).mean() < 0.05, "yet almost no demonstration is actually near zero"
+assert abs(abs(mu).min() - 1.0) < 0.25 and abs(abs(mu).max() - 1.0) < 0.25, \\
+    "the mixture head should place its two components on the two real modes"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -151,9 +172,29 @@ print(f"  sampled actions near the mean: {(np.abs(samples)<0.4).mean():.4f}  <- 
 print("\\naction chunking shortens the effective horizon:")
 for k in [1, 8, 20, 50]:
     print(f"  chunk k={k:3d}: {400//k:4d} decisions over 400 steps   "
-          f"(T/k)^2 = {(400/k)**2:9.0f}")`,
-},
+          f"(T/k)^2 = {(400/k)**2:9.0f}")
 
+assert abs(A.mean()) < 0.15, "the two modes cancel, so their mean is near zero"
+assert (np.abs(A) < 0.4).mean() < 0.05, "yet almost no demonstration is actually near zero"
+assert abs(abs(mu).min() - 1.0) < 0.25 and abs(abs(mu).max() - 1.0) < 0.25, \\
+    "the mixture head should place its two components on the two real modes"
+print("\\nPASS")
+`,
+  explain: `The first two numbers are the trap. The demonstrations are bimodal — go left or go right — so their mean is
+near zero, and **almost no demonstration is actually near zero**. A policy trained with squared error predicts
+the conditional mean, which is exactly the action no expert ever took: driving straight into the obstacle both
+of them avoided.
+
+This is [mean-versus-median](#/l/nn-losses-training) again, and it is worse here than in regression. In
+regression an averaged prediction is merely inaccurate; in control it can be actively catastrophic, because the
+average of two safe behaviours is not usually a safe behaviour.
+
+The mixture head fixes it by predicting a *distribution* rather than a summary of one. It places its two
+components on the two real modes and samples from them, so the policy commits to going left or going right
+instead of splitting the difference. Every modern approach here — diffusion policies, discretized action tokens,
+mixture heads — is a way of avoiding the same averaging failure, and that is why behaviour cloning quietly moved
+away from plain regression.`,
+},
 'emb-vla': {
   title: 'Action tokenization, and why it caps control frequency',
   prompt: `Implement discretized action tokens and measure quantization error at different bin counts. Then compute
@@ -190,7 +231,15 @@ for name, forwards, per_forward, chunk in [
     ("token decoding, 7 dims, chunk 10", 70, 0.020, 10),
     ("flow expert, 4 integration steps", 4, 0.012, 50)]:
     lat = forwards * per_forward
-    print(f"  {name:36s} {lat*1000:6.0f} ms -> {chunk/lat:6.1f} Hz")`,
+    print(f"  {name:36s} {lat*1000:6.0f} ms -> {chunk/lat:6.1f} Hz")
+
+assert np.abs(detokenize(tokenize(action)) - action).max() < 0.01, \\
+    "256 bins should reconstruct an action to within half a bin"
+assert np.abs(detokenize(tokenize(action, 16), 16) - action).max() > \\
+       np.abs(detokenize(tokenize(action, 256), 256) - action).max(), \\
+    "fewer bins must mean coarser control"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 
 def tokenize(action, n_bins=256, lo=-1.0, hi=1.0):
@@ -222,9 +271,29 @@ for name, forwards, per_forward, chunk in [
     lat = forwards * per_forward
     print(f"  {name:36s} {lat*1000:6.0f} ms -> {chunk/lat:6.1f} Hz")
 print("\\nAutoregressive decoding costs a forward pass PER DIMENSION. That is the")
-print("difference between 5 Hz and 50 Hz control.")`,
-},
+print("difference between 5 Hz and 50 Hz control.")
 
+assert np.abs(detokenize(tokenize(action)) - action).max() < 0.01, \\
+    "256 bins should reconstruct an action to within half a bin"
+assert np.abs(detokenize(tokenize(action, 16), 16) - action).max() > \\
+       np.abs(detokenize(tokenize(action, 256), 256) - action).max(), \\
+    "fewer bins must mean coarser control"
+print("\\nPASS")
+`,
+  explain: `The round-trip check shows what discretization costs: with 256 bins the reconstruction error is under half a
+bin, small compared with the precision of the hardware, so treating a continuous action as a token is close to
+free in accuracy. Drop to 16 bins and it stops being free.
+
+The frequency table is where the real constraint lives. Every control step now costs a sequence of
+autoregressive decodes — one per action dimension — and a 7-degree-of-freedom arm needs seven of them before it
+can move at all. At realistic decode latencies that caps the control loop well below what contact-rich
+manipulation wants.
+
+**Action chunking** is the fix, and the last column shows why it works so well: predicting $k$ future actions in
+one forward pass divides the number of decisions by $k$, and since the cost of a decision is roughly quadratic
+in how much context it attends over, the saving compounds. That is why VLA papers report control frequency as
+prominently as success rate — a policy that is accurate at 3 Hz is not usable for tasks that need 30.`,
+},
 'emb-world-models': {
   title: 'Watch an imagined rollout diverge, then replan',
   prompt: `Learn a linear dynamics model from limited data and measure how its rollout error grows with horizon. Then
@@ -264,7 +333,15 @@ def rollout_error(W, horizon, replan_every=None):
 print(f"{'real transitions':>18} {'H=1':>9} {'H=5':>9} {'H=15':>9} {'H=50':>9}")
 for n in [50, 200, 1000, 5000]:
     W = learn_model(n)
-    print(f"{n:18d}" + "".join(f"{rollout_error(W,h):9.4f}" for h in [1,5,15,50]))`,
+    print(f"{n:18d}" + "".join(f"{rollout_error(W,h):9.4f}" for h in [1,5,15,50]))
+
+W = learn_model(1000)
+assert rollout_error(W, 1) < rollout_error(W, 50), \\
+    "error should compound as the imagined rollout gets longer"
+assert rollout_error(W, 50, replan_every=5) < rollout_error(W, 50), \\
+    "replanning against the real state should contain the compounding"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -308,9 +385,29 @@ print(f"{'':18s}" + "".join(f"{rollout_error(W,h,5):9.4f}" for h in [1,5,15,50])
 
 print("\\nto get 1M policy-training steps:")
 print(f"  model-free on a real robot at 10 Hz : {1e6/10/3600:8.1f} hours")
-print(f"  model-based, 5k real transitions    : {5e3/10/3600:8.2f} hours")`,
-},
+print(f"  model-based, 5k real transitions    : {5e3/10/3600:8.2f} hours")
 
+W = learn_model(1000)
+assert rollout_error(W, 1) < rollout_error(W, 50), \\
+    "error should compound as the imagined rollout gets longer"
+assert rollout_error(W, 50, replan_every=5) < rollout_error(W, 50), \\
+    "replanning against the real state should contain the compounding"
+print("\\nPASS")
+`,
+  explain: `Read the horizon columns left to right. At $H = 1$ the learned model is accurate — one-step prediction is an
+ordinary supervised problem and it does fine. By $H = 50$ the error has grown by orders of magnitude, because
+each step feeds its own output back in and every small error becomes the input to the next prediction. This is
+the same compounding as [behaviour cloning](#/l/emb-why-robots), now in the model rather than the policy.
+
+More data helps but does not solve it: look down the rows and note that even the best-trained model still
+degrades with horizon, just more slowly. There is no amount of data at which imagined rollouts stop drifting,
+because the mechanism is the feedback, not the accuracy.
+
+The replanning row is the practical answer, and it is why model-predictive control looks the way it does. Plan a
+long horizon, execute only the first few actions, then re-plan from the *real* observed state. The model never
+gets to compound its errors for more than a few steps, so a mediocre model is still useful — you are asking it
+for a direction, not a prophecy.`,
+},
 'emb-benchmarks': {
   title: 'How many trials does a robot evaluation actually need?',
   prompt: `Implement the Wilson interval and apply it to typical robotics trial counts. Determine whether a reported
@@ -337,7 +434,14 @@ for n in [20, 50, 200]:
     print(f"  n={n:3d}: 75% [{a[0]:.2f},{a[1]:.2f}] vs 85% [{b[0]:.2f},{b[1]:.2f}]  "
           f"{'overlapping' if a[1] > b[0] else 'separated'}")
 
-# TODO: find the smallest n where the two intervals no longer overlap`,
+# TODO: find the smallest n where the two intervals no longer overlap
+
+lo10, hi10 = wilson(8, 10)
+lo100, hi100 = wilson(80, 100)
+assert (hi10 - lo10) > 2 * (hi100 - lo100), "ten trials should be far less informative than a hundred"
+assert wilson(16, 20)[0] < 0.9, "80% out of 20 trials is compatible with a much worse policy"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -368,7 +472,14 @@ for n in range(20, 2000, 10):
         break
 
 print("\\nA typical robotics paper reports 10-20 trials. Treat cross-paper")
-print("comparisons of success rates as essentially uninformative.")`,
+print("comparisons of success rates as essentially uninformative.")
+
+lo10, hi10 = wilson(8, 10)
+lo100, hi100 = wilson(80, 100)
+assert (hi10 - lo10) > 2 * (hi100 - lo100), "ten trials should be far less informative than a hundred"
+assert wilson(16, 20)[0] < 0.9, "80% out of 20 trials is compatible with a much worse policy"
+print("\\nPASS")
+`,
   explain: '17 of 20 gives roughly [64%, 95%]. That is compatible with a strong policy and a mediocre one, and it certainly does not separate 85% from 75% — before you even account for different hardware, scenes, and reset protocols.',
 },
 

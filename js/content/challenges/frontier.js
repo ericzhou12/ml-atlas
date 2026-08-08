@@ -39,7 +39,14 @@ for sp in [0.0, 0.5, 0.8, 0.95, 0.99]:
     Wn = W / (norms[:,None] + 1e-9)
     G = np.abs(Wn @ Wn.T)
     off = G[~np.eye(n_feat, dtype=bool)]
-    print(f"{sp:9.2f} {stored:16d} {off.mean():12.3f}")`,
+    print(f"{sp:9.2f} {stored:16d} {off.mean():12.3f}")
+
+W_dense, W_sparse = train(0.0), train(0.99)
+count = lambda W: int((np.linalg.norm(W, axis=1) > 0.1).sum())
+assert count(W_sparse) > count(W_dense), \\
+    "sparse features should let the model pack in more than the dimension allows"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -71,7 +78,14 @@ for sp in [0.0, 0.5, 0.8, 0.95, 0.99]:
     off = G[~np.eye(n_feat, dtype=bool)]
     print(f"{sp:9.2f} {stored:16d} {off.mean():12.3f}")
 print("\\nDense: ~4 features stored orthogonally. Sparse: many more packed in,")
-print("accepting interference because collisions are rare. That is superposition.")`,
+print("accepting interference because collisions are rare. That is superposition.")
+
+W_dense, W_sparse = train(0.0), train(0.99)
+count = lambda W: int((np.linalg.norm(W, axis=1) > 0.1).sum())
+assert count(W_sparse) > count(W_dense), \\
+    "sparse features should let the model pack in more than the dimension allows"
+print("\\nPASS")
+`,
   explain: 'The model discovers a compression scheme on its own. This is why individual neurons are polysemantic, and why recovering features needs a wider, sparse basis rather than reading neurons directly.',
 },
 
@@ -106,7 +120,15 @@ print("\\na weak verifier stops helping as n grows:")
 for va in [0.95, 0.85, 0.70, 0.60]:
     accs = [np.mean([trial(0.35, n, "verifier", va) for _ in range(1200)])
             for n in [4, 64, 256]]
-    print(f"  verifier {va:.2f}: n=4 {accs[0]:.3f}  n=64 {accs[1]:.3f}  n=256 {accs[2]:.3f}")`,
+    print(f"  verifier {va:.2f}: n=4 {accs[0]:.3f}  n=64 {accs[1]:.3f}  n=256 {accs[2]:.3f}")
+
+single  = np.mean([trial(0.35, 1,  "single")             for _ in range(1500)])
+strong  = np.mean([trial(0.35, 64, "verifier", 0.95)     for _ in range(1500)])
+weak    = np.mean([trial(0.35, 64, "verifier", 0.60)     for _ in range(1500)])
+assert strong > single, "a good verifier should turn extra samples into accuracy"
+assert weak  < strong,  "a weak verifier converts far less of that potential"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -137,7 +159,15 @@ print("\\na weak verifier stops helping as n grows:")
 for va in [0.95, 0.85, 0.70, 0.60]:
     accs = [np.mean([trial(0.35, n, "verifier", va) for _ in range(1200)])
             for n in [4, 64, 256]]
-    print(f"  verifier {va:.2f}: n=4 {accs[0]:.3f}  n=64 {accs[1]:.3f}  n=256 {accs[2]:.3f}")`,
+    print(f"  verifier {va:.2f}: n=4 {accs[0]:.3f}  n=64 {accs[1]:.3f}  n=256 {accs[2]:.3f}")
+
+single  = np.mean([trial(0.35, 1,  "single")             for _ in range(1500)])
+strong  = np.mean([trial(0.35, 64, "verifier", 0.95)     for _ in range(1500)])
+weak    = np.mean([trial(0.35, 64, "verifier", 0.60)     for _ in range(1500)])
+assert strong > single, "a good verifier should turn extra samples into accuracy"
+assert weak  < strong,  "a weak verifier converts far less of that potential"
+print("\\nPASS")
+`,
   explain: 'Note the gap between pass@n and every extractable strategy. The model often *can* find the answer; the hard part is knowing which sample is right. A weak verifier makes that worse as n grows, because you are selecting on its noise.',
 },
 
@@ -163,7 +193,12 @@ for i, a in enumerate(rates):
 print(f"\\n{'seq len':>9} {'bits needed':>13} {'bits in 256-dim state':>23} {'possible?':>11}")
 for L in [10, 100, 1000, 10000]:
     # TODO: bits_needed = L * log2(64 symbols); bits_available = 256 * 32
-    pass`,
+    pass
+
+assert 0.9**200 < 1e-6,    "a fast-decaying state has forgotten a token 200 steps back"
+assert 0.9999**200 > 0.9,  "a slow-decaying channel still remembers it"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 
 print("influence of a token d steps back, by decay rate a:")
@@ -187,9 +222,29 @@ d, L = 4096, 32
 for n in [2**k for k in (10, 13, 16, 19)]:
     print(f"{n:9d} {4*n*n*d*L:18.3e} {20*n*d*L:14.3e} {2*L*8*128*n*2/1e9:15.2f}")
 print("\\nA transformer's cache grows with the sequence, so it never hits the wall.")
-print("An SSM's state does not -- that is both its advantage and its ceiling.")`,
-},
+print("An SSM's state does not -- that is both its advantage and its ceiling.")
 
+assert 0.9**200 < 1e-6,    "a fast-decaying state has forgotten a token 200 steps back"
+assert 0.9999**200 > 0.9,  "a slow-decaying channel still remembers it"
+print("\\nPASS")
+`,
+  explain: `The decay table is the whole tradeoff. A state-space model carries the past in a fixed-size state that is
+multiplied by a decay factor at every step, so a token $d$ steps back has influence $a^d$ — and however you set
+$a$, that is an exponential. Set it fast and the model forgets within tens of steps; set it slow enough to
+remember a thousand and it barely distinguishes anything nearby. The multi-scale trick is to run many channels
+at different rates at once, so *some* channel remembers at every timescale, which is what HiPPO-style
+initializations are for.
+
+The bits table makes the limit precise rather than suggestive. A fixed-size state holds a fixed number of bits,
+and recalling an arbitrary token from an arbitrary position needs a number of bits that grows with the sequence
+length. Past some length the state simply cannot hold the answer, whatever the architecture does with it. This
+is not an engineering shortfall; it is counting.
+
+Then the cost table shows the other side. Attention never hits that wall, because its "state" — the KV cache —
+grows with the sequence. It pays for that in quadratic compute and linear memory that becomes ruinous at long
+context. Neither design is strictly better, which is why the strongest recent architectures interleave the two:
+a few attention layers for exact recall, many recurrent layers for cheap context.`,
+},
 'fr-limits': {
   title: 'Measure calibration error, then fix it with temperature scaling',
   prompt: `Implement expected calibration error and a reliability diagram. Simulate an overconfident RLHF-style model,
@@ -223,7 +278,15 @@ for lo in np.arange(0, 1, 0.2):
         print(f"  says {lo:.1f}-{lo+0.2:.1f}: actually right {k[m].mean():.3f}  "
               f"gap {k[m].mean()-c[m].mean():+.3f}")
 
-# TODO: sweep T over logits = log(c/(1-c)) and find the T minimizing ECE`,
+# TODO: sweep T over logits = log(c/(1-c)) and find the T minimizing ECE
+
+c_base, k_base = make_model(1.0)
+c_over, k_over = make_model(3.0)
+assert ece(c_over, k_over) > ece(c_base, k_base), \\
+    "an overconfident model should have a larger calibration error"
+assert best_e < ece(c, k), "temperature scaling should reduce the calibration error"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -262,7 +325,15 @@ best_T, best_e = 1.0, 1e9
 for T in np.arange(0.5, 5, 0.05):
     e = ece(1/(1+np.exp(-logits/T)), k)
     if e < best_e: best_T, best_e = T, e
-print(f"\\ntemperature scaling: T={best_T:.2f} reduces ECE {ece(c,k):.4f} -> {best_e:.4f}")`,
+print(f"\\ntemperature scaling: T={best_T:.2f} reduces ECE {ece(c,k):.4f} -> {best_e:.4f}")
+
+c_base, k_base = make_model(1.0)
+c_over, k_over = make_model(3.0)
+assert ece(c_over, k_over) > ece(c_base, k_base), \\
+    "an overconfident model should have a larger calibration error"
+assert best_e < ece(c, k), "temperature scaling should reduce the calibration error"
+print("\\nPASS")
+`,
   explain: 'Temperature scaling is a single parameter fit on a validation set, and it recovers most of the calibration RLHF destroys — without touching the model or its accuracy.',
 },
 

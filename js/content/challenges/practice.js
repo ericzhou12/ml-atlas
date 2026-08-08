@@ -152,7 +152,12 @@ for n_seeds in [1, 3, 10, 30]:
     a = [train_run(s, 0.00) for s in range(n_seeds)]
     b = [train_run(s+1000, 0.01) for s in range(n_seeds)]
     # TODO: compute the difference and a standard error, and judge significance
-    print(f"  {n_seeds:2d} seed(s):")`,
+    print(f"  {n_seeds:2d} seed(s):")
+
+assert best_random > best_grid, \\
+    "with the same budget, random search should beat a grid on this objective"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -191,7 +196,12 @@ for n_seeds in [1, 3, 10, 30]:
         continue
     se = np.sqrt(np.var(a, ddof=1)/n_seeds + np.var(b, ddof=1)/n_seeds)
     verdict = "significant" if abs(diff) > 2*se else "NOT significant"
-    print(f"  {n_seeds:2d} seed(s): diff {diff:+.4f}  se {se:.4f}  {verdict}")`,
+    print(f"  {n_seeds:2d} seed(s): diff {diff:+.4f}  se {se:.4f}  {verdict}")
+
+assert best_random > best_grid, \\
+    "with the same budget, random search should beat a grid on this objective"
+print("\\nPASS")
+`,
   explain: 'With one seed you cannot tell a 1% improvement from noise at all. This is why single-number comparisons in papers are weak evidence, and why reporting seed variance matters more than another decimal place.',
 },
 
@@ -220,7 +230,13 @@ print("\\ntuning-effort asymmetry -- identical methods, different search budgets
 TRUE = 0.80
 for baseline_tries, method_tries in [(1, 1), (1, 20), (5, 50), (20, 20)]:
     # TODO: each try is TRUE + noise; take the max of each, average over 2000 runs
-    print(f"  baseline {baseline_tries:3d} tries vs method {method_tries:3d} tries:")`,
+    print(f"  baseline {baseline_tries:3d} tries vs method {method_tries:3d} tries:")
+
+assert hi1 > lo2, "the two intervals overlap, so the reported gain is weak evidence"
+assert wilson(870, 1000)[1] - wilson(870, 1000)[0] < wilson(87, 100)[1] - wilson(87, 100)[0], \\
+    "a bigger benchmark gives a tighter interval"
+print("\\nPASS")
+`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -246,7 +262,13 @@ for bt, mt in [(1, 1), (1, 20), (5, 50), (20, 20)]:
         gaps.append(meth - base)
     print(f"  baseline {bt:3d} tries vs method {mt:3d} tries: "
           f"apparent gain {np.mean(gaps)*100:+.2f} points")
-print("\\nThe methods are the same. The entire 'improvement' is search budget.")`,
+print("\\nThe methods are the same. The entire 'improvement' is search budget.")
+
+assert hi1 > lo2, "the two intervals overlap, so the reported gain is weak evidence"
+assert wilson(870, 1000)[1] - wilson(870, 1000)[0] < wilson(87, 100)[1] - wilson(87, 100)[0], \\
+    "a bigger benchmark gives a tighter interval"
+print("\\nPASS")
+`,
   explain: 'This is the single most common way ML results mislead — and it is invisible unless the paper states its search budget for both arms. Ask for it.',
 },
 
