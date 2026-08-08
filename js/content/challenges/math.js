@@ -12,43 +12,74 @@
 export default {
 
 'math-vectors': {
-  title: 'Cosine similarity and the orthogonality of high dimensions',
-  prompt: `Implement \`cosine(a, b)\` without using \`np.linalg.norm\`, then use it to measure how close two *random*
-vectors are to orthogonal as the dimension grows. Predict the trend before you run it.`,
-  hint: 'The norm is $\\sqrt{a\\cdot a}$, and the expected $|\\cos|$ between random vectors scales like $1/\\sqrt{d}$.',
+  title: 'Cosine, projection, and the orthogonality of high dimensions',
+  prompt: `Three short functions, all built from the dot product and nothing else — no \`np.linalg\` anywhere.
+
+1. \`cosine(a, b)\` — the formula from the lesson, $\\dfrac{\\mathbf{a}\\cdot\\mathbf{b}}{\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|}$,
+   remembering that $\\|\\mathbf{a}\\| = \\sqrt{\\mathbf{a}\\cdot\\mathbf{a}}$.
+2. \`project(a, b)\` — the shadow of $\\mathbf{a}$ on $\\mathbf{b}$. The checks confirm it lands on
+   $\\mathbf{b}$'s line and that the leftover is orthogonal.
+3. Then run the last block, which measures the average $|\\cos|$ between random vectors as $d$ grows.
+   **Predict the numbers before you run it** — the lesson says they should sit near $1/\\sqrt{d}$.`,
+  hint: 'In NumPy, `a @ b` is the multiply-and-sum. So the length is `np.sqrt(a @ a)`, and the projection is the number `(a @ b) / (b @ b)` times the vector `b`.',
   starter: `import numpy as np
 
 def cosine(a, b):
-    # TODO: implement using only dot products and np.sqrt
+    # TODO: dot product, divided by both lengths. Use only @ and np.sqrt.
     return 0.0
 
-# --- check ---
+def project(a, b):
+    # TODO: return proj_b(a) -- a scaled copy of b. Use only @.
+    return np.zeros_like(b)
+
+# --- check 1: cosine ---
 a = np.array([1.0, 0.0]); b = np.array([0.0, 1.0]); c = np.array([2.0, 0.0])
-assert abs(cosine(a, b) - 0.0) < 1e-9, "orthogonal vectors should give 0"
-assert abs(cosine(a, c) - 1.0) < 1e-9, "parallel vectors should give 1"
+assert abs(cosine(a, b) - 0.0) < 1e-9, "perpendicular vectors should give 0"
+assert abs(cosine(a, c) - 1.0) < 1e-9, "same-direction vectors should give 1, whatever their lengths"
+assert abs(cosine(a, -c) + 1.0) < 1e-9, "opposite vectors should give -1"
+
+# --- check 2: projection and residual ---
+u = np.array([2.0, 1.0, -3.0]); v = np.array([4.0, 0.0, 1.0])
+p = project(u, v)
+r = u - p
+ratios = p[v != 0] / v[v != 0]          # p must be a scalar multiple of v
+assert np.allclose(ratios, ratios[0]), "the projection must be a scalar multiple of v"
+assert abs(r @ v) < 1e-9, "the residual must be orthogonal to v"
 print("PASS\\n")
 
+# --- the high-dimensional experiment ---
 rng = np.random.default_rng(0)
 for d in [2, 10, 100, 1000, 10000]:
     X = rng.normal(size=(500, d)); Y = rng.normal(size=(500, d))
     m = np.mean([abs(cosine(X[i], Y[i])) for i in range(500)])
-    print(f"d={d:6d}  mean|cos| = {m:.4f}   1/sqrt(d) = {1/np.sqrt(d):.4f}")`,
+    print(f"d={d:6d}   mean|cos| = {m:.4f}   1/sqrt(d) = {1/np.sqrt(d):.4f}")`,
   solution: `import numpy as np
 
 def cosine(a, b):
     return (a @ b) / np.sqrt((a @ a) * (b @ b))
 
+def project(a, b):
+    return ((a @ b) / (b @ b)) * b
+
 a = np.array([1.0, 0.0]); b = np.array([0.0, 1.0]); c = np.array([2.0, 0.0])
 assert abs(cosine(a, b) - 0.0) < 1e-9
 assert abs(cosine(a, c) - 1.0) < 1e-9
+assert abs(cosine(a, -c) + 1.0) < 1e-9
+
+u = np.array([2.0, 1.0, -3.0]); v = np.array([4.0, 0.0, 1.0])
+p = project(u, v)
+r = u - p
+ratios = p[v != 0] / v[v != 0]
+assert np.allclose(ratios, ratios[0])
+assert abs(r @ v) < 1e-9
 print("PASS\\n")
 
 rng = np.random.default_rng(0)
 for d in [2, 10, 100, 1000, 10000]:
     X = rng.normal(size=(500, d)); Y = rng.normal(size=(500, d))
     m = np.mean([abs(cosine(X[i], Y[i])) for i in range(500)])
-    print(f"d={d:6d}  mean|cos| = {m:.4f}   1/sqrt(d) = {1/np.sqrt(d):.4f}")`,
-  explain: 'The measured values track $1/\\sqrt d$ closely. In 10,000 dimensions two random directions are essentially always perpendicular — which is what lets a model pack far more than $d$ nearly-orthogonal features into $d$ dimensions.',
+    print(f"d={d:6d}   mean|cos| = {m:.4f}   1/sqrt(d) = {1/np.sqrt(d):.4f}")`,
+  explain: `The measured averages track $1/\\sqrt d$ closely, which is what the "variances add" argument in the lesson predicted. Read the last row: in 10,000 dimensions two random directions have a cosine of about 0.008, meaning they are perpendicular for all practical purposes. That is what lets a network pack far more than $d$ nearly-independent features into $d$ dimensions.`,
 },
 
 'math-matrices': {

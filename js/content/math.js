@@ -11,51 +11,63 @@ export default [
 {
   id: 'math-vectors',
   title: 'Vectors, Dot Products, and Geometry',
-  sub: 'Everything in ML is a vector. Every question about similarity is a dot product.',
+  sub: 'Everything in ML is a list of numbers. Every question about similarity is a dot product.',
   mins: 20, level: 'foundations',
   tags: ['linear algebra', 'geometry'],
   sections: [
-    tldr(`A **vector** is just a list of numbers — think \`float[]\`. The trick is that you can also think of
-that list as a *location* or a *direction* in space, which lets you ask geometric questions ("are these two
-things pointing the same way?") about data that has nothing to do with geometry.
+    tldr(`A **vector** is a list of numbers. That is the whole definition. \`[2, 1, -0.5]\` is a vector.
 
-The one operation you need is the **dot product**: multiply the lists element by element, add up the results.
-It answers "how aligned are these two vectors?" Every recommendation engine, every semantic search box, and
-every layer of every neural network is built on it.`),
+The useful move is to treat that list as a *position* in space: the list \`[2, 1]\` becomes the point you reach
+by going 2 right and 1 up. Once data is a position, you can ask geometric questions about it — how far apart
+are these two things, are they pointing the same way — even when the data is words or photos and has nothing
+to do with geometry.
+
+There is one operation you need: the **dot product**. Multiply two lists entry by entry, add up the results,
+get a single number. That number tells you how much the two vectors agree in direction. Search engines,
+recommendations, and every layer of every neural network run on it.`),
 
     jargon([
-      ['scalar', 'A single number. `3.7` is a scalar. Used to distinguish "one number" from "a list of numbers".'],
+      ['scalar', 'A single number, like `3.7`. The word only exists so we can say "one number" as opposed to "a list of numbers".'],
       ['vector', 'An ordered list of numbers. In code, a 1-D array. Written in **bold**: $\\mathbf{x}$.'],
-      ['dimension $d$', 'How many numbers are in the list. A vector with 768 entries is "768-dimensional". Nothing deeper than `len(x)`.'],
-      ['$\\mathbf{x} \\in \\mathbb{R}^d$', 'Read aloud: "x is a vector of $d$ real numbers." $\\mathbb{R}$ means "the real numbers", the superscript is the length. This is the most common line of notation in all of ML — it is a type signature, `x: float[d]`.'],
-      ['embedding', 'A vector that a model produces to represent something non-numeric — a word, an image, a user. The claim is that *similar things get similar vectors*.'],
-      ['norm', 'The length of a vector. Written $\\|\\mathbf{x}\\|$.'],
-      ['orthogonal', 'Perpendicular. For vectors it means "at 90°", which turns out to mean "carrying unrelated information".'],
+      ['component', 'One entry of a vector. The vector $\\mathbf{x} = (2, 1)$ has components $x_1 = 2$ and $x_2 = 1$.'],
+      ['dimension $d$', 'How many numbers are in the list. A list of 768 numbers is a "768-dimensional vector". It means nothing deeper than `len(x)`.'],
+      ['$\\mathbf{x} \\in \\mathbb{R}^d$', 'Read aloud: "x is a list of $d$ real numbers." $\\mathbb{R}$ is the set of all real numbers, and the superscript says how many of them. It is a type signature, like `x: float[d]`. You will see this line in the first paragraph of almost every paper.'],
+      ['embedding', 'A vector that a model outputs to stand in for something that is not a number — a word, an image, a user. The whole point is that similar things get similar vectors.'],
+      ['norm', 'The length of a vector, written $\\|\\mathbf{x}\\|$.'],
+      ['orthogonal', 'A synonym for perpendicular, i.e. at 90°. It gets its own word because in ML it means something specific: "these two carry unrelated information."'],
+      ['$\\sum$', 'Sigma, the sum symbol. $\\sum_{i=1}^{d} a_i$ means "add up $a_1$ through $a_d$." It is a for-loop with an accumulator.'],
     ]),
 
-    t(`## Why start here
+    t(`## Why everything becomes a list of numbers
 
-Open any ML paper and you will find $\\mathbf{x} \\in \\mathbb{R}^d$ in the first paragraph. That line is doing the
-same job as a type annotation in code: it says *the thing I am about to talk about is a list of $d$ numbers.*
+A computer cannot multiply a photograph. It can multiply numbers. So the first thing anyone does with data is
+turn it into a list of numbers, and after that every algorithm in this atlas works on lists of numbers only.
 
-Almost everything in machine learning has been forced into that shape:
-
-| The thing | As a vector |
+| The thing | The list |
 |---|---|
-| A 28×28 greyscale image | 784 numbers, one pixel brightness each |
-| A word, after an embedding model | 768 numbers with no individual meaning |
-| A user on a streaming site | 64 numbers summarising what they watch |
-| One layer's weights in a network | a few million numbers |
+| A 28×28 greyscale image | 784 numbers, one brightness per pixel |
+| A word, after running it through an embedding model | 768 numbers, none of which means anything on its own |
+| A user of a streaming site | 64 numbers summarising what they watch |
+| One layer's weights inside a network | a few million numbers |
 
-Once everything is a list of numbers, everything lives in the same kind of space, and you can use one set of
-tools on all of it. That is the bargain the whole field is built on.`),
+The payoff is uniformity. A method that works on lists of 784 numbers also works on lists of 768 numbers,
+so a technique invented for images transfers to text without being reinvented. Everything in this track is
+about what you can do with a list of numbers once you have one.`),
 
-    t(`## The two ways to read a vector
+    t(`## A vector is a point, and also an arrow
 
-A vector $\\mathbf{x} = (x_1, x_2, \\ldots, x_d)$ can be read two ways. You need both, and knowing which one is
-in play is most of the battle when reading a paper.`),
+Take the list $(3, 2)$. There are two pictures of it, and you need both.
 
-    diagram('The same three numbers, read two ways',
+The **point** picture: go 3 right and 2 up, and put a dot there. The vector *is* that location. This is the
+right picture for data — one photo is one point, and photos of similar things sit near each other.
+
+The **arrow** picture: draw an arrow from the origin to that same spot. Now the vector describes a *movement* —
+a direction to go and a distance to go in it. This is the right picture for changes: "adjust these weights by
+this much in this direction."
+
+Same three numbers either way. Which picture is in play changes what the numbers are for.`),
+
+    diagram('The same two numbers, read two ways',
 `<svg viewBox="0 0 640 220" role="img" aria-label="A vector drawn as a point and as an arrow">
   <g style="stroke: var(--border); stroke-width: 1">
     <line x1="40" y1="180" x2="270" y2="180"/><line x1="40" y1="180" x2="40" y2="30"/>
@@ -65,62 +77,106 @@ in play is most of the battle when reading a paper.`),
   <line x1="190" y1="80" x2="190" y2="180" style="stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3"/>
   <line x1="40" y1="80" x2="190" y2="80" style="stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3"/>
   <text class="dmono" x="202" y="76" style="fill: var(--s1)">(3, 2)</text>
-  <text class="dtitle" x="40" y="205">as a POINT — "this photo is here"</text>
-  <text class="dlabel" x="40" y="20">right for: data, samples, embeddings</text>
+  <text class="dtitle" x="40" y="205">as a POINT — "the thing is here"</text>
+  <text class="dlabel" x="40" y="20">use for: data, samples, embeddings</text>
 
   <defs><marker id="ar1" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto">
     <path d="M0,0 L9,4.5 L0,9 z" style="fill: var(--s2)"/></marker></defs>
   <line x1="370" y1="180" x2="514" y2="82" style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#ar1)"/>
   <text class="dmono" x="524" y="78" style="fill: var(--s2)">(3, 2)</text>
   <text class="dtitle" x="370" y="205">as an ARROW — "move this way, this far"</text>
-  <text class="dlabel" x="370" y="20">right for: gradients, weight updates, directions</text>
+  <text class="dlabel" x="370" y="20">use for: gradients, weight updates, directions</text>
 </svg>`,
-      `Identical numbers, different question. When you read "the embedding of *cat*", think **point**. When you
-read "the gradient step", think **arrow**. Papers switch between the two without warning.`),
+      `When you read "the embedding of *cat*", picture the dot. When you read "the update step", picture the
+arrow. Writers switch between the two without announcing it, so it is worth asking yourself which one a
+sentence means.`),
 
-    t(`## The two operations that matter
+    t(`## The two things you can do to vectors
 
-**Addition** is componentwise — exactly what \`a + b\` does on two NumPy arrays:
+**Add them.** Line the lists up and add entry by entry:
 
 $$\\mathbf{a} + \\mathbf{b} = (a_1+b_1,\\ \\ldots,\\ a_d+b_d)$$
 
-Geometrically, in the arrow reading, it is "walk along the first arrow, then walk along the second from
-wherever you ended up."
+In the arrow picture: walk along the first arrow, then, from wherever you stopped, walk along the second.
 
-**Scalar multiplication** stretches: $c\\mathbf{a} = (ca_1, \\ldots, ca_d)$. A $c$ bigger than 1 lengthens the
-arrow, a $c$ between 0 and 1 shortens it, and a negative $c$ flips it around to point the other way.
+**Scale them.** Multiply every entry by one number $c$:
 
-That is genuinely all of it. Those two operations, plus their obvious algebraic properties (order doesn't
-matter when adding, stretching distributes over addition), are the *definition* of a vector space. The payoff
-is that anything obeying them — polynomials, functions, images, sound clips — gets the same machinery for free.`),
+$$c\\,\\mathbf{a} = (c\\,a_1, \\ldots, c\\,a_d)$$
 
-    t(`## The dot product is a similarity meter
+The arrow keeps its direction and changes its length: $c > 1$ stretches, $0 < c < 1$ shrinks, and a negative
+$c$ flips it to point the opposite way.
 
-This is the operation everything else is built from. Multiply the two lists element by element, then add
-up the results:
+That is the complete list. Adding and scaling, plus the obvious rules they obey (order does not matter when
+adding; scaling distributes over addition), are the *definition* of a vector space. So anything you can add
+and scale gets to reuse this machinery — including functions and images, which is why you will see the word
+"vector" applied to things that are not obviously lists.`),
+
+    t(`## The dot product
+
+Multiply two vectors entry by entry, then add the products up:
 
 $$\\mathbf{a}\\cdot\\mathbf{b} = a_1b_1 + a_2b_2 + \\cdots + a_db_d = \\sum_{i=1}^{d} a_i b_i$$
 
-The $\\sum$ symbol is just a for-loop: "for $i$ from 1 to $d$, accumulate $a_i b_i$." In NumPy it is \`a @ b\`.
-Four lines of code, no geometry in sight.
+Both vectors must have the same length, or there is nothing to pair up. The result is a single number, not a
+vector. In NumPy it is \`a @ b\`.`),
 
-Here is the remarkable part. That same number *also* equals:
+    steps('One dot product, by hand', [
+      { h: 'Line the lists up', md: `$\\mathbf{a} = (2,\\ 1,\\ -3)$ and $\\mathbf{b} = (4,\\ 0,\\ 1)$. Both have three entries, so this is allowed.` },
+      { h: 'Multiply matching positions', md: `$2\\times4 = 8$, then $1\\times0 = 0$, then $-3\\times1 = -3$.` },
+      { h: 'Add the three products', md: `$8 + 0 - 3 = 5$. So $\\mathbf{a}\\cdot\\mathbf{b} = 5$.` },
+      { h: 'Notice it is one number', md: `Three-entry inputs, one-number output. The dot product always collapses two lists into a single score.` },
+    ]),
+
+    t(`## Why that number measures direction
+
+Nothing above mentions angles, so it is not obvious that this has anything to do with geometry. Here is why
+it does.
+
+Start with the simplest possible second vector: $\\mathbf{b} = (1, 0)$, an arrow of length 1 pointing straight
+along the horizontal axis. Then
+
+$$\\mathbf{a}\\cdot\\mathbf{b} = a_1 \\cdot 1 + a_2 \\cdot 0 = a_1,$$
+
+which is just the horizontal coordinate of $\\mathbf{a}$. Now draw the right triangle under the arrow
+$\\mathbf{a}$, with $\\theta$ the angle between $\\mathbf{a}$ and the horizontal axis. The hypotenuse is
+$\\|\\mathbf{a}\\|$ and the horizontal side is $a_1$, so by the definition of cosine,
+
+$$a_1 = \\|\\mathbf{a}\\| \\cos\\theta.$$
+
+Putting those together: when $\\mathbf{b}$ has length 1, the dot product equals $\\|\\mathbf{a}\\|\\cos\\theta$.
+And if you then stretch $\\mathbf{b}$ to length $\\|\\mathbf{b}\\|$, every product $a_ib_i$ in the sum scales by
+the same factor, so the dot product scales by it too:
 
 $$\\mathbf{a}\\cdot\\mathbf{b} = \\|\\mathbf{a}\\|\\,\\|\\mathbf{b}\\|\\cos\\theta$$
 
-where $\\|\\mathbf{a}\\|$ is the length of $\\mathbf{a}$, $\\|\\mathbf{b}\\|$ the length of $\\mathbf{b}$, and
-$\\theta$ the angle between them. Those two expressions being equal is the single most useful fact in this
-track. The first is trivially computable; the second tells you what the answer *means*.
+Nothing about the argument used the fact that we were in two dimensions except the picture; the identity holds
+in any number of dimensions, and the derivation below proves it without pictures.
 
-Because $\\cos\\theta$ is positive when the angle is under 90°, zero at exactly 90°, and negative beyond, the
-sign of a dot product is a direct read-out of alignment.`),
+These two formulas being the same number is the most useful fact in this track. The first one is easy to
+compute. The second one tells you what the answer *means*.`),
 
-    steps('Computing a dot product by hand, once', [
-      { h: 'Line the two lists up', md: `$\\mathbf{a} = (2,\\ 1,\\ -3)$ and $\\mathbf{b} = (4,\\ 0,\\ 1)$. Same length — required, or the operation is undefined.` },
-      { h: 'Multiply positionwise', md: `$2\\times4 = 8$, then $1\\times0 = 0$, then $-3\\times1 = -3$.` },
-      { h: 'Add them up', md: `$8 + 0 - 3 = 5$. That single number is $\\mathbf{a}\\cdot\\mathbf{b}$.` },
-      { h: 'Read the sign', md: `Positive, so the angle between them is less than 90° — these two vectors broadly agree. If you want the actual angle, divide by the two lengths and take $\\arccos$.` },
-    ]),
+    deriv('The same identity without pictures', `The picture argument above assumed we could see the triangle. Here is the algebra, which works in any dimension.
+
+Take the triangle whose sides are the arrows $\\mathbf{a}$, $\\mathbf{b}$, and the arrow from the tip of $\\mathbf{b}$ to the tip of $\\mathbf{a}$, which is $\\mathbf{a}-\\mathbf{b}$. The law of cosines from trigonometry says
+
+$$\\|\\mathbf{a}-\\mathbf{b}\\|^2 = \\|\\mathbf{a}\\|^2 + \\|\\mathbf{b}\\|^2 - 2\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$$
+
+Separately, expand the left-hand side using only the definition of the dot product (and the fact, from the next section, that $\\|\\mathbf{v}\\|^2 = \\mathbf{v}\\cdot\\mathbf{v}$):
+
+$$\\|\\mathbf{a}-\\mathbf{b}\\|^2 = (\\mathbf{a}-\\mathbf{b})\\cdot(\\mathbf{a}-\\mathbf{b}) = \\mathbf{a}\\cdot\\mathbf{a} - 2\\,\\mathbf{a}\\cdot\\mathbf{b} + \\mathbf{b}\\cdot\\mathbf{b} = \\|\\mathbf{a}\\|^2 - 2\\,\\mathbf{a}\\cdot\\mathbf{b} + \\|\\mathbf{b}\\|^2$$
+
+Set the two right-hand sides equal. The $\\|\\mathbf{a}\\|^2$ and $\\|\\mathbf{b}\\|^2$ terms cancel from both sides, leaving
+
+$$-2\\,\\mathbf{a}\\cdot\\mathbf{b} = -2\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$$
+
+Divide by $-2$. ∎`),
+
+    t(`## Reading the sign
+
+Lengths are never negative, so in $\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$ the only part that can be
+negative is $\\cos\\theta$. And $\\cos\\theta$ is positive for angles under 90°, exactly zero at 90°, and
+negative past 90°. So the sign of a dot product — one cheap number — tells you which side of perpendicular the
+two vectors are on.`),
 
     diagram('What the sign of a dot product tells you',
 `<svg viewBox="0 0 660 180" role="img" aria-label="Three cases: positive, zero and negative dot product">
@@ -133,100 +189,108 @@ sign of a dot product is a direct read-out of alignment.`),
     <line x1="60" y1="120" x2="150" y2="55"  style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#aq)"/>
     <path d="M100,120 A40,40 0 0,0 88,97" style="fill:none; stroke: var(--text-faint); stroke-width: 1"/>
     <text class="dtitle" x="60" y="155" style="fill: var(--s3)">a · b &gt; 0</text>
-    <text class="dlabel" x="60" y="172">same broad direction</text>
+    <text class="dlabel" x="60" y="172">angle under 90° — they agree</text>
   </g>
   <g transform="translate(215,0)">
     <line x1="60" y1="120" x2="170" y2="120" style="stroke: var(--s1); stroke-width: 2.5" marker-end="url(#ap)"/>
     <line x1="60" y1="120" x2="60"  y2="40"  style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#aq)"/>
     <path d="M60,100 L80,100 L80,120" style="fill:none; stroke: var(--text-faint); stroke-width: 1"/>
     <text class="dtitle" x="60" y="155" style="fill: var(--s5)">a · b = 0</text>
-    <text class="dlabel" x="60" y="172">orthogonal — unrelated</text>
+    <text class="dlabel" x="60" y="172">exactly 90° — orthogonal</text>
   </g>
   <g transform="translate(430,0)">
     <line x1="60" y1="120" x2="170" y2="120" style="stroke: var(--s1); stroke-width: 2.5" marker-end="url(#ap)"/>
     <line x1="60" y1="120" x2="0"   y2="62"  style="stroke: var(--s2); stroke-width: 2.5" marker-end="url(#aq)"/>
     <text class="dtitle" x="30" y="155" style="fill: var(--s6)">a · b &lt; 0</text>
-    <text class="dlabel" x="30" y="172">pointing against each other</text>
+    <text class="dlabel" x="30" y="172">over 90° — they oppose</text>
   </g>
 </svg>`,
-      `The middle case is the one worth remembering. **Orthogonal** does not mean "unrelated" as a metaphor — in
-ML it is the working definition of "carries independent information". Two orthogonal features tell you
-genuinely different things about a data point.`),
+      `The middle case is the one to remember. When two feature vectors are orthogonal, knowing one tells you
+nothing about the other — they describe genuinely separate things. That is why "orthogonal" is used in ML as a
+plain synonym for "unrelated".`),
 
     viz('vector-playground'),
 
-    key(`- $\\mathbf{a}\\cdot\\mathbf{b} > 0$: the vectors point in broadly the same direction.
-- $\\mathbf{a}\\cdot\\mathbf{b} = 0$: they are **orthogonal** — perpendicular, uncorrelated, carrying independent information.
-- $\\mathbf{a}\\cdot\\mathbf{b} < 0$: they oppose.
+    t(`## Length, and comparing direction only
 
-The **length** (or $L_2$ norm) of a vector is its dot product with itself, square-rooted:
-$\\|\\mathbf{a}\\| = \\sqrt{\\mathbf{a}\\cdot\\mathbf{a}} = \\sqrt{a_1^2 + \\cdots + a_d^2}$ — Pythagoras, in $d$
-dimensions.
+The dot product of a vector with **itself** is $\\mathbf{a}\\cdot\\mathbf{a} = a_1^2 + \\cdots + a_d^2$. In two
+dimensions that is $a_1^2 + a_2^2$, which the Pythagorean theorem says is the squared length of the arrow. So
+length comes free from the dot product:
 
-**Cosine similarity** is the dot product with both lengths divided out, which leaves only the angle:
-$\\cos\\theta = \\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|} \\in [-1, 1]$.
-It is $1$ for identical directions, $0$ for orthogonal, $-1$ for opposite.`),
+$$\\|\\mathbf{a}\\| = \\sqrt{\\mathbf{a}\\cdot\\mathbf{a}} = \\sqrt{a_1^2 + \\cdots + a_d^2}$$
 
-    intuition(`Cosine similarity throws away magnitude and keeps only direction. That is exactly what you want for
-text embeddings. A 50-page report and a one-line tweet about the same topic should count as similar, but the
-report's embedding will typically have a much bigger norm — length and word frequency inflate magnitude without
-changing meaning. Dividing the lengths out removes that confound. It is why essentially every vector database
-defaults to cosine rather than raw dot product.`),
+and the same formula is taken as the definition of length in higher dimensions, where you cannot draw the
+triangle.
 
-    deriv('Where $\\|a\\|\\|b\\|\\cos\\theta$ comes from', `Start with the law of cosines applied to the triangle with sides $\\mathbf{a}$, $\\mathbf{b}$, and $\\mathbf{a}-\\mathbf{b}$:
+Now suppose you only care about *direction* and not size. Rearranging
+$\\mathbf{a}\\cdot\\mathbf{b} = \\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$ to isolate the angle gives
+**cosine similarity**:
 
-$$\\|\\mathbf{a}-\\mathbf{b}\\|^2 = \\|\\mathbf{a}\\|^2 + \\|\\mathbf{b}\\|^2 - 2\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$$
+$$\\cos\\theta = \\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\|\\mathbf{a}\\|\\,\\|\\mathbf{b}\\|}$$
 
-Now expand the left side algebraically:
+Dividing by both lengths cancels them out, so what is left depends only on the angle. It runs from $1$ (same
+direction) through $0$ (orthogonal) to $-1$ (opposite), and it never leaves that range.`),
 
-$$\\|\\mathbf{a}-\\mathbf{b}\\|^2 = (\\mathbf{a}-\\mathbf{b})\\cdot(\\mathbf{a}-\\mathbf{b}) = \\|\\mathbf{a}\\|^2 - 2\\,\\mathbf{a}\\cdot\\mathbf{b} + \\|\\mathbf{b}\\|^2$$
+    key(`Three numbers, all built from the dot product:
 
-Setting the two right-hand sides equal, the $\\|\\mathbf{a}\\|^2$ and $\\|\\mathbf{b}\\|^2$ cancel, leaving
-$-2\\,\\mathbf{a}\\cdot\\mathbf{b} = -2\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$. Divide by $-2$. ∎`),
+- $\\mathbf{a}\\cdot\\mathbf{b}$ — raw agreement. Grows if either vector gets longer.
+- $\\|\\mathbf{a}\\| = \\sqrt{\\mathbf{a}\\cdot\\mathbf{a}}$ — length.
+- $\\cos\\theta = \\dfrac{\\mathbf{a}\\cdot\\mathbf{b}}{\\|\\mathbf{a}\\|\\|\\mathbf{b}\\|} \\in [-1, 1]$ — agreement in direction only, with length divided out.`),
 
-    t(`## Projection: splitting a vector into two parts
+    intuition(`Why retrieval systems compare with cosine rather than the raw dot product: a 50-page report and a
+one-line note about the same topic should count as similar, but embedding models give longer inputs longer
+vectors. Raw dot products would then rank the report above the note for essentially every query, because it is
+*bigger*, not because it is a better match. Dividing the lengths out removes that. Nearly every vector database
+defaults to cosine for this reason.`),
 
-Here is a question that turns out to be everywhere: *how much of $\\mathbf{a}$ points along $\\mathbf{b}$?*
+    t(`## Projection: how much of one vector lies along another
 
-Picture shining a light straight down onto the line through $\\mathbf{b}$ and asking where $\\mathbf{a}$'s shadow
-falls. That shadow is the **projection**:
+Here is a question that keeps coming back: *how much of $\\mathbf{a}$ points in the direction of
+$\\mathbf{b}$?*
 
-$$\\text{proj}_{\\mathbf{b}}(\\mathbf{a}) = \\underbrace{\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\mathbf{b}\\cdot\\mathbf{b}}}_{\\text{a single number}}\\,\\mathbf{b}$$
+Shine a light straight down onto the line through $\\mathbf{b}$ and see where $\\mathbf{a}$'s shadow lands.
+That shadow is the **projection** of $\\mathbf{a}$ onto $\\mathbf{b}$:
 
-Read the formula as: *take a scaled copy of $\\mathbf{b}$*, where the scale factor is "how aligned they are"
-divided by "how long $\\mathbf{b}$ is, squared". The result always lies on $\\mathbf{b}$'s line, because it is
-literally a multiple of $\\mathbf{b}$.
+$$\\text{proj}_{\\mathbf{b}}(\\mathbf{a}) = \\underbrace{\\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\mathbf{b}\\cdot\\mathbf{b}}}_{\\text{one number}}\\ \\mathbf{b}$$
 
-The leftover, $\\mathbf{a} - \\text{proj}_{\\mathbf{b}}(\\mathbf{a})$, is called the **residual**, and it is always
-orthogonal to $\\mathbf{b}$ — turn on "residual" in the figure above and check that the angle really is 90° no
-matter how you drag.`),
+Read it right to left: the answer is a scaled copy of $\\mathbf{b}$, so it is guaranteed to lie on
+$\\mathbf{b}$'s line. The scale factor is "how much they agree" divided by "$\\mathbf{b}$'s length squared" —
+the second division is there so that making $\\mathbf{b}$ twice as long does not change where the shadow falls.
 
-    key(`Every vector splits, uniquely, into **"the part explained by $\\mathbf{b}$" plus "the part orthogonal to
-$\\mathbf{b}$"**:
+Whatever is left over,
 
-$$\\mathbf{a} = \\underbrace{\\text{proj}_{\\mathbf{b}}(\\mathbf{a})}_{\\text{explained}} + \\underbrace{\\mathbf{r}}_{\\text{left over, } \\perp \\mathbf{b}}$$
+$$\\mathbf{r} = \\mathbf{a} - \\text{proj}_{\\mathbf{b}}(\\mathbf{a}),$$
 
-This one decomposition is the skeleton of least squares (fit = projection onto what your features can explain,
-error = the residual), PCA (keep the directions that explain the most, discard the rest), and Gram–Schmidt.
-When you meet those later, they will feel like this picture again with more indices.`),
+is called the **residual**, and it is always orthogonal to $\\mathbf{b}$. You can check that in one line:
+$\\mathbf{r}\\cdot\\mathbf{b} = \\mathbf{a}\\cdot\\mathbf{b} - \\frac{\\mathbf{a}\\cdot\\mathbf{b}}{\\mathbf{b}\\cdot\\mathbf{b}}(\\mathbf{b}\\cdot\\mathbf{b}) = 0$.
+Turn on "residual" in the figure above and drag: the angle stays 90° no matter what.`),
 
-    t(`## Other rulers: $L_1$, $L_2$, $L_\\infty$
+    key(`Every vector splits into two pieces — the part $\\mathbf{b}$ explains, and the part it cannot:
 
-"Length" is not a single idea. $\\|\\mathbf{x}\\| = \\sqrt{\\sum x_i^2}$ is the everyday one — straight-line
-distance — but there are others, and which you pick changes what your model does. Written $\\|\\mathbf{x}\\|_p$,
-the subscript naming the flavour.
+$$\\mathbf{a} = \\underbrace{\\text{proj}_{\\mathbf{b}}(\\mathbf{a})}_{\\text{explained by } \\mathbf{b}} + \\underbrace{\\mathbf{r}}_{\\text{left over, orthogonal to } \\mathbf{b}}$$
 
-| Norm | Formula | "Distance" it measures | Unit ball | Where it shows up |
-|---|---|---|---|---|
-| $L_1$ | $\\sum_i \\|x_i\\|$ | walking on a city grid | diamond | Lasso, sparsity, robust losses |
-| $L_2$ | $\\sqrt{\\sum_i x_i^2}$ | straight line, as the crow flies | circle | ridge, weight decay, distances |
-| $L_\\infty$ | $\\max_i \\|x_i\\|$ | the single biggest component | square | adversarial robustness budgets |
-| $L_0$ | count of nonzeros | how many entries are "on" | — | "how sparse" (not really a norm) |
+Fitting a line to data is this split (prediction = the explained part, error = the residual). So is PCA (keep
+the directions that explain the most, drop the rest). When those show up later they are this picture with more
+indices.`),
 
-The **unit ball** column means: the set of all vectors whose norm is exactly 1. Under $L_2$ that set is a circle,
-which is what you would guess. Under $L_1$ it is a diamond standing on its corner.`),
+    t(`## Other ways to measure length
 
-    diagram('Unit balls: the same "length 1" under three different rulers',
+$\\|\\mathbf{x}\\| = \\sqrt{\\sum_i x_i^2}$ is straight-line distance, and it is the default. But it is not the
+only sensible way to turn a list of numbers into one number called "size", and the choice changes what a model
+does. The alternatives are written $\\|\\mathbf{x}\\|_p$, with the subscript naming which one.
+
+| Name | Formula | What "distance" means | Where you meet it |
+|---|---|---|---|
+| $L_1$ | $\\sum_i |x_i|$ | blocks walked on a city grid | Lasso, sparsity |
+| $L_2$ | $\\sqrt{\\sum_i x_i^2}$ | straight line, as the crow flies | ridge, weight decay, distances |
+| $L_\\infty$ | $\\max_i |x_i|$ | the single largest entry | adversarial robustness budgets |
+| $L_0$ | how many entries are nonzero | how many things are switched on | measuring sparsity (not really a length) |
+
+To see how they differ, draw the set of all vectors whose size is exactly 1 — the **unit ball** for that
+measure. Under $L_2$ it is the circle you would expect. Under $L_1$ it is a diamond, because to have
+$|x_1| + |x_2| = 1$ you trade one coordinate off against the other in a straight line.`),
+
+    diagram('"Length exactly 1" under three different measures',
 `<svg viewBox="0 0 660 200" role="img" aria-label="Unit balls of the L1, L2 and Linfinity norms">
   <g transform="translate(20,10)">
     <line x1="90" y1="20" x2="90" y2="160" style="stroke: var(--border)"/><line x1="20" y1="90" x2="160" y2="90" style="stroke: var(--border)"/>
@@ -245,37 +309,58 @@ which is what you would guess. Under $L_1$ it is a diamond standing on its corne
     <text class="dtitle" x="50" y="185" style="fill: var(--s4)">L-infinity — a square</text>
   </g>
 </svg>`,
-      `Look at where each shape touches the axes. The diamond meets them at sharp **corners**; the circle glides
-past smoothly. That geometric difference is the entire reason L1 regularization drives coefficients to exactly
-zero and L2 only shrinks them toward zero — an optimum pinned at a corner has a coordinate that is precisely 0.
-You will see this picture again, with the loss contours drawn on top, in
+      `Look at the dots where the diamond meets the axes. Those are sharp **corners**, and a corner sits at a
+place where one coordinate is exactly zero. The circle has no corners — it slides past the axes smoothly. That
+single difference in shape is the whole reason $L_1$ penalties set coefficients to exactly 0 while $L_2$
+penalties only shrink them toward 0. The picture comes back, with loss contours drawn on top, in
 [regularization](#/l/ml-regularization).`),
 
-    t(`## High dimensions are strange, and you must plan for it
+    t(`## High dimensions do not behave like the pictures
 
-Everything so far has been drawn in 2-D. Real vectors have 768 or 4096 entries, and your 2-D and 3-D intuitions
-will actively mislead you there. Three facts worth internalizing early:
+Every drawing so far has been in two dimensions. Real vectors have 768 or 4096 entries, and three things that
+are false in 2-D become true out there. Each one has a short reason, and the reasons all use the same tool:
+when you add up many independent random numbers, the sum grows faster than its own wobble.`),
 
-**1. Almost everything is orthogonal.** Pick two random directions in $\\mathbb{R}^d$. Their expected cosine
-similarity is $0$, with a spread of only about $1/\\sqrt{d}$. In 2-D that spread is 0.7 — random vectors are
-often quite aligned. In 1000-D it is 0.03 — random directions are, for all practical purposes, always
-perpendicular.
+    mathnote(`The tool, stated once. Suppose $z_1, \\ldots, z_d$ are independent random numbers, each with mean
+0 and variance 1. Variances of independent things add, so $\\sum_i z_i$ has variance $d$ and therefore standard
+deviation $\\sqrt{d}$ — not $d$. This is the same fact behind the $\\sigma/\\sqrt{n}$ standard error you met in
+statistics. Everything below is that one line applied three times.`),
 
-**2. Volume flees to the shell.** In a high-dimensional ball, nearly all the volume sits in a thin skin near
-the surface. If you sample points uniformly from a 100-D ball, essentially none of them land near the middle.
-The "typical" point is not the average point.
+    t(`**1. Two random directions are almost always perpendicular.**
 
-**3. Distances concentrate.** As $d$ grows, the distance from a query to its *nearest* neighbour and to its
-*farthest* neighbour converge toward each other. Ratios approach 1. This is what quietly breaks
-k-nearest-neighbours and any method that relies on "close" being meaningfully different from "far".`),
+Take $\\mathbf{x}$ and $\\mathbf{y}$ with independent random entries, each of mean 0 and variance 1. Their dot
+product $\\sum_i x_i y_i$ is a sum of $d$ independent terms with mean 0, so it has mean 0 and typical size
+$\\sqrt{d}$. Meanwhile $\\|\\mathbf{x}\\|^2 = \\sum_i x_i^2$ is a sum of $d$ terms each averaging 1, so
+$\\|\\mathbf{x}\\| \\approx \\sqrt{d}$, and the same for $\\mathbf{y}$. Divide:
 
-    intuition(`Fact 1 sounds like bad news and is secretly the best news in the subject. If random directions are
-essentially always perpendicular, then a $d$-dimensional space can hold **vastly more than $d$** directions that
-are *nearly* orthogonal — exponentially more. So a model with 4096 neurons per layer is not limited to
-representing 4096 features; it can pack in far more, as long as it tolerates a little interference between them.
+$$\\cos\\theta = \\frac{\\mathbf{x}\\cdot\\mathbf{y}}{\\|\\mathbf{x}\\|\\|\\mathbf{y}\\|} \\approx \\frac{\\sqrt{d}}{\\sqrt{d}\\cdot\\sqrt{d}} = \\frac{1}{\\sqrt{d}}$$
 
-That phenomenon has a name — **superposition** — and it is why interpretability is hard: a single neuron does
-not correspond to a single concept. There is a [whole lesson on it](#/l/fr-interpretability) later.`),
+In 2-D that is 0.71, so random vectors are often quite aligned. In 1000-D it is 0.03. Random directions in high
+dimensions are, in practice, always perpendicular. You will measure this yourself in the challenge.
+
+**2. Almost all the volume is near the surface.**
+
+Scale a $d$-dimensional ball down by 10% and its volume drops by a factor of $0.9^d$. At $d = 100$ that is
+$0.9^{100} \\approx 0.00003$. So the inner 90% of the radius holds essentially none of the volume — sample
+points uniformly from a high-dimensional ball and none of them land near the middle. The "typical" point is not
+near the average point.
+
+**3. Everything is about equally far away.**
+
+The squared distance between two random points is a sum of $d$ independent per-coordinate contributions. By the
+same argument as fact 1, that sum is around $d$ with a wobble of around $\\sqrt{d}$, so the *relative* spread in
+distances shrinks like $\\sqrt{d}/d = 1/\\sqrt{d}$. As $d$ grows, your nearest neighbour and your farthest
+neighbour end up nearly the same distance away. This is what quietly breaks k-nearest-neighbours and anything
+else that relies on "close" being meaningfully different from "far".`),
+
+    intuition(`Fact 1 sounds like bad news and is secretly the best news in the subject. If almost every pair of
+random directions is perpendicular, then a space with only $d$ dimensions can hold *far more than $d$*
+directions that are nearly perpendicular to each other — vastly more. So a layer with 4096 neurons is not
+limited to storing 4096 separate features. It can pack in many more, as long as it tolerates a little
+interference between them.
+
+That packing has a name, **superposition**, and it is a large part of why interpretability is hard: one neuron
+does not correspond to one concept. There is a [whole lesson on it](#/l/fr-interpretability) later.`),
 
     code('Vectors in NumPy', `import numpy as np
 
@@ -284,48 +369,42 @@ b = np.array([1.0, 3.0,  2.0])
 
 print("a + b        =", a + b)
 print("3a           =", 3 * a)
-print("a . b        =", a @ b)              # @ is matmul/dot
-print("|a|          =", np.linalg.norm(a))
-print("cos(a, b)    =", (a @ b) / (np.linalg.norm(a) * np.linalg.norm(b)))
+print("a . b        =", a @ b)              # @ does the multiply-and-sum
+print("|a|          =", np.sqrt(a @ a))     # length, straight from the dot product
+print("cos(a, b)    =", (a @ b) / np.sqrt((a @ a) * (b @ b)))
 
-# projection of a onto b, and the orthogonal residual
-proj = (a @ b) / (b @ b) * b
+# projection of a onto b, and the leftover
+proj  = (a @ b) / (b @ b) * b
 resid = a - proj
 print("proj_b(a)    =", proj.round(4))
-print("residual . b =", (resid @ b).round(12), " <- zero, as promised")
+print("residual . b =", (resid @ b).round(12), " <- zero, as promised")`,
+      'Two things to notice: the length needs no special function (it is just the dot product with itself, square-rooted), and the residual really is orthogonal to b — the last line prints 0 up to floating-point dust.'),
 
-# the concentration of measure, empirically
-rng = np.random.default_rng(0)
-for d in [2, 10, 100, 1000]:
-    X = rng.normal(size=(2000, d))
-    X /= np.linalg.norm(X, axis=1, keepdims=True)
-    cos = (X[:1000] * X[1000:]).sum(1)
-    print(f"d={d:5d}  mean|cos|={np.abs(cos).mean():.4f}  (1/sqrt(d)={1/np.sqrt(d):.4f})")`,
-      'Run the last block and watch random vectors become orthogonal as dimension grows. This is not an accident of the sampler — it is the geometry.'),
-
-    quiz('Two embedding vectors have cosine similarity 0.95 but very different norms. What does that tell you?',
-      ['They encode nearly the same direction of meaning, but one is "stronger" — often just a longer or more frequent input',
+    quiz('Two embedding vectors have cosine similarity 0.95 but very different lengths. What does that tell you?',
+      ['They point in nearly the same direction, but one vector is longer — often because that input was longer or more common',
        'They are nearly identical vectors',
        'They are almost orthogonal',
-       'Nothing — cosine similarity is undefined for different norms'],
+       'Nothing — cosine similarity does not apply when the lengths differ'],
       0,
-      'Cosine measures **direction only**. High cosine with different magnitudes is extremely common in embeddings: token frequency and sequence length inflate norms without changing semantics. This is exactly why retrieval systems normalize before comparing.'),
+      'Cosine has both lengths divided out, so it reports direction and nothing else. High cosine with very different lengths is normal for embeddings: input length and word frequency inflate the norm without changing the meaning. That is the whole reason retrieval systems compare cosine instead of raw dot products.'),
 
-    recap(`- Read $\\mathbf{x} \\in \\mathbb{R}^d$ out loud as "a list of $d$ numbers", and know whether the
-  context wants the *point* reading or the *arrow* reading.
-- Compute a dot product, and read its **sign** as alignment: positive agrees, zero is orthogonal, negative opposes.
-- Explain why retrieval uses **cosine** rather than raw dot product.
-- Split any vector into "the part along $\\mathbf{b}$" plus "an orthogonal residual", and name three algorithms
-  built on that split.
-- Say why $L_1$ produces exact zeros and $L_2$ does not, pointing at the corners of a diamond.
-- State why 1000-dimensional space can hold far more than 1000 usable directions.`),
+    recap(`- Read $\\mathbf{x} \\in \\mathbb{R}^d$ out loud as "a list of $d$ numbers", and say whether a given
+  sentence wants the point picture or the arrow picture.
+- Compute a dot product by hand, and read its sign: positive means under 90°, zero means orthogonal, negative
+  means over 90°.
+- Explain why $\\mathbf{a}\\cdot\\mathbf{b} = \\|\\mathbf{a}\\|\\|\\mathbf{b}\\|\\cos\\theta$, starting from the
+  case where $\\mathbf{b}$ has length 1.
+- Get length and cosine similarity out of the dot product, and say why retrieval uses cosine.
+- Split a vector into a projection plus an orthogonal residual, and verify the residual is orthogonal.
+- Say why $L_1$ produces exact zeros and $L_2$ does not, pointing at the corners of the diamond.
+- Explain, using "variances add", why two random directions in 1000-D are almost certainly perpendicular.`),
   ],
   refs: [
     book('Mathematics for Machine Learning', 'Deisenroth, Faisal & Ong', 2020, 'https://mml-book.github.io/', 'Free PDF. Chapters 2–3 cover this material properly, with ML motivation throughout. The best single reference for this track.'),
     video('Essence of Linear Algebra', '3Blue1Brown', 2016, 'https://www.3blue1brown.com/topics/linear-algebra', 'If the geometric picture has not clicked, watch this before reading anything else. Fifteen short episodes.'),
     book('Introduction to Linear Algebra', 'Gilbert Strang', 2016, 'https://math.mit.edu/~gs/linearalgebra/', 'The classic. Pair it with his MIT 18.06 lectures, which are free.'),
     course('MIT 18.06 Linear Algebra', 'Gilbert Strang', 2011, 'https://ocw.mit.edu/courses/18-06-linear-algebra-spring-2010/', 'Full video lectures, problem sets, exams.'),
-    blog('A Few Useful Things to Know About Machine Learning', 'Pedro Domingos', 2012, 'https://homes.cs.washington.edu/~pedrod/papers/cacm12.pdf', 'Section on the curse of dimensionality is the clearest short treatment anywhere.'),
+    blog('A Few Useful Things to Know About Machine Learning', 'Pedro Domingos', 2012, 'https://homes.cs.washington.edu/~pedrod/papers/cacm12.pdf', 'The section on the curse of dimensionality is the clearest short treatment anywhere.'),
   ],
 },
 
