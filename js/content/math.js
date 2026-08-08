@@ -1889,74 +1889,92 @@ print("best of 500 nearby weights: ", round(best, 4), " <- never lower")`,
   prereq: ['math-probability'],
   tags: ['information theory', 'loss functions'],
   sections: [
-    tldr(`If you have ever typed \`nn.CrossEntropyLoss()\` and wondered where that formula came from, this is
-the lesson.
+    tldr(`If you have ever written \`cross_entropy(logits, labels)\` and wondered where that formula came from,
+this is the lesson.
 
-The chain is short. **Surprise** is $-\\log p$. **Entropy** is average surprise — the true cost of describing
-data from a distribution. **Cross-entropy** is what it costs when your model is wrong about that distribution.
-**KL divergence** is the excess: exactly how much extra you pay for being wrong. Minimising cross-entropy,
-minimising KL, and maximising likelihood are all literally the same computation with three different names.`),
+The chain is short. **Surprise** at an outcome is $-\\log p$. **Entropy** is the average surprise a distribution
+produces, and it turns out to equal the minimum number of bits needed to write data down. **Cross-entropy** is
+what you pay when your model is wrong about the distribution. **KL divergence** is the excess — exactly how many
+bits your wrongness costs.
+
+The punchline is that minimising cross-entropy, minimising KL divergence, and maximising likelihood are three
+names for one computation. Knowing that turns a wall of unfamiliar vocabulary into a single idea.`),
 
     jargon([
-      ['bit / nat', 'A unit of information. Bits use $\\log_2$, nats use $\\log_e$. Code uses nats (natural log is faster and cleaner to differentiate); textbooks often use bits because they are easier to interpret. The only difference is a constant factor.'],
-      ['surprise / surprisal', '$-\\log p(x)$. How startling it is that outcome $x$ happened. Certain events carry zero surprise; impossible ones carry infinite surprise.'],
-      ['entropy $H(p)$', 'Average surprise under $p$. Also: the minimum average bits needed to encode data drawn from $p$. High entropy = unpredictable.'],
-      ['cross-entropy $H(p, q)$', 'Average surprise when the truth is $p$ but your model says $q$. Always at least $H(p)$. **This is your classification loss.**'],
-      ['KL divergence $D_{\\text{KL}}(p\\|q)$', 'The gap $H(p,q) - H(p)$ — the bits wasted by using the wrong model. Never negative, zero only when $p = q$. Not a distance: it is asymmetric.'],
-      ['perplexity', '$e^{\\text{cross-entropy}}$. "How many options is the model effectively choosing between?" The standard language-model metric.'],
-      ['mutual information $I(X;Y)$', 'How many bits knowing $Y$ saves you when describing $X$. Zero exactly when they are independent.'],
-      ['logits', 'Raw model outputs before softmax. Can be any real number, positive or negative.'],
+      ['bit / nat', 'Units of information. Bits use $\\log_2$, nats use the natural log. Code uses nats because the natural log is cleaner to differentiate; textbooks often use bits because they are easier to interpret. The two differ only by a constant factor.'],
+      ['surprise', '$-\\log p(x)$: how startling it is that outcome $x$ happened. A certain event carries zero surprise; an impossible one carries infinite surprise.'],
+      ['entropy $H(p)$', 'The average surprise of a distribution, and also the minimum average number of bits needed to encode data drawn from it. High entropy means unpredictable.'],
+      ['cross-entropy $H(p, q)$', 'The average surprise when the truth is $p$ but your model says $q$. Always at least $H(p)$. **This is your classification loss.**'],
+      ['KL divergence $D_{\\text{KL}}(p\\|q)$', 'The gap $H(p,q) - H(p)$ — the bits wasted by using the wrong model. Never negative, and zero only when $p$ and $q$ match exactly. It is not a distance, because it is not symmetric.'],
+      ['empirical distribution', 'The distribution defined by your actual dataset: each observed example gets probability $1/n$. It is what "$p$" means in practice, since the true distribution is not available.'],
+      ['perplexity', '$e^{\\text{cross-entropy}}$. Roughly "how many options is the model effectively choosing between?" The standard language-model metric.'],
+      ['mutual information $I(X;Y)$', 'How many bits knowing $Y$ saves you when describing $X$. Zero exactly when the two are independent.'],
+      ['logits', 'Raw model outputs before softmax. They can be any real number, positive or negative.'],
     ]),
 
     t(`## Surprise, quantified
 
-Start with a question that sounds unanswerable: *how surprising is an event?*
+Start with a question that sounds unanswerable: *how surprising is an event?* You can pin the answer down by
+writing out what any sensible measure of surprise would have to do.
 
-It turns out you can pin the answer down by listing what any sensible measure of surprise must do:
+1. **It decreases as $p$ increases.** Rarer events are more surprising.
+2. **It is zero when $p = 1$.** A certain event surprises nobody.
+3. **It adds up for independent events.** Learning two unrelated facts should be exactly as surprising as
+   learning each of them separately.
 
-1. **Decreasing in $p$.** Rarer events are more surprising.
-2. **Zero when $p = 1$.** A certain event surprises no one.
-3. **Additive for independent events.** Learning two unrelated facts should be as surprising as the sum of
-   learning each separately.
-
-Exactly one function satisfies all three:
+Exactly one function does all three:
 
 $$I(x) = -\\log p(x)$$
 
-Property 3 is what forces the logarithm specifically — logs are the only functions turning multiplication (of
-independent probabilities) into addition. The minus sign is there because probabilities are below 1, so their
-logs are negative, and we want surprise to be a positive quantity.
+Requirement 3 is what forces a logarithm specifically. Independent probabilities *multiply*
+($p(x,y) = p(x)p(y)$), and we want the surprises to *add* — and the log is the function that turns
+multiplication into addition. The minus sign is there because probabilities are at most 1, so their logs are
+negative, and we want surprise to come out positive.
 
-Sanity-check it: an event with $p = 1/2$ carries $-\\log_2(1/2) = 1$ bit. One coin flip, one bit. An event with
-$p = 1/1024$ carries 10 bits — ten coin flips' worth of information. That matches intuition exactly.
+Check it against intuition. An event with $p = 1/2$ carries $-\\log_2(1/2) = 1$ bit: one coin flip, one bit. An
+event with $p = 1/1024$ carries 10 bits — ten coin flips' worth. That is exactly the scaling you would want.`),
 
-**Entropy** is then just the average surprise you expect from a distribution:
+    t(`## Entropy: average surprise, which is also a bit count
+
+**Entropy** is the average surprise you expect from a distribution:
 
 $$H(p) = -\\sum_x p(x)\\log p(x) = \\mathbb{E}_{x\\sim p}[-\\log p(x)]$$
 
-It is largest for the uniform distribution (nothing is predictable, every outcome equally startling) and zero
-for a point mass (you always know what is coming). And Shannon's source coding theorem gives it a hard
-operational meaning, not merely a suggestive one: **$H(p)$ is the minimum average number of bits needed to
-encode samples from $p$.** No compression scheme can do better. That is a theorem, not a heuristic.`),
+It is largest for the uniform distribution — nothing is predictable, so every outcome is equally startling — and
+zero when one outcome has probability 1, because then you always know what is coming.
 
-    t(`## Cross-entropy: the cost of coding with the wrong model
+Now the claim that makes entropy more than a definition: **$H(p)$ is the smallest average number of bits needed
+to write down samples from $p$.** Not approximately, and not as an analogy. It is Shannon's source coding
+theorem, and no compression scheme can beat it. Here is a small case where you can see it happen.`),
 
-Now the case that matters for training. The truth is $p$, but your model believes $q$, and you built your code
-around $q$. What do you pay?
+    steps('Entropy as a bit count, on four outcomes', [
+      { h: 'The distribution', md: `Four messages with probabilities $\\tfrac12, \\tfrac14, \\tfrac18, \\tfrac18$. If you insisted on fixed-length codes you would need 2 bits each, for an average of 2.` },
+      { h: 'Give the common message the short code', md: `Assign \`0\` to the first message, \`10\` to the second, \`110\` to the third, \`111\` to the fourth. No code is the start of another, so a receiver can decode a stream with no separators.` },
+      { h: 'Compute the average length', md: `$\\tfrac12(1) + \\tfrac14(2) + \\tfrac18(3) + \\tfrac18(3) = 1.75$ bits — better than 2, because the frequent message got the short code.` },
+      { h: 'Compare with the entropy', md: `$H(p) = \\tfrac12(1) + \\tfrac14(2) + \\tfrac18(3) + \\tfrac18(3) = 1.75$ bits. Identical, and not by luck: the code length we assigned to each message was $-\\log_2 p$, which is what the entropy formula averages.` },
+      { h: 'The general rule', md: `An outcome of probability $p$ deserves a code of length $-\\log_2 p$, and entropy is the average of those lengths. Give a rare outcome a short code and you have to make a common one longer, which costs more than it saves. That is the theorem, in one sentence.` },
+    ]),
 
-You are still drawing events from $p$ — that is reality, and it does not care what you believe. But your cost
-per event, $-\\log q(x)$, is set by your model. So your average bill is:
+    t(`## Cross-entropy: the cost of using the wrong model
 
-$$H(p,q) = -\\sum_x p(x)\\log q(x) \\qquad \\text{(weight by reality } p \\text{, pay by belief } q\\text{)}$$
+Now the case that matters for training. Reality is $p$, but your model believes $q$, and you built your code
+around $q$ — the message you *thought* was common got the short code.
 
-That is **cross-entropy**, and it is precisely the loss function every classifier and language model minimises.
+The events still arrive from $p$; reality does not care what you believe. But your cost per event,
+$-\\log q(x)$, comes from your model. So the average bill is
 
-You are clearly paying more than you had to. The excess is the **KL divergence**:
+$$H(p,q) = -\\sum_x p(x)\\log q(x) \\qquad \\text{weight by reality } p,\\text{ pay by belief } q$$
 
-$$D_{\\text{KL}}(p\\,\\|\\,q) = \\underbrace{H(p,q)}_{\\text{what you paid}} - \\underbrace{H(p)}_{\\text{the best possible}} = \\sum_x p(x)\\log\\frac{p(x)}{q(x)} \\;\\ge\\; 0$$
+That is **cross-entropy**, and it is exactly the loss that every classifier and language model minimises. When
+$q$ puts almost no probability on something that actually happens, $-\\log q$ is huge, and the loss punishes you
+hard — which is the behaviour you want.
 
-It is never negative — you can never beat the true entropy — and it is zero only when $q = p$ exactly. That
-result is Gibbs' inequality.`),
+You are obviously paying more than the best possible 1.75-bits-style price. The excess has a name:
+
+$$D_{\\text{KL}}(p\\,\\|\\,q) = \\underbrace{H(p,q)}_{\\text{what you paid}} - \\underbrace{H(p)}_{\\text{the best possible}} = \\sum_x p(x)\\log\\frac{p(x)}{q(x)}$$
+
+Because $H(p)$ was the *minimum*, this excess can never be negative, and it is zero only when $q$ matches $p$
+exactly. So the KL divergence is a measure of how wrong your model is, in units of wasted bits.`),
 
     diagram('The three quantities, and how they stack',
 `<svg viewBox="0 0 600 190" role="img" aria-label="Cross-entropy equals entropy plus KL divergence">
@@ -1972,54 +1990,46 @@ result is Gibbs' inequality.`),
   <text class="dlabel" x="350" y="36" text-anchor="middle">your model's error</text>
   <text class="dlabel" x="60" y="168">Training can only shrink the right-hand block. The left one is a property of the world.</text>
 </svg>`,
-      `This picture explains why training loss plateaus above zero and *should*. $H(p)$ is the intrinsic
-unpredictability of the data — the irreducible noise. A perfect model still pays it. If your language-model loss
-bottoms out around 2.0 nats, that is not a failure to converge; a good chunk of it is English simply not being
-deterministic.`),
+      `This picture explains why training loss plateaus above zero and *should*. $H(p)$ is how unpredictable the
+data is in the first place, and a perfect model still pays it. If your language model's loss bottoms out around
+2.0 nats, that is not a failure to converge — a good part of it is English simply not being deterministic.`),
 
     viz('entropy-kl'),
 
     key(`Training a classifier or a language model minimises cross-entropy $H(p, q_\\theta)$, where $p$ is the
 empirical data distribution and $q_\\theta$ is your model.
 
-Now look at the decomposition: $H(p, q_\\theta) = H(p) + D_{\\text{KL}}(p\\|q_\\theta)$. The first term has no
-$\\theta$ in it — it is fixed by the data. So **minimising cross-entropy is identical to minimising
-$D_{\\text{KL}}(p\\|q_\\theta)$**, which (expand the definitions) is identical to maximising likelihood.
+Now use the decomposition: $H(p, q_\\theta) = H(p) + D_{\\text{KL}}(p\\|q_\\theta)$. The first term contains no
+$\\theta$ — it is fixed by the data, and no choice you make moves it. So **minimising cross-entropy is exactly
+minimising $D_{\\text{KL}}(p\\|q_\\theta)$**. And expanding $-\\sum_x p(x)\\log q_\\theta(x)$ over an empirical
+distribution gives $-\\frac{1}{n}\\sum_i \\log q_\\theta(x_i)$, which is the negative log-likelihood from
+[the last lesson](#/l/math-probability).
 
-Three names, one objective. When one paper says "we minimise the KL to the data distribution" and another says
-"we maximise likelihood" and your code says \`cross_entropy\`, all three are running the same arithmetic. This is
-worth knowing purely so that the vocabulary stops being intimidating.`),
-
-    viz('entropy-kl'),
-
-    key(`Training a classifier or a language model minimizes cross-entropy $H(p, q_\\theta)$ where $p$ is the empirical
-data distribution. Since $H(p)$ does not depend on $\\theta$, **minimizing cross-entropy is identical to minimizing
-$D_{\\text{KL}}(p\\|q_\\theta)$**, which is identical to maximum likelihood.
-
-Three names, one objective. When a paper says "we minimize the KL to the data distribution" and another says "we
-maximize likelihood," they are doing the same arithmetic.`),
+Three names, one objective. When one paper says "we minimise the KL to the data distribution", another says "we
+maximise likelihood", and your code says \`cross_entropy\`, all three are running the same arithmetic.`),
 
     t(`## KL is not symmetric, and the asymmetry has consequences
 
-$D_{\\text{KL}}(p\\|q) \\ne D_{\\text{KL}}(q\\|p)$. This is not a technicality to file away — swapping the
-arguments produces qualitatively different models, and knowing which one an algorithm minimises tells you in
-advance how it will fail.
+$D_{\\text{KL}}(p\\|q)$ and $D_{\\text{KL}}(q\\|p)$ are different numbers. This is not a technicality to file
+away: swapping the arguments produces qualitatively different models, and knowing which direction a method
+minimises tells you in advance how it will fail.
 
-Look at where each version blows up. In $\\sum p \\log(p/q)$, the terms are weighted by $p$, so only places
-where $p$ has mass can contribute. If $q$ is near zero somewhere $p$ is not, that term goes to infinity.
+The reason is which distribution does the weighting. In $\\sum_x p(x)\\log\\frac{p(x)}{q(x)}$, every term is
+multiplied by $p(x)$, so only places where $p$ has probability can contribute anything at all.
 
-**Forward KL, $D(p\\|q)$ — "mass covering."** Infinite penalty for putting near-zero probability where the data
-has mass. So $q$ is forced to stretch over everything $p$ covers, even if that means smearing probability across
-empty regions in between. **Maximum likelihood minimises this**, which is why fitting a single Gaussian to a
-two-humped distribution lands it in the valley between the humps, covering both badly and the middle wrongly.
+**Forward KL, $D(p\\|q)$ — covers everything.** Wherever $p$ has mass, a near-zero $q$ makes $\\log(p/q)$ blow
+up. So $q$ is forced to stretch over everything $p$ covers, even if that means spreading probability across
+empty space in between. **Maximum likelihood minimises this direction**, which is why fitting a single bell
+curve to a two-humped distribution puts the curve in the valley between the humps: covering both, fitting
+neither.
 
-**Reverse KL, $D(q\\|p)$ — "mode seeking."** Now the weights are $q$'s, so the penalty is for $q$ putting mass
-where $p$ has none. $q$ is free to ignore entire modes; it must only avoid hallucinating. **Variational
-inference minimises this**, which is exactly why VI is notorious for underestimating posterior variance — and
-why an RL policy trained with a KL penalty against a reference model collapses toward a narrow, safe subset of
-its behaviour rather than covering it.`),
+**Reverse KL, $D(q\\|p)$ — picks one peak.** Now the weights are $q(x)$, so wherever $q$ is near zero the term
+vanishes regardless of what $p$ does there. $q$ is free to ignore entire regions; its only obligation is to not
+put mass where $p$ has none. **Variational inference minimises this direction**, which is why it is known for
+producing over-confident, too-narrow answers — and why a reinforcement-learning policy trained with a KL penalty
+against a reference model tends to collapse onto a narrow, safe subset of its original behaviour.`),
 
-    diagram('The same bimodal target, fitted two ways',
+    diagram('The same two-humped target, fitted two ways',
 `<svg viewBox="0 0 620 200" role="img" aria-label="Forward KL covers both modes badly, reverse KL picks one mode">
   <g transform="translate(15,0)">
     <path d="M20,150 C60,150 60,60 100,60 C140,60 130,150 155,150 C180,150 175,70 210,70 C245,70 250,150 280,150"
@@ -2032,106 +2042,100 @@ its behaviour rather than covering it.`),
     <path d="M20,150 C60,150 60,60 100,60 C140,60 130,150 155,150 C180,150 175,70 210,70 C245,70 250,150 280,150"
           style="fill:none; stroke: var(--text-faint); stroke-width: 2; stroke-dasharray: 4 3"/>
     <path d="M45,150 C75,150 75,62 100,62 C125,62 125,150 155,150" style="fill: color-mix(in srgb, var(--s4) 14%, transparent); stroke: var(--s4); stroke-width: 2.4"/>
-    <text class="dtitle" x="20" y="178" style="fill: var(--s4)">reverse KL — picks one mode, ignores the rest</text>
+    <text class="dtitle" x="20" y="178" style="fill: var(--s4)">reverse KL — picks one peak, ignores the rest</text>
     <text class="dlabel" x="20" y="30">variational inference, RL with a KL penalty</text>
   </g>
 </svg>`,
-      `Dashed grey is the truth in both panels. Neither fit is "wrong" — they optimise different things. When a
-generative model produces bland averaged-out samples, suspect forward KL; when it produces confident but
-low-diversity output, suspect reverse KL.`),
+      `The dashed grey curve is the truth in both panels. Neither fit is wrong; they optimise different things.
+When a generative model produces bland averaged-out samples, suspect forward KL. When it produces confident
+output with very little variety, suspect reverse KL.`),
 
     t(`## Perplexity
 
-Language modelling reports **perplexity** rather than raw loss. It is nothing new — just cross-entropy run back
-through an exponential:
+Language modelling usually reports **perplexity** rather than raw loss. It is not a new quantity — it is
+cross-entropy run back through an exponential:
 
-$$\\text{PPL} = \\exp\\!\\left(\\frac{1}{N}\\sum_{i=1}^{N} -\\log q(x_i\\mid x_{<i})\\right) = e^{\\text{cross-entropy}}$$
+$$\\text{PPL} = \\exp\\!\\left(\\frac{1}{N}\\sum_{i=1}^{N} -\\log q(x_i\\mid x_{<i})\\right) = e^{\\,\\text{cross-entropy}}$$
 
-The exponential is there to make the number interpretable. Cross-entropy is measured in bits or nats, which
-few people have intuition for. Perplexity converts it to **the effective number of equally likely options the
-model is choosing between at each step**. Perplexity 10 means "about as uncertain as picking uniformly from 10
-tokens". Perplexity 1 would be perfect prediction; perplexity equal to your vocabulary size means the model has
-learned nothing.
+The exponential is there to make the number interpretable. Cross-entropy is measured in nats, which few people
+have intuition for. Exponentiating converts it into **the effective number of equally likely options the model
+is choosing between at each step**. Perplexity 10 means "about as uncertain as picking uniformly from 10
+tokens". Perplexity 1 would be perfect prediction; perplexity equal to the vocabulary size means the model has
+learned nothing at all.
 
-One caution that bites people comparing models: **perplexity depends on the tokenizer.** A model with a bigger
-vocabulary packs more text into each token, so its per-token perplexity is smaller without the model being any
-better. Comparing perplexities across different tokenizers is meaningless. **Bits-per-byte** normalises by raw
-text length instead and is the number to use for cross-model comparison.`),
+One caution that catches people comparing models: **perplexity depends on the tokenizer.** A model with a larger
+vocabulary fits more text into each token, so it makes fewer, easier predictions per page and its per-token
+perplexity drops — without the model being any better. Comparing perplexities across different tokenizers is
+meaningless. **Bits per byte**, which normalises by raw text length instead, is the number to use for
+cross-model comparison.`),
 
     t(`## Mutual information
 
-The last piece of vocabulary. **Mutual information** asks: how much does knowing one variable tell you about
-another?
+One last piece of vocabulary, because it shows up whenever people discuss what a representation has learned.
+**Mutual information** asks how much knowing one variable tells you about another:
 
 $$I(X;Y) = \\underbrace{H(X)}_{\\text{uncertainty about } X} - \\underbrace{H(X\\mid Y)}_{\\text{uncertainty left after seeing } Y}$$
 
-Literally "bits of uncertainty removed". Equivalently it is a KL divergence — between the true joint
-distribution and the fake one you would get if $X$ and $Y$ were independent:
+Literally: bits of uncertainty removed. If $Y$ tells you nothing, the two terms are equal and $I = 0$. If $Y$
+determines $X$ completely, the second term is 0 and $I$ is the full entropy of $X$.
 
-$$I(X;Y) = D_{\\text{KL}}\\big(p(x,y)\\,\\|\\,p(x)p(y)\\big)$$
-
-Read that as measuring *how far from independent they are*. It is zero exactly when knowing $Y$ tells you
-nothing about $X$.
-
-Where it shows up: feature selection (keep features with high MI to the label), the information-bottleneck
-account of what representation learning does, and — most importantly for this atlas — as the quantity that
-contrastive objectives like InfoNCE secretly lower-bound. When CLIP or SimCLR pull matching pairs together and
-push non-matching pairs apart, the thing being maximised is a bound on mutual information.`),
+It shows up in feature selection (keep the features that share the most information with the label) and, most
+relevantly for this atlas, as the quantity that contrastive training objectives approximately maximise. When
+[CLIP](#/l/vis-clip) pulls matching image–text pairs together and pushes non-matching ones apart, the thing being
+maximised is a lower bound on the mutual information between the image and its caption.`),
 
     code('Entropy, cross-entropy, KL — and the stable way to compute them', `import numpy as np
 
-def entropy(p):        return -np.sum(p * np.log2(p + 1e-12))
-def cross_entropy(p,q): return -np.sum(p * np.log2(q + 1e-12))
-def kl(p, q):          return np.sum(p * np.log2((p + 1e-12) / (q + 1e-12)))
+def entropy(p):         return -np.sum(p * np.log2(p + 1e-12))
+def cross_entropy(p, q): return -np.sum(p * np.log2(q + 1e-12))
+def kl(p, q):           return np.sum(p * np.log2((p + 1e-12) / (q + 1e-12)))
 
-p = np.array([0.5, 0.25, 0.15, 0.10])
+p = np.array([0.5, 0.25, 0.125, 0.125])        # the four-message example from above
 q = np.array([0.25, 0.25, 0.25, 0.25])
 
-print(f"H(p)      = {entropy(p):.4f} bits")
-print(f"H(q)      = {entropy(q):.4f} bits   <- uniform is maximal")
+print(f"H(p)      = {entropy(p):.4f} bits   <- the 1.75 we computed by hand")
+print(f"H(q)      = {entropy(q):.4f} bits   <- uniform is the maximum")
 print(f"H(p,q)    = {cross_entropy(p,q):.4f}")
-print(f"KL(p||q)  = {kl(p,q):.4f}")
-print(f"KL(q||p)  = {kl(q,p):.4f}   <- asymmetric!\\n")
+print(f"KL(p||q)  = {kl(p,q):.4f}   = H(p,q) - H(p)")
+print(f"KL(q||p)  = {kl(q,p):.4f}   <- a different number: KL is not symmetric\\n")
 
-# Why frameworks fuse softmax with cross-entropy
-logits = np.array([50.0, 51.0, 49.0])          # large logits
-naive_p = np.exp(logits) / np.exp(logits).sum()  # overflows in float32
-print("naive softmax:", naive_p)
+# why frameworks fuse softmax with cross-entropy
+logits = np.array([800.0, 801.0, 799.0])
+print("naive softmax:", np.exp(logits) / np.exp(logits).sum(), " <- exp(800) overflows")
 
 def log_softmax(z):
-    z = z - z.max()                             # the stabilizing shift
+    z = z - z.max()                             # subtracting a constant changes nothing
     return z - np.log(np.exp(z).sum())
 
 target = 1
-print("stable NLL   :", -log_softmax(logits)[target])
+print("stable -log q:", -log_softmax(logits)[target])
 print("perplexity   :", np.exp(-log_softmax(logits)[target]))`,
-      'The `z - z.max()` shift is mathematically a no-op (softmax is shift-invariant) and numerically essential. This is why you should always use your framework\'s fused `cross_entropy(logits, target)` rather than `log(softmax(logits))`.'),
+      'The `z - z.max()` shift does nothing mathematically — softmax is unchanged if you subtract a constant from every logit, since the constant cancels between numerator and denominator — but it is the difference between a number and a `nan`. This is why you should always hand raw logits to your framework\'s fused cross-entropy rather than computing `log(softmax(x))` yourself.'),
 
     quiz('A language model reports perplexity 8 on a test set. What does that mean?',
-      ['On average it is as uncertain about the next token as if choosing uniformly among 8 options',
-       'It gets 1 in 8 tokens correct',
+      ['On average it is as uncertain about the next token as if it were choosing uniformly among 8 options',
+       'It predicts 1 token in 8 correctly',
        'Its cross-entropy is 8 bits per token',
-       'It needs 8 tokens of context to make a prediction'],
+       'It needs 8 tokens of context before it can make a prediction'],
       0,
-      'Perplexity is $e^{H(p,q)}$ — the *effective branching factor*. Cross-entropy here is $\\log_2 8 = 3$ bits per token, not 8. And it is not an accuracy: a model can have low perplexity while rarely making the single most likely choice, because it spreads probability sensibly.'),
+      'Perplexity is $e^{H(p,q)}$, an effective branching factor. The cross-entropy behind it is $\\log_2 8 = 3$ bits per token, not 8 — so the third option confuses the number with its own logarithm. And it is not an accuracy: a model can have low perplexity while rarely picking the single most likely token, because spreading probability sensibly across plausible options is exactly what cross-entropy rewards.'),
 
-    recap(`- Derive $-\\log p$ as the only sensible measure of surprise, from three requirements.
-- Explain entropy as both "average surprise" and "the minimum bits to encode this data", and say why the second
-  is a theorem rather than an analogy.
-- Write cross-entropy as $H(p) + D_{\\text{KL}}(p\\|q)$ and use it to explain why training loss plateaus above zero.
-- State why minimising cross-entropy, minimising KL, and maximising likelihood are the same computation.
-- Predict whether a method will smear across modes or collapse onto one, from which direction of KL it minimises.
-- Interpret a perplexity number, and say why perplexities across different tokenizers cannot be compared.`),
+    recap(`- Derive $-\\log p$ as the only sensible measure of surprise, from three requirements, and say which one
+  forces the logarithm.
+- Explain entropy as both average surprise and a minimum bit count, and show the two agree on a small example.
+- Write cross-entropy as $H(p) + D_{\\text{KL}}(p\\|q)$ and use it to explain why training loss plateaus above
+  zero.
+- Say why minimising cross-entropy, minimising KL, and maximising likelihood are one computation.
+- Predict whether a method will smear across peaks or collapse onto one, from which direction of KL it minimises.
+- Interpret a perplexity number, and say why perplexities from different tokenizers cannot be compared.`),
   ],
   refs: [
     paper('A Mathematical Theory of Communication', 'Claude Shannon', 1948, 'https://people.math.harvard.edu/~ctm/home/text/others/shannon/entropy/entropy.pdf', 'The founding paper. Genuinely readable, and worth reading in the original.'),
-    book('Information Theory, Inference, and Learning Algorithms', 'David MacKay', 2003, 'https://www.inference.org.uk/mackay/itila/', 'Chapters 1–6. Free PDF.'),
-    blog('KL Divergence for Machine Learning', 'Will Kurt', 2017, 'https://www.countbayesie.com/blog/2017/5/9/kullback-leibler-divergence-explained', 'Clear, concrete, worked example.'),
+    book('Information Theory, Inference, and Learning Algorithms', 'David MacKay', 2003, 'https://www.inference.org.uk/mackay/itila/', 'Chapters 1–6 cover this lesson properly, including the coding argument. Free PDF.'),
+    blog('KL Divergence for Machine Learning', 'Will Kurt', 2017, 'https://www.countbayesie.com/blog/2017/5/9/kullback-leibler-divergence-explained', 'One clear worked example, carried all the way through.'),
     paper('Representation Learning with Contrastive Predictive Coding', 'van den Oord et al.', 2018, 'https://arxiv.org/abs/1807.03748', 'InfoNCE — the mutual-information bound behind CLIP and SimCLR.'),
   ],
 },
-
-/* ---------------------------------------------------------- */
 {
   id: 'math-optimization',
   title: 'Optimization: Gradient Descent and Its Descendants',

@@ -604,48 +604,95 @@ never appears in the answer. Your noise assumption picks the *shape* of the loss
 not move the optimum at all.`,
 },
 'math-information': {
-  title: 'Cross-entropy, KL, and why softmax needs the max-shift',
-  prompt: `Implement entropy, cross-entropy and KL in bits. Verify $\\mathrm{KL}(p\\|q) = H(p,q) - H(p) \\ge 0$ and
-that it is asymmetric. Then write a numerically stable \`log_softmax\` and show the naive version overflows.`,
-  hint: 'Softmax is shift-invariant: subtract `z.max()` before exponentiating.',
+  title: 'Measure the KL gap, then watch the two directions fit differently',
+  prompt: `Three parts. The third is the interesting one.
+
+1. Write \`entropy\`, \`cross_entropy\` and \`kl\` in bits, and let the assertions confirm
+   $D_{\\text{KL}}(p\\|q) = H(p,q) - H(p)$, that it is never negative, and that it is not symmetric.
+2. Write a numerically stable \`log_softmax\` using the max-shift, and compare it against the naive version.
+3. Then run the last block, which fits a single bell curve to a two-humped target — once by minimising
+   $D_{\\text{KL}}(p\\|q)$ and once by minimising $D_{\\text{KL}}(q\\|p)$. **Predict where each one lands
+   before you run it.**`,
+  hint: 'Add a tiny constant inside every log so that a zero probability does not produce `-inf`. For `log_softmax`, subtract `z.max()` first — the softmax is unchanged by it, but `exp` no longer overflows.',
   starter: `import numpy as np
 
-def entropy(p):        return 0.0   # TODO
-def cross_entropy(p,q): return 0.0  # TODO
-def kl(p, q):          return 0.0   # TODO
+def entropy(p):          return 0.0   # TODO
+def cross_entropy(p, q): return 0.0   # TODO
+def kl(p, q):            return 0.0   # TODO
 
-p = np.array([0.5, 0.25, 0.15, 0.10])
+p = np.array([0.5, 0.25, 0.125, 0.125])
 q = np.array([0.25, 0.25, 0.25, 0.25])
 
 print(f"H(p)     = {entropy(p):.4f} bits")
-print(f"H(p,q)   = {cross_entropy(p,q):.4f}")
-print(f"KL(p||q) = {kl(p,q):.4f}")
-print(f"KL(q||p) = {kl(q,p):.4f}   <- different!")
+print(f"H(p,q)   = {cross_entropy(p, q):.4f}")
+print(f"KL(p||q) = {kl(p, q):.4f}")
+print(f"KL(q||p) = {kl(q, p):.4f}   <- a different number")
 
-assert abs(kl(p,q) - (cross_entropy(p,q) - entropy(p))) < 1e-9, "KL identity failed"
-assert kl(p,q) >= 0 and abs(kl(p,p)) < 1e-9, "KL must be >= 0 and 0 iff p==q"
-print("\\nPASS\\n")
+assert abs(entropy(p) - 1.75) < 1e-6, "the hand-computed example should give 1.75 bits"
+assert abs(kl(p, q) - (cross_entropy(p, q) - entropy(p))) < 1e-9, "KL identity failed"
+assert kl(p, q) >= 0 and abs(kl(p, p)) < 1e-9, "KL must be >= 0, and 0 only when p == q"
 
+# nothing beats the truth: no q does better than q = p
+worst = min(cross_entropy(p, r / r.sum())
+            for r in np.random.default_rng(0).random((3000, 4)) + 1e-3)
+assert worst >= entropy(p) - 1e-9, "something scored below the entropy -- impossible"
+print(f"\\nbest of 3000 random models: {worst:.4f}  vs  H(p) = {entropy(p):.4f}")
+print("PASS\\n")
+
+# ---------- part 2: the max-shift ----------
 def log_softmax(z):
     # TODO: stable version
     return z
 
 big = np.array([800.0, 801.0, 799.0])
 print("naive :", np.log(np.exp(big) / np.exp(big).sum()))
-print("stable:", log_softmax(big))`,
+print("stable:", log_softmax(big))
+assert np.isfinite(log_softmax(big)).all(), "still overflowing"
+
+# ---------- part 3: the two directions of KL ----------
+grid = np.linspace(-6, 10, 400)
+def gauss(mu, sd):
+    d = np.exp(-0.5 * ((grid - mu) / sd)**2)
+    return d / d.sum()
+
+target = 0.5 * gauss(0.0, 0.8) + 0.5 * gauss(5.0, 0.8)     # two humps
+
+def best_fit(direction):
+    best = (np.inf, None)
+    for mu in np.linspace(-4, 9, 131):
+        for sd in np.linspace(0.3, 6.0, 115):
+            q_ = gauss(mu, sd)
+            d = kl(target, q_) if direction == "forward" else kl(q_, target)
+            if d < best[0]:
+                best = (d, (mu, sd))
+    return best[1]
+
+print("\\nfitting one bell curve to humps at 0 and 5:")
+print("  forward KL(target||q) picks mu, sd =", np.round(best_fit("forward"), 2))
+print("  reverse KL(q||target) picks mu, sd =", np.round(best_fit("reverse"), 2))`,
   solution: `import numpy as np
 
-def entropy(p):         return -np.sum(p * np.log2(p + 1e-12))
-def cross_entropy(p,q): return -np.sum(p * np.log2(q + 1e-12))
-def kl(p, q):           return np.sum(p * np.log2((p + 1e-12) / (q + 1e-12)))
+def entropy(p):          return -np.sum(p * np.log2(p + 1e-12))
+def cross_entropy(p, q): return -np.sum(p * np.log2(q + 1e-12))
+def kl(p, q):            return np.sum(p * np.log2((p + 1e-12) / (q + 1e-12)))
 
-p = np.array([0.5, 0.25, 0.15, 0.10])
+p = np.array([0.5, 0.25, 0.125, 0.125])
 q = np.array([0.25, 0.25, 0.25, 0.25])
-print(f"H(p) = {entropy(p):.4f}   H(p,q) = {cross_entropy(p,q):.4f}")
-print(f"KL(p||q) = {kl(p,q):.4f}   KL(q||p) = {kl(q,p):.4f}")
-assert abs(kl(p,q) - (cross_entropy(p,q) - entropy(p))) < 1e-9
-assert kl(p,q) >= 0 and abs(kl(p,p)) < 1e-9
-print("\\nPASS\\n")
+
+print(f"H(p)     = {entropy(p):.4f} bits")
+print(f"H(p,q)   = {cross_entropy(p, q):.4f}")
+print(f"KL(p||q) = {kl(p, q):.4f}")
+print(f"KL(q||p) = {kl(q, p):.4f}   <- a different number")
+
+assert abs(entropy(p) - 1.75) < 1e-6
+assert abs(kl(p, q) - (cross_entropy(p, q) - entropy(p))) < 1e-9
+assert kl(p, q) >= 0 and abs(kl(p, p)) < 1e-9
+
+worst = min(cross_entropy(p, r / r.sum())
+            for r in np.random.default_rng(0).random((3000, 4)) + 1e-3)
+assert worst >= entropy(p) - 1e-9
+print(f"\\nbest of 3000 random models: {worst:.4f}  vs  H(p) = {entropy(p):.4f}")
+print("PASS\\n")
 
 def log_softmax(z):
     z = z - z.max()
@@ -653,10 +700,38 @@ def log_softmax(z):
 
 big = np.array([800.0, 801.0, 799.0])
 print("naive :", np.log(np.exp(big) / np.exp(big).sum()))
-print("stable:", log_softmax(big))`,
-  explain: 'The naive version produces `nan` because `exp(800)` overflows to `inf`. The max-shift is mathematically a no-op and numerically essential — it is why you should always call your framework\'s fused `cross_entropy(logits, target)`.',
-},
+print("stable:", log_softmax(big))
+assert np.isfinite(log_softmax(big)).all()
 
+grid = np.linspace(-6, 10, 400)
+def gauss(mu, sd):
+    d = np.exp(-0.5 * ((grid - mu) / sd)**2)
+    return d / d.sum()
+
+target = 0.5 * gauss(0.0, 0.8) + 0.5 * gauss(5.0, 0.8)
+
+def best_fit(direction):
+    best = (np.inf, None)
+    for mu in np.linspace(-4, 9, 131):
+        for sd in np.linspace(0.3, 6.0, 115):
+            q_ = gauss(mu, sd)
+            d = kl(target, q_) if direction == "forward" else kl(q_, target)
+            if d < best[0]:
+                best = (d, (mu, sd))
+    return best[1]
+
+print("\\nfitting one bell curve to humps at 0 and 5:")
+print("  forward KL(target||q) picks mu, sd =", np.round(best_fit("forward"), 2))
+print("  reverse KL(q||target) picks mu, sd =", np.round(best_fit("reverse"), 2))`,
+  explain: `Part 1 is the KL identity and Gibbs' inequality, checked rather than believed: three thousand random
+models and not one scores below $H(p)$, because $H(p)$ is a floor nothing can go under.
+
+Part 3 is the asymmetry made concrete. Forward KL lands the curve between the two humps and stretches it wide,
+because it is punished for putting near-zero probability anywhere the target has mass. Reverse KL parks a narrow
+curve on one hump and pretends the other does not exist, because a region where $q$ is zero costs it nothing.
+Neither answer is wrong; they are answers to different questions. Now you can predict, from the objective alone,
+whether a method will produce blurry averages or confident narrow output.`,
+},
 'math-optimization': {
   title: 'Implement SGD, momentum, and Adam — then break them',
   prompt: `Write all three update rules for an ill-conditioned quadratic. Verify plain GD diverges above
