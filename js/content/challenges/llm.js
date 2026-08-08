@@ -1045,35 +1045,95 @@ paying for it in reliability.`,
 },
 
 'llm-prompting': {
-  title: 'Simulate self-consistency and find where it stops helping',
-  prompt: `Model majority voting over sampled reasoning chains. Show it helps when wrong answers scatter and does
-nothing when the model is *consistently* wrong — the failure mode people forget.`,
-  hint: 'Majority voting exploits the fact that there are many ways to be wrong and one way to be right.',
+  title: 'Turn depth into length, then find where self-consistency stops helping',
+  prompt: `1. **Chain-of-thought, mechanically.** The lesson said a transformer does a fixed amount of computation
+   per token, so a problem needing more serial steps than the model has layers cannot be solved in one pass —
+   and that emitting intermediate tokens buys more passes. Simulate exactly that with a task that requires
+   $k$ steps applied in order, and a "model" of fixed depth.
+2. **Self-consistency.** Implement majority voting over sampled reasoning chains. Find where it helps a lot,
+   and the case where it does nothing at all. **Predict the second case before you run it.**`,
+  hint: 'Part 1: a depth-$d$ model can apply at most $d$ compositions inside one forward pass; with a scratchpad it emits one intermediate result per token and can chain any number. Part 2: majority voting works because there is one way to be right and many ways to be wrong — so ask what happens when there is only one way to be wrong.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
+# ---------- 1. a task that needs k steps, in order ----------
+STEP = lambda x: (x*7 + 3) % 1000                  # applying this once is one "step"
+
+def truth(x, k):
+    for _ in range(k): x = STEP(x)
+    return int(x)
+
+def one_pass(x, k, depth):
+    """A model of the given depth gets that many serial steps in a single forward pass."""
+    # TODO: apply STEP min(k, depth) times and return the result
+    return int(x)
+
+def with_scratchpad(x, k, depth):
+    """Same model, but allowed to write each intermediate result out as a token
+       and read it back on the next forward pass."""
+    # TODO: emit one token per step; each forward pass need only do 1 step
+    return int(x)
+
+print(f"{'steps needed':>13} {'depth-4, one pass':>19} {'depth-4, scratchpad':>21}")
+for k in [1, 2, 4, 6, 10, 20]:
+    a = np.mean([one_pass(x, k, 4)       == truth(x, k) for x in range(200)])
+    b = np.mean([with_scratchpad(x, k, 4) == truth(x, k) for x in range(200)])
+    print(f"{k:13d} {a:19.2f} {b:21.2f}")
+
+assert all(one_pass(x, 4, 4) == truth(x, 4) for x in range(200)), "depth 4 should manage 4 steps"
+assert not all(one_pass(x, 9, 4) == truth(x, 9) for x in range(200)), "depth 4 should fail at 9 steps"
+assert all(with_scratchpad(x, 20, 4) == truth(x, 20) for x in range(200)), "the scratchpad should have no limit"
+print("PASS\\n")
+
+# ---------- 2. self-consistency ----------
 def majority_correct(p_correct, n_samples, n_wrong_modes, trials=3000):
-    """Fraction of trials where the majority answer is correct."""
+    """Fraction of trials in which the most common sampled answer is the right one."""
     wins = 0
     for _ in range(trials):
         counts = {}
         for _ in range(n_samples):
-            # TODO: with prob p_correct the answer is "correct",
-            #       otherwise it is one of n_wrong_modes distinct wrong answers
+            # TODO: with probability p_correct the chain lands on "correct";
+            #       otherwise it lands on one of n_wrong_modes distinct wrong answers
             ans = "correct"
             counts[ans] = counts.get(ans, 0) + 1
         if max(counts, key=counts.get) == "correct": wins += 1
     return wins / trials
 
-print("p=0.4, wrong answers scattered over 8 modes:")
+print("a model right 40% of the time, wrong answers scattered over 8 possibilities:")
 for n in [1, 3, 5, 11, 21, 41]:
-    print(f"  {n:3d} samples -> {majority_correct(0.4, n, 8):.3f}")
+    print(f"  {n:3d} sampled chains -> {majority_correct(0.4, n, 8):.3f}")
 
-print("\\nsame p, but how concentrated the wrong answers are:")
+print("\\nsame model, same 21 chains, varying how CONCENTRATED the wrong answers are:")
 for modes in [1, 2, 4, 8, 20]:
-    print(f"  {modes:2d} wrong mode(s) -> {majority_correct(0.4, 21, modes):.3f}")`,
+    print(f"  {modes:2d} distinct wrong answer(s) -> {majority_correct(0.4, 21, modes):.3f}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
+
+STEP = lambda x: (x*7 + 3) % 1000
+
+def truth(x, k):
+    for _ in range(k): x = STEP(x)
+    return int(x)
+
+def one_pass(x, k, depth):
+    for _ in range(min(k, depth)): x = STEP(x)
+    return int(x)
+
+def with_scratchpad(x, k, depth):
+    for _ in range(k):
+        x = one_pass(x, 1, depth)      # one step per emitted token
+    return int(x)
+
+print(f"{'steps needed':>13} {'depth-4, one pass':>19} {'depth-4, scratchpad':>21}")
+for k in [1, 2, 4, 6, 10, 20]:
+    a = np.mean([one_pass(x, k, 4)       == truth(x, k) for x in range(200)])
+    b = np.mean([with_scratchpad(x, k, 4) == truth(x, k) for x in range(200)])
+    print(f"{k:13d} {a:19.2f} {b:21.2f}")
+
+assert all(one_pass(x, 4, 4) == truth(x, 4) for x in range(200))
+assert not all(one_pass(x, 9, 4) == truth(x, 9) for x in range(200))
+assert all(with_scratchpad(x, 20, 4) == truth(x, 20) for x in range(200))
+print("PASS\\n")
 
 def majority_correct(p_correct, n_samples, n_wrong_modes, trials=3000):
     wins = 0
@@ -1083,19 +1143,37 @@ def majority_correct(p_correct, n_samples, n_wrong_modes, trials=3000):
             if rng.random() < p_correct:
                 ans = "correct"
             else:
-                ans = f"wrong_{rng.integers(n_wrong_modes)}"
+                ans = f"wrong{rng.integers(0, n_wrong_modes)}"
             counts[ans] = counts.get(ans, 0) + 1
         if max(counts, key=counts.get) == "correct": wins += 1
     return wins / trials
 
-print("p=0.4, wrong answers scattered over 8 modes:")
+print("a model right 40% of the time, wrong answers scattered over 8 possibilities:")
 for n in [1, 3, 5, 11, 21, 41]:
-    print(f"  {n:3d} samples -> {majority_correct(0.4, n, 8):.3f}")
+    print(f"  {n:3d} sampled chains -> {majority_correct(0.4, n, 8):.3f}")
 
-print("\\nsame p, but how concentrated the wrong answers are:")
+print("\\nsame model, same 21 chains, varying how CONCENTRATED the wrong answers are:")
 for modes in [1, 2, 4, 8, 20]:
-    print(f"  {modes:2d} wrong mode(s) -> {majority_correct(0.4, 21, modes):.3f}")
-print("\\nWith 1 wrong mode, voting is useless: the model is systematically wrong.")`,
+    print(f"  {modes:2d} distinct wrong answer(s) -> {majority_correct(0.4, 21, modes):.3f}")`,
+  explain: `Part 1 is chain-of-thought stripped to its skeleton. The depth-4 model is perfect while the task needs four
+steps or fewer, and then collapses to near zero — not because it is confused, but because it has run out of
+layers, and the fifth step has nowhere to happen. (The occasional non-zero score past that is coincidence: some
+inputs land on the right answer by luck.) Give the same model a scratchpad and it is correct at any
+depth, because each emitted token starts a *new* forward pass that can carry the computation one step further.
+
+That is the whole mechanism, and it explains the pattern of when chain-of-thought helps. Problems with genuine
+serial structure — arithmetic with carries, multi-hop lookups, tracing code — sit past the depth limit and gain
+enormously. Single-step recall was never depth-limited, and gains nothing. Note also what the simulation makes
+obvious: the intermediate tokens are not decoration, they are where the intermediate *state* is stored. That is
+why reasoning has to come **before** the answer — a token generated after the answer cannot influence a token
+that was already produced.
+
+Part 2: majority voting takes a model right 40% of the time up to around 90% with 41 samples, which looks like
+magic and is not. It works because correct answers all agree with each other while wrong answers scatter, so the
+correct answer is the only one that accumulates. Then read the second table: as the wrong answers concentrate,
+the benefit collapses, and with a single wrong answer that the model reaches 60% of the time, voting makes things
+**worse than one sample** — it reliably elects the mistake. Self-consistency does not detect errors. It amplifies
+agreement, and a systematically biased model agrees with itself.`,
 },
 
 'llm-rag': {
