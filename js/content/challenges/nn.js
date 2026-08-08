@@ -1041,33 +1041,67 @@ why stride and pooling exist — they grow the receptive field by multiplying ra
 },
 
 'nn-rnn': {
-  title: 'Watch a gradient vanish, then fix it with a gate',
-  prompt: `Compute $\\partial h_T/\\partial h_0$ for a vanilla RNN across sequence lengths and recurrent weights.
-Then show an LSTM-style additive cell state with forget gate 1.0 keeps the gradient at exactly 1.`,
-  hint: 'The vanilla gradient is $\\prod_t w\\,\\phi\'(z_t)$; the cell-state gradient is $\\prod_t f_t$.',
+  title: 'Measure how far back a gradient can reach, in both cell types',
+  prompt: `Whether a model can learn a long-range dependency comes down to one number: how much gradient still
+arrives at the early timesteps. Measure it.
+
+1. Write \`rnn_reach(T, w)\` — run a vanilla RNN forward for $T$ steps, then walk the chain backwards
+   multiplying by $w\\,\\phi'(z_t)$ at each step, and return what is left.
+2. Write \`lstm_reach(T, bias)\` — the same for an LSTM cell state, where the backward factor at each step is
+   just the forget gate $f = \\sigma(\\text{bias})$.
+3. Read the two tables. Then look at the last block, which asks the practical question: **at each setting, how
+   many steps back can a gradient travel before it drops below $10^{-4}$ and stops being usable?**`,
+  hint: 'For the vanilla cell the backward factor at step $t$ is `w * (1 - tanh(z_t)**2)`, using the pre-activation you cached going forward. For the LSTM, every step contributes the same factor $\\sigma(\\text{bias})$, so the total is that number raised to the power $T$.',
   starter: `import numpy as np
 
-def rnn_grad(T, w):
+def sigmoid(z): return 1/(1+np.exp(-z))
+
+def rnn_reach(T, w):
+    """How much of a gradient at step T survives back to step 0, in a vanilla RNN."""
     h, pres = 0.0, []
-    for t in range(T):
+    for t in range(T):                       # forward, caching pre-activations
         z = w*h + (1.0 if t == 0 else 0.0)
         pres.append(z); h = np.tanh(z)
-    # TODO: multiply w * tanh'(z_t) backwards over all T steps
+    # TODO: walk backwards, multiplying by w * tanh'(z_t) at each step
     return 1.0
 
-print("vanilla RNN, d h_T / d h_0:")
+def lstm_reach(T, bias):
+    """The same, through an LSTM cell state whose forget gate is sigmoid(bias)."""
+    # TODO: the backward factor at every step is the forget gate. Apply it T times.
+    return 1.0
+
+print("vanilla RNN: fraction of the gradient reaching step 0")
+print(f"{'w':>6} " + "".join(f"{'T='+str(T):>12}" for T in [10, 30, 100, 300]))
 for w in [0.5, 0.9, 1.0, 1.1]:
-    print(f"  w={w}: " + "  ".join(f"T={T}: {rnn_grad(T,w):.3e}" for T in [10, 50, 100]))
+    print(f"{w:6.1f} " + "".join(f"{rnn_reach(T, w):12.2e}" for T in [10, 30, 100, 300]))
 
-print("\\nLSTM cell state (product of forget gates):")
-for f in [0.5, 0.9, 0.99, 1.0]:
-    print(f"  f={f}: " + "  ".join(f"T={T}: {f**T:.3e}" for T in [10, 50, 100]))
+print("\\nLSTM cell state: the same measurement")
+print(f"{'bias':>6} {'f':>7} " + "".join(f"{'T='+str(T):>12}" for T in [10, 30, 100, 300]))
+for bias in [0.0, 1.0, 3.0, 6.0]:
+    print(f"{bias:6.1f} {sigmoid(bias):7.3f} " +
+          "".join(f"{lstm_reach(T, bias):12.2e}" for T in [10, 30, 100, 300]))
 
-assert abs(1.0**100 - 1.0) < 1e-12
-print("\\nWith f=1.0 the gradient is exactly 1 after 100 steps. That is the whole idea.")`,
+assert rnn_reach(100, 0.9) < 1e-5, "a vanilla RNN at w=0.9 should lose the gradient over 100 steps"
+assert lstm_reach(100, 6.0) > 0.5, "a forget gate near 1 should preserve it"
+print("PASS\\n")
+
+# ---------- how far back can each one actually learn? ----------
+def horizon(fn, arg, limit=1e-4, cap=2000):
+    T = 1
+    while T < cap and fn(T, arg) > limit:
+        T += 1
+    return T
+
+print("steps a gradient can travel before falling below 1e-4:")
+for w in [0.5, 0.9, 0.99]:
+    print(f"  vanilla RNN, w={w:<5}          {horizon(rnn_reach, w):>5d} steps")
+for bias in [0.0, 1.0, 3.0, 6.0]:
+    print(f"  LSTM, forget bias={bias:<4} (f={sigmoid(bias):.3f})  {horizon(lstm_reach, bias):>5d} steps")`,
   solution: `import numpy as np
 
-def rnn_grad(T, w):
+def sigmoid(z): return 1/(1+np.exp(-z))
+
+def rnn_reach(T, w):
     h, pres = 0.0, []
     for t in range(T):
         z = w*h + (1.0 if t == 0 else 0.0)
@@ -1075,16 +1109,57 @@ def rnn_grad(T, w):
     g = 1.0
     for t in reversed(range(T)):
         g *= w * (1 - np.tanh(pres[t])**2)
-    return g
+    return abs(g)
 
-print("vanilla RNN, d h_T / d h_0:")
+def lstm_reach(T, bias):
+    return sigmoid(bias) ** T
+
+print("vanilla RNN: fraction of the gradient reaching step 0")
+print(f"{'w':>6} " + "".join(f"{'T='+str(T):>12}" for T in [10, 30, 100, 300]))
 for w in [0.5, 0.9, 1.0, 1.1]:
-    print(f"  w={w}: " + "  ".join(f"T={T}: {rnn_grad(T,w):.3e}" for T in [10, 50, 100]))
+    print(f"{w:6.1f} " + "".join(f"{rnn_reach(T, w):12.2e}" for T in [10, 30, 100, 300]))
 
-print("\\nLSTM cell state (product of forget gates):")
-for f in [0.5, 0.9, 0.99, 1.0]:
-    print(f"  f={f}: " + "  ".join(f"T={T}: {f**T:.3e}" for T in [10, 50, 100]))
-print("\\nWith f=1.0 the gradient is exactly 1 after 100 steps.")`,
+print("\\nLSTM cell state: the same measurement")
+print(f"{'bias':>6} {'f':>7} " + "".join(f"{'T='+str(T):>12}" for T in [10, 30, 100, 300]))
+for bias in [0.0, 1.0, 3.0, 6.0]:
+    print(f"{bias:6.1f} {sigmoid(bias):7.3f} " +
+          "".join(f"{lstm_reach(T, bias):12.2e}" for T in [10, 30, 100, 300]))
+
+assert rnn_reach(100, 0.9) < 1e-5
+assert lstm_reach(100, 6.0) > 0.5
+print("PASS\\n")
+
+def horizon(fn, arg, limit=1e-4, cap=2000):
+    T = 1
+    while T < cap and fn(T, arg) > limit:
+        T += 1
+    return T
+
+print("steps a gradient can travel before falling below 1e-4:")
+for w in [0.5, 0.9, 0.99]:
+    print(f"  vanilla RNN, w={w:<5}          {horizon(rnn_reach, w):>5d} steps")
+for bias in [0.0, 1.0, 3.0, 6.0]:
+    print(f"  LSTM, forget bias={bias:<4} (f={sigmoid(bias):.3f})  {horizon(lstm_reach, bias):>5d} steps")`,
+  explain: `The vanilla table has no usable row, and the reason is more interesting than "the weight was wrong". At
+$w = 0.5$ the gradient is gone within a dozen steps, as you would expect. But look at $w = 1.1$, which ought to
+*explode* — it decays even faster than $w = 0.9$ does. The culprit is the other factor: a larger $w$ drives the
+state further out along $\\tanh$, where $\\tanh' \\approx 0$, and that collapse overwhelms the $1.1$. Even the
+best row, $w = 1.0$, is down to $3\\times10^{-4}$ after 300 steps.
+
+So there is no setting of a single recurrent weight that carries a gradient a hundred steps. Turning $w$ up does
+not help, because the activation fights back. That is why plain RNNs are unreliable past roughly ten steps, and
+why the fix had to be structural rather than a matter of tuning.
+
+The LSTM table is a different situation entirely, and the reason is that the decay rate is no longer a property
+of a weight matrix — it is a gate the network sets. A forget bias of 6 gives $f = 0.998$, and $0.998^{300}$ is
+still around 0.5. The last block turns this into the number that matters: with the forget gate near 1, a gradient
+travels *thousands* of steps.
+
+Two things are worth taking from this. First, the practical note from the lesson — initialize the forget-gate
+bias to 1 or more — is not a superstition; the table shows exactly what it buys. Second, notice that this is
+still an exponential, $f^T$: the LSTM did not abolish the decay, it made the base something the network chooses
+and can push arbitrarily close to 1. That is the same move a residual connection makes, where the base is pinned
+at exactly 1 by construction.`,
 },
 
 'nn-embeddings': {

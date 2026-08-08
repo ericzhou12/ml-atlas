@@ -1922,7 +1922,8 @@ for t in range(6):
     o = sigmoid(z @ Wo)
     c = f*c + i*g
     h = o*np.tanh(c)
-    print(f"t={t}  mean forget {f.mean():.3f}  |c| {np.linalg.norm(c):.3f}  |h| {np.linalg.norm(h):.3f}")`),
+    print(f"t={t}  mean forget {f.mean():.3f}  |c| {np.linalg.norm(c):.3f}  |h| {np.linalg.norm(h):.3f}")`,
+      'The first table has no good row. At $w=0.9$ the gradient is gone by 100 steps; at $w=1.1$ it decays even faster, because a bigger $w$ pushes the state out where $\\tanh\' \\approx 0$ and that collapse beats the growth. The second table is a different world only because the decay rate stopped being a property of a weight matrix and became a gate the network sets: at $f=0.99$ the gradient after 100 steps is still 0.37. And notice the forget bias of 1 in the cell below — it starts the gate near 0.73 rather than 0.5, so the cell remembers by default and has to learn to forget.'),
 
     quiz('What is the essential difference between an LSTM cell state update and a vanilla RNN hidden state update?',
       ['The cell state is updated additively and gated, so gradients flow through multiplication by ~1 rather than by a weight matrix',
