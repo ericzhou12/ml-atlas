@@ -840,11 +840,16 @@ formula for it.`),
 This is the question everyone asks and few explanations answer properly. The trick is to stop thinking about
 penalties and start thinking about **constraints**.
 
-Minimising $\\text{loss} + \\lambda\\Omega(\\mathbf{w})$ is equivalent to minimising the loss *subject to*
-$\\Omega(\\mathbf{w}) \\le t$ for some budget $t$ — with a bigger $\\lambda$ corresponding to a tighter budget.
-So picture it geometrically: the loss forms elliptical contours around the unpenalized optimum, the constraint
-carves out a region around the origin, and the answer is where the smallest loss contour first **touches** that
-region.
+Minimising $\\text{loss} + \\lambda\\Omega(\\mathbf{w})$ turns out to be equivalent to minimising the loss *subject
+to* a budget, $\\Omega(\\mathbf{w}) \\le t$. The link is intuitive even without the proof: charging a price per
+unit of $\\Omega$ and imposing a hard cap on $\\Omega$ both push the solution the same way, and for every price
+$\\lambda$ there is some cap $t$ that lands you on exactly the same answer — a bigger $\\lambda$ meaning a tighter
+$t$.
+
+The constraint version is the one you can draw. The loss forms elliptical contours around the unpenalized
+optimum, growing outward from it. The constraint carves out a region around the origin. Your answer must lie
+inside the region, and you want the smallest loss possible, so it sits where the smallest loss contour first
+**touches** the region's boundary.
 
 Now recall the [unit ball shapes](#/l/math-vectors): the L1 region is a **diamond with sharp corners sitting on
 the axes**, while the L2 region is a **smooth circle**. That difference is the whole answer.`),
@@ -883,7 +888,32 @@ $\\frac{\\sigma_i^2}{\\sigma_i^2+\\lambda}$:
 **Ridge shrinks selectively, along the directions your data does not constrain.** It also makes $X^{\\mathsf T}X+\\lambda I$
 invertible even when $X^{\\mathsf T}X$ is not, which is why ridge works fine with more features than samples.
 
-Lasso has no closed form (the L1 term is not differentiable at 0) and is solved by coordinate descent or LARS.`),
+Lasso has no closed form, because $|w|$ has a sharp corner at zero and cannot be differentiated there. It is
+solved one coordinate at a time instead — see the next derivation.`),
+
+    deriv('The lasso update, and where the zeros come from algebraically', `The corner picture explains sparsity geometrically. Here is the same fact as arithmetic, and it is also exactly the update the challenge asks you to write.
+
+Solve for one coefficient $w_j$ at a time, holding the rest fixed. With everything else frozen, the objective as a function of $w_j$ alone is a parabola plus an absolute value:
+
+$$g(w_j) = \\tfrac{1}{2}a\\,w_j^2 - \\rho\\, w_j + \\lambda|w_j| + \\text{const}$$
+
+where $a = \\sum_i x_{ij}^2$ is how much that feature varies, and $\\rho = \\sum_i x_{ij}(y_i - \\text{other terms})$ is how strongly the feature correlates with what the other coefficients have not yet explained. Without the $\\lambda$ term, the minimum would be at $w_j = \\rho/a$ — ordinary least squares for one coordinate.
+
+Now handle the absolute value by splitting into cases, because $|w_j|$ has a different derivative on each side of zero.
+
+**If $w_j > 0$:** $|w_j| = w_j$, so $g'(w_j) = a w_j - \\rho + \\lambda = 0$, giving $w_j = (\\rho - \\lambda)/a$. This is only consistent with our assumption $w_j > 0$ when $\\rho > \\lambda$.
+
+**If $w_j < 0$:** $|w_j| = -w_j$, so $w_j = (\\rho + \\lambda)/a$, consistent only when $\\rho < -\\lambda$.
+
+**If $-\\lambda \\le \\rho \\le \\lambda$:** neither case is consistent, so the minimum is not on either side. It is at the corner itself: $w_j = 0$ exactly.
+
+Putting the three cases together gives the **soft-threshold** rule:
+
+$$w_j = \\frac{\\text{sign}(\\rho)\\,\\max(|\\rho| - \\lambda,\\ 0)}{a}$$
+
+Read the $\\max(\\cdot, 0)$: any feature whose correlation with the unexplained part is smaller than $\\lambda$ gets a coefficient of *precisely* zero, not a small one. And notice that "smaller than $\\lambda$" is a whole interval, not a knife edge — which is the algebraic version of "a corner sticks out, so a whole range of directions hits it".
+
+Ridge, for comparison, has no absolute value and no cases: its one-coordinate solution is $\\rho/(a + \\lambda)$, which shrinks toward zero as $\\lambda$ grows but reaches it only in the limit.`),
 
     t(`## When to use which
 

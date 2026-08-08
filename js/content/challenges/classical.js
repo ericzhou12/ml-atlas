@@ -356,42 +356,79 @@ Note what you had to do to compute any of this: fit 400 separate datasets. In re
 why bias and variance are a way of *thinking* about error rather than a diagnostic you can run — and why
 cross-validation, which fakes a handful of extra datasets out of the one you have, is the practical stand-in.`,
 },
+
 'ml-regularization': {
-  title: 'Implement Lasso with coordinate descent',
-  prompt: `Write the soft-thresholding update and use it to recover a sparse signal. Verify Lasso produces *exactly*
-zero coefficients while Ridge does not.`,
-  hint: 'The one-coordinate solution is $\\mathrm{sign}(\\rho)\\max(|\\rho|-\\lambda, 0)/z$ — the `max(·, 0)` is where zeros come from.',
+  title: 'Write the soft-threshold rule, then reproduce both of the lesson\'s warnings',
+  prompt: `Implement lasso yourself and use it to check three claims.
+
+1. **The zeros.** Fill in the soft-threshold update from the derivation:
+   $w_j = \\text{sign}(\\rho)\\max(|\\rho|-\\lambda, 0)/a$. Confirm lasso produces *exactly* zero coefficients and
+   ridge produces none, and that lasso finds the three features that actually matter.
+2. **Standardize or else.** The second block multiplies one feature by 1000 — the same model, in different
+   units — and refits. Watch what the penalty does to that feature's coefficient.
+3. **Correlated features.** The third block duplicates a real feature and refits several times on resampled
+   data. Compare how ridge and lasso each divide the credit.`,
+  hint: 'The `max(|rho| - lam, 0)` is the whole trick: when the correlation `rho` is smaller than `lam`, the coefficient is not made small — it is made exactly zero. Divide by `XtX[j, j]`, which is the `a` from the derivation.',
   starter: `import numpy as np
 rng = np.random.default_rng(4)
 
 n, d = 60, 20
 X = rng.normal(size=(n, d))
-X = (X - X.mean(0)) / X.std(0)          # standardize before regularizing!
+X = (X - X.mean(0)) / X.std(0)                 # standardize before regularizing
 w_true = np.zeros(d); w_true[[0, 3, 7]] = [2.5, -1.8, 1.2]
 y = X @ w_true + rng.normal(0, 0.5, n)
 
-def ridge(lam):
-    return np.linalg.solve(X.T @ X + lam*np.eye(d), X.T @ y)
+def ridge(X, y, lam):
+    return np.linalg.solve(X.T @ X + lam*np.eye(X.shape[1]), X.T @ y)
 
-def lasso(lam, iters=500):
-    w = np.zeros(d)
+def lasso(X, y, lam, iters=400):
+    w = np.zeros(X.shape[1])
     XtX, Xty = X.T @ X, X.T @ y
     for _ in range(iters):
-        for j in range(d):
+        for j in range(len(w)):
             rho = Xty[j] - XtX[j] @ w + XtX[j, j] * w[j]
-            # TODO: soft-threshold rho by lam, divide by XtX[j,j]
+            # TODO: soft-threshold rho by lam, then divide by XtX[j, j]
             w[j] = 0.0
     return w
 
+print("  lambda | ridge zeros | lasso zeros")
 for lam in [1.0, 5.0, 20.0]:
-    wr, wl = ridge(lam), lasso(lam)
-    print(f"lam={lam:5.1f}  ridge zeros: {np.sum(np.abs(wr)<1e-8):2d}/{d}   "
-          f"lasso zeros: {np.sum(np.abs(wl)<1e-8):2d}/{d}")
+    wr, wl = ridge(X, y, lam), lasso(X, y, lam)
+    print(f"  {lam:6.1f} |    {np.sum(np.abs(wr)<1e-8):2d}/{d}    |    {np.sum(np.abs(wl)<1e-8):2d}/{d}")
 
-wl = lasso(5.0)
-found = sorted(np.argsort(-np.abs(wl))[:3])
-print(f"\\nlasso top-3 features: {found}   truth: [0, 3, 7]")
-print("PASS" if found == [0, 3, 7] else "FAIL")`,
+wl = lasso(X, y, 5.0)
+found = sorted(int(i) for i in np.argsort(-np.abs(wl))[:3])
+print(f"\\nlasso's three largest coefficients: {found}   (the truth: [0, 3, 7])")
+assert found == [0, 3, 7], "lasso should recover the support"
+assert np.sum(np.abs(ridge(X, y, 5.0)) < 1e-8) == 0, "ridge should never produce an exact zero"
+print("PASS\\n")
+
+# ---------- 2. the same model in different units ----------
+Xu = X.copy(); Xu[:, 0] *= 1000                # feature 0 now measured in millimetres
+wl_std = lasso(X,  y, 5.0)
+wl_raw = lasso(Xu, y, 5.0)
+print("feature 0, standardized :", f"{wl_std[0]:9.4f}")
+print("feature 0, x1000 units  :", f"{wl_raw[0]:9.6f}",
+      f"  (x1000 = {wl_raw[0]*1000:.4f}, so the fit is the same...)")
+print("total penalty paid, standardized:", f"{np.abs(wl_std).sum():8.3f}")
+print("total penalty paid, x1000 units :", f"{np.abs(wl_raw).sum():8.3f}")
+print("nonzero coefficients:", np.sum(np.abs(wl_std) > 1e-8), "vs", np.sum(np.abs(wl_raw) > 1e-8))
+
+# ---------- 3. two interchangeable features ----------
+# A and B are noisy copies of the same underlying signal, so nothing in the data
+# prefers one over the other. Fit twice, swapping only the COLUMN ORDER.
+base = rng.normal(size=n)
+A = base + 0.02*rng.normal(size=n)
+B = base + 0.02*rng.normal(size=n)
+yc = X @ w_true + 1.5*base + rng.normal(0, 0.5, n)
+
+print("\\ntwo interchangeable features, fit twice with the columns swapped:")
+for order, first, second in [("A then B", A, B), ("B then A", B, A)]:
+    Xc = np.column_stack([X, first, second])
+    wr, wl2 = ridge(Xc, yc, 5.0), lasso(Xc, yc, 5.0)
+    n1, n2 = order.split(" then ")
+    print(f"  ordered {order}:  ridge -> {n1}={wr[-2]:5.2f} {n2}={wr[-1]:5.2f}   "
+          f"lasso -> {n1}={wl2[-2]:5.2f} {n2}={wl2[-1]:5.2f}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(4)
 
@@ -401,29 +438,74 @@ X = (X - X.mean(0)) / X.std(0)
 w_true = np.zeros(d); w_true[[0, 3, 7]] = [2.5, -1.8, 1.2]
 y = X @ w_true + rng.normal(0, 0.5, n)
 
-def ridge(lam):
-    return np.linalg.solve(X.T @ X + lam*np.eye(d), X.T @ y)
+def ridge(X, y, lam):
+    return np.linalg.solve(X.T @ X + lam*np.eye(X.shape[1]), X.T @ y)
 
-def lasso(lam, iters=500):
-    w = np.zeros(d)
+def lasso(X, y, lam, iters=400):
+    w = np.zeros(X.shape[1])
     XtX, Xty = X.T @ X, X.T @ y
     for _ in range(iters):
-        for j in range(d):
+        for j in range(len(w)):
             rho = Xty[j] - XtX[j] @ w + XtX[j, j] * w[j]
             w[j] = np.sign(rho) * max(abs(rho) - lam, 0.0) / XtX[j, j]
     return w
 
+print("  lambda | ridge zeros | lasso zeros")
 for lam in [1.0, 5.0, 20.0]:
-    wr, wl = ridge(lam), lasso(lam)
-    print(f"lam={lam:5.1f}  ridge zeros: {np.sum(np.abs(wr)<1e-8):2d}/{d}   "
-          f"lasso zeros: {np.sum(np.abs(wl)<1e-8):2d}/{d}")
+    wr, wl = ridge(X, y, lam), lasso(X, y, lam)
+    print(f"  {lam:6.1f} |    {np.sum(np.abs(wr)<1e-8):2d}/{d}    |    {np.sum(np.abs(wl)<1e-8):2d}/{d}")
 
-wl = lasso(5.0)
-found = sorted(np.argsort(-np.abs(wl))[:3])
-print(f"\\nlasso top-3 features: {found}   truth: [0, 3, 7]")
-print("PASS" if found == [0, 3, 7] else "FAIL")`,
+wl = lasso(X, y, 5.0)
+found = sorted(int(i) for i in np.argsort(-np.abs(wl))[:3])
+print(f"\\nlasso's three largest coefficients: {found}   (the truth: [0, 3, 7])")
+assert found == [0, 3, 7]
+assert np.sum(np.abs(ridge(X, y, 5.0)) < 1e-8) == 0
+print("PASS\\n")
+
+Xu = X.copy(); Xu[:, 0] *= 1000
+wl_std = lasso(X,  y, 5.0)
+wl_raw = lasso(Xu, y, 5.0)
+print("feature 0, standardized :", f"{wl_std[0]:9.4f}")
+print("feature 0, x1000 units  :", f"{wl_raw[0]:9.6f}",
+      f"  (x1000 = {wl_raw[0]*1000:.4f}, so the fit is the same...)")
+print("total penalty paid, standardized:", f"{np.abs(wl_std).sum():8.3f}")
+print("total penalty paid, x1000 units :", f"{np.abs(wl_raw).sum():8.3f}")
+print("nonzero coefficients:", np.sum(np.abs(wl_std) > 1e-8), "vs", np.sum(np.abs(wl_raw) > 1e-8))
+
+# ---------- 3. two interchangeable features ----------
+# A and B are noisy copies of the same underlying signal, so nothing in the data
+# prefers one over the other. Fit twice, swapping only the COLUMN ORDER.
+base = rng.normal(size=n)
+A = base + 0.02*rng.normal(size=n)
+B = base + 0.02*rng.normal(size=n)
+yc = X @ w_true + 1.5*base + rng.normal(0, 0.5, n)
+
+print("\\ntwo interchangeable features, fit twice with the columns swapped:")
+for order, first, second in [("A then B", A, B), ("B then A", B, A)]:
+    Xc = np.column_stack([X, first, second])
+    wr, wl2 = ridge(Xc, yc, 5.0), lasso(Xc, yc, 5.0)
+    n1, n2 = order.split(" then ")
+    print(f"  ordered {order}:  ridge -> {n1}={wr[-2]:5.2f} {n2}={wr[-1]:5.2f}   "
+          f"lasso -> {n1}={wl2[-2]:5.2f} {n2}={wl2[-1]:5.2f}")`,
+  explain: `Part 1: the \`max(·, 0)\` in your update is the entire source of the zeros. Ridge, whose one-coordinate
+solution is $\\rho/(a+\\lambda)$ with no such clamp, never produces one no matter how large $\\lambda$ gets.
+
+Part 2 is the standardization warning, quantified. Multiplying a feature by 1000 shrinks its coefficient by
+1000 to compensate, so the *model is identical* — same predictions, same residuals. But the penalty sums
+coefficients, so that feature's contribution to the penalty drops by a factor of 1000, and it is now essentially
+free. The number of surviving nonzero coefficients changes as a result. Your regularization strength was
+silently set by your choice of units.
+
+Part 3 is the correlated-features case, and the setup is deliberately symmetric: A and B are noisy copies of
+the same signal, so no fact about the data prefers either one. Ridge splits the weight evenly — about 0.74 each —
+and gives the same answer whichever order the columns arrive in. Lasso piles the weight onto one of them and
+pushes the other toward zero, and **the one it picks changes when you swap the column order**. Column order
+carries no information whatsoever, so lasso's answer to "which feature matters?" is being decided by something
+that is not evidence.
+
+That is the instability elastic net was designed to fix: adding a little L2 to the L1 makes interchangeable
+features share the credit instead of fighting over it.`,
 },
-
 'ml-logistic': {
   title: 'Logistic regression, and watching ‖w‖ run away',
   prompt: `Implement the gradient and train on separable data with no regularization. Watch $\\|w\\|$ grow without
