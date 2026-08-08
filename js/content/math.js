@@ -418,76 +418,87 @@ print("residual . b =", (resid @ b).round(12), " <- zero, as promised")`,
   tags: ['linear algebra', 'matrices'],
   sections: [
     tldr(`A matrix is a grid of numbers, but that is the least useful way to think about it. A matrix is a
-**function that moves space** — feed it a vector, get a different vector back, with the guarantee that
-straight lines stay straight and the origin stays put.
+**function that takes a vector in and gives a vector back**, and it is restricted so that straight lines stay
+straight and the origin never moves.
 
-Three properties tell you almost everything about a given matrix: its **determinant** (how much it scales
-area), its **rank** (how many dimensions survive the trip), and whether it is **invertible** (can you undo
-it?). All three are the same question asked three ways.
+Two numbers describe what a given matrix does to space. Its **determinant** says how much it scales area. Its
+**rank** says how many independent directions come out the other side. When the rank is low, the matrix carries
+much less information than its size suggests — which means you can store it with far fewer numbers.
 
-By the end you will be able to explain, from first principles, why fine-tuning a 16-million-parameter weight
-matrix with only 65 thousand trainable numbers works.`),
+That last sentence has a big payoff: it is the entire reason you can fine-tune a 16-million-number weight
+matrix by training only 65 thousand numbers. This lesson builds to that.`),
 
     jargon([
-      ['matrix', 'A rectangular grid of numbers. $A \\in \\mathbb{R}^{m\\times n}$ means $m$ rows, $n$ columns. In code: a 2-D array.'],
-      ['linear function / linear map', 'A function that respects addition and scaling — see below. "Linear" is a *restriction*, and matrices are exactly the functions that obey it.'],
-      ['basis vector $\\mathbf{e}_i$', 'The vector with a 1 in slot $i$ and 0 everywhere else. $\\mathbf{e}_1 = (1,0)$, $\\mathbf{e}_2 = (0,1)$. Think of them as the unit steps along each axis.'],
-      ['span', 'All the vectors you can reach by adding scaled copies of a given set. The span of one vector is a line; of two independent vectors, a plane.'],
-      ['rank', 'How many **independent directions** come out the other side of the matrix. A 2×2 matrix whose outputs all land on one line has rank 1.'],
-      ['determinant', 'The factor by which the matrix scales area (2-D) or volume (n-D). $\\det A = 0$ means everything got flattened.'],
-      ['transpose $A^{\\mathsf T}$', 'Flip the grid across its diagonal: rows become columns. `A.T` in NumPy.'],
-      ['outer product $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$', 'A column vector times a row vector, giving a whole *matrix*. Always rank 1. This is the atom that low-rank structure is built from.'],
-      ['weight matrix', 'In a neural network, the numbers a layer multiplies its input by. Training means adjusting them. A big language model is mostly a pile of these.'],
-      ['fine-tuning', 'Taking an already-trained model and nudging its weights to specialise it on a new task, rather than training from scratch.'],
+      ['matrix', 'A rectangular grid of numbers. $A \\in \\mathbb{R}^{m\\times n}$ means $m$ rows and $n$ columns. In code, a 2-D array.'],
+      ['$A\\mathbf{x}$', 'The matrix $A$ applied to the vector $\\mathbf{x}$. Read it as function application, like `f(x)`.'],
+      ['linear function', 'A function that survives addition and scaling unchanged — defined precisely below. Matrices are exactly the functions that do.'],
+      ['basis vector $\\mathbf{e}_i$', 'The vector with a 1 in position $i$ and 0 everywhere else. $\\mathbf{e}_1 = (1,0)$ and $\\mathbf{e}_2 = (0,1)$ are the one-unit steps along each axis.'],
+      ['linearly independent', 'A set of vectors where none is a combination of the others. Two vectors are independent exactly when they do not lie on the same line.'],
+      ['span', 'Everything you can reach by adding scaled copies of some vectors. The span of one vector is a line through the origin; of two independent vectors, a plane.'],
+      ['rank', 'How many independent directions come out of a matrix. If every output of a 2×2 matrix lands on one line, its rank is 1.'],
+      ['determinant $\\det A$', 'The factor by which the matrix scales area (in 2-D) or volume (in higher dimensions).'],
+      ['invertible', 'There is a second matrix that undoes this one. $A^{-1}A\\mathbf{x} = \\mathbf{x}$ for every $\\mathbf{x}$.'],
+      ['transpose $A^{\\mathsf T}$', 'The grid flipped across its diagonal, so rows become columns. `A.T` in NumPy.'],
+      ['outer product $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$', 'A column vector times a row vector. Unlike the dot product, this produces a whole *matrix*. It is always rank 1, and it is the atom that low-rank structure is built from.'],
+      ['weight matrix', 'Inside a neural network, the numbers one layer multiplies its input by. Training means adjusting them; a large language model is mostly a pile of these.'],
+      ['fine-tuning', 'Taking an already-trained model and nudging its weights to specialise it for a new task, instead of training from scratch.'],
     ]),
 
     t(`## The shift in perspective
 
-You were probably taught matrix multiplication as a procedure: row times column, sum, repeat. That is *how* to
-compute it, and it tells you nothing about *what it is*.
+You were probably taught matrix multiplication as a procedure: take a row, take a column, multiply and add,
+repeat. That tells you *how to compute* the answer and nothing about *what the answer is*.
 
-Here is what it is. A matrix $A \\in \\mathbb{R}^{m\\times n}$ is a **function**. You hand it a list of $n$ numbers,
-it hands you back a list of $m$ numbers. Same as any function \`f(x)\` in code, but restricted to a particular
-well-behaved family.
+Here is what it is. A matrix $A \\in \\mathbb{R}^{m\\times n}$ is a **function**. Hand it a list of $n$ numbers,
+it hands back a list of $m$ numbers. That is the same job as any \`f(x)\` in code, but restricted to a small,
+well-behaved family of functions.
 
-The restriction is called **linearity**, and it means exactly two things:
+The restriction is called **linearity**, and it is these two rules:
 
-$$A(\\mathbf{x}+\\mathbf{y}) = A\\mathbf{x} + A\\mathbf{y}, \\qquad A(c\\mathbf{x}) = cA\\mathbf{x}$$
+$$A(\\mathbf{x}+\\mathbf{y}) = A\\mathbf{x} + A\\mathbf{y}, \\qquad A(c\\,\\mathbf{x}) = c\\,A\\mathbf{x}$$
 
-In words: *processing the sum gives the same answer as summing the processed parts*, and *doubling the input
-doubles the output*. Notice what this rules out — no squaring, no thresholds, no if-statements. Linear functions
-are boring on purpose, and the payoff is that they are completely described by a finite grid of numbers.
+In words: processing a sum gives the same answer as summing the processed parts, and doubling the input doubles
+the output. Notice what those rules forbid — no squaring an input, no thresholds, no if-statements. Linear
+functions are deliberately boring, and the reward for that is that a finite grid of numbers can describe one
+completely.
 
-Geometrically, linearity means: gridlines stay straight, stay parallel, and stay evenly spaced, and the origin
-never moves. A matrix can rotate, stretch, shear, reflect, and flatten space. It cannot bend it.`),
+Geometrically, linearity means gridlines stay straight, stay parallel, and stay evenly spaced, and the origin
+stays where it is. A matrix can rotate, stretch, shear, reflect, and flatten space. It cannot bend it.`),
 
-    key(`**The columns of $A$ are the images of the basis vectors** — they tell you where the unit steps along
-each axis end up.
+    key(`**The columns of $A$ are where the basis vectors land.**
 
-$A\\mathbf{e}_1$ is exactly the first column of $A$. $A\\mathbf{e}_2$ is the second. Check this against the
-definition if it seems too convenient; it falls straight out.
+Check it on a 2×2. Applying $A$ to $\\mathbf{e}_1 = (1,0)$ picks out the first column and multiplies the second
+by zero, so $A\\mathbf{e}_1$ *is* column 1. Likewise $A\\mathbf{e}_2$ is column 2.
 
-And once you know where $\\mathbf{e}_1$ and $\\mathbf{e}_2$ land, linearity forces everything else, because any
-vector is just a combination of them: $\\mathbf{x} = x_1\\mathbf{e}_1 + x_2\\mathbf{e}_2$, so
+Once you know where $\\mathbf{e}_1$ and $\\mathbf{e}_2$ go, linearity fixes everything else, because every vector
+is built from them: $\\mathbf{x} = x_1\\mathbf{e}_1 + x_2\\mathbf{e}_2$. Apply $A$ and use both linearity rules:
 
-$$A\\mathbf{x} = x_1 (\\text{col}_1) + x_2(\\text{col}_2) + \\cdots$$
+$$A\\mathbf{x} = A(x_1\\mathbf{e}_1 + x_2\\mathbf{e}_2) = x_1 A\\mathbf{e}_1 + x_2 A\\mathbf{e}_2 = x_1(\\text{col}_1) + x_2(\\text{col}_2)$$
 
-**Matrix-vector multiplication is a weighted sum of the columns.** This is the single most useful way to read a
-matrix, and it is not how the row-times-column recipe makes it look.`),
+**A matrix-vector product is a weighted sum of the matrix's columns**, with the input's entries as the weights.
+This is the most useful way to read a matrix, and the row-times-column recipe hides it completely.`),
+
+    steps('The same product, computed both ways', [
+      { h: 'Set it up', md: `$A = \\begin{pmatrix} 2 & 1 \\\\ 0 & 3\\end{pmatrix}$ and $\\mathbf{x} = (4, 5)$.` },
+      { h: 'The way you were taught: rows against the input', md: `Row 1 is $(2, 1)$, so the first output entry is $2(4) + 1(5) = 13$. Row 2 is $(0, 3)$, so the second is $0(4) + 3(5) = 15$. Answer: $(13, 15)$.` },
+      { h: 'The way to think about it: weighted columns', md: `Column 1 is $(2,0)$ and column 2 is $(1,3)$. Take 4 copies of the first plus 5 copies of the second: $4(2,0) + 5(1,3) = (8,0) + (5,15) = (13,15)$.` },
+      { h: 'Same answer, different story', md: `The second version says the output is *built out of the columns*. That immediately tells you something the first version does not: whatever comes out of $A$ must lie in the span of $A$'s columns. Nothing outside that span is reachable, no matter what you feed in.` },
+    ]),
 
     viz('matrix-transform'),
 
-    t(`## Matrix multiplication is function composition
+    t(`## Multiplying matrices is chaining functions
 
-If a matrix is a function, then multiplying two of them should mean *chaining* them — and it does. $AB$ means
-"do $B$ first, then do $A$", the same right-to-left order as $f(g(x))$.
+If a matrix is a function, then multiplying two of them should mean running one after the other — and it does.
+$AB$ means "apply $B$ first, then apply $A$", right to left, the same order as $f(g(x))$.
 
-That one sentence dissolves two things that otherwise look like arbitrary rules:
+Once you read it that way, two rules that otherwise look arbitrary stop being arbitrary:
 
-- **Why it is not commutative** ($AB \\ne BA$). Rotating a book 90° then flipping it is not the same as flipping
-  it then rotating. Function composition never commuted in the first place; matrices inherit that.
-- **Why the dimensions have to line up.** The output of $B$ is fed into $A$, so $B$'s output size must equal
-  $A$'s input size. Everything else about shape rules follows.`),
+- **$AB$ is usually not $BA$.** Rotating a book 90° and then flipping it does not land in the same place as
+  flipping it and then rotating. Doing things in a different order gives a different result — that was already
+  true of functions, and matrices inherit it.
+- **The shapes have to line up.** $B$'s output is fed straight into $A$, so the number of entries $B$ produces
+  must equal the number $A$ expects.`),
 
     diagram('The shape rule, and why it is the only one you need to remember',
 `<svg viewBox="0 0 620 210" role="img" aria-label="Shape matching in a matrix product">
@@ -506,99 +517,113 @@ That one sentence dissolves two things that otherwise look like arbitrary rules:
   <text class="dtitle" x="208" y="16" text-anchor="middle" style="fill: var(--s5)">these must match — they cancel</text>
   <text class="dlabel" x="310" y="196" text-anchor="middle">the two k's vanish; the outer dimensions m and n survive</text>
 </svg>`,
-      `Every shape bug you will ever hit in PyTorch is this diagram being violated. Write the shapes down,
-check the inner pair matches, and read off the result from the outer pair.`),
+      `Almost every shape error you will ever hit in PyTorch is this diagram being violated. Write the two shapes
+down, check the inner pair matches, and read the answer's shape off the outer pair.`),
 
-    t(`Only *now* is the arithmetic formula worth writing down:
+    t(`Only now is the arithmetic formula worth writing down:
 
 $$(AB)_{ij} = \\sum_k A_{ik}B_{kj}$$
 
-"To get the entry in row $i$, column $j$ of the answer, walk along row $i$ of $A$ and column $j$ of $B$ in
-lockstep, multiplying and adding." This is a *consequence* of composing two linear maps, not the definition of
-anything. The figure below walks it through one cell at a time — and then shows you a second, less common
-reading of the same product that makes the next section obvious.`),
+which says: to get the entry in row $i$, column $j$ of the answer, walk along row $i$ of $A$ and column $j$ of
+$B$ together, multiplying pairs and adding. That is a dot product of a row with a column — the operation from
+the previous lesson, done $mn$ times. It is a *consequence* of chaining two linear functions, not a definition
+handed down from nowhere.`),
 
     viz('matmul-walkthrough'),
 
-    t(`## Determinant: how much does space get scaled?
+    t(`## Determinant: how much does area change?
 
-Take the unit square — the little square spanned by $\\mathbf{e}_1$ and $\\mathbf{e}_2$, area 1. Push it through
-$A$. It becomes a parallelogram. **The determinant is that parallelogram's area.**
+Take the unit square — the square with corners at the origin, $\\mathbf{e}_1$, $\\mathbf{e}_2$, and
+$\\mathbf{e}_1 + \\mathbf{e}_2$. Its area is 1. Push it through $A$ and, because straight lines stay straight,
+it becomes a parallelogram. **The determinant is defined as that parallelogram's area.**
 
-- $\\det A = 2$: every region doubles in area.
+- $\\det A = 2$: every region in the plane comes out twice as big.
 - $\\det A = 0.5$: everything shrinks by half.
-- $\\det A < 0$: space got flipped over — like turning a page. The magnitude still gives the area factor; the
-  minus sign records the flip.
-- $\\det A = 0$: the square was flattened to a line segment. Area zero.
+- $\\det A < 0$: space got flipped over, like turning a page. The size still gives the area factor; the minus
+  sign records the flip.
+- $\\det A = 0$: the square was squashed flat onto a line segment, which has no area.
 
-That last case is the important one. If two different inputs get squashed onto the same output, you cannot
-recover the input from the output — information was genuinely destroyed. So:
+The last case is the one that matters. If the square is squashed onto a line, then many different input points
+land on the same output point, and there is no way to look at an output and tell which input produced it. So
+there can be no undo function:
 
-$$\\det A = 0 \\iff A \\text{ is not invertible} \\iff A \\text{ collapsed at least one dimension}$$`),
+$$\\det A = 0 \\iff A \\text{ has no inverse} \\iff A \\text{ flattened at least one direction}$$
 
-    t(`## Rank: how many dimensions survive?
+($\\iff$ means "these say the same thing".)`),
 
-Determinant gives a yes/no answer to "did anything collapse?". **Rank** gives the detailed answer: *how many
-independent directions come out the other side.*
+    t(`## Rank: how many directions survive?
 
-Formally, the rank of $A$ is the dimension of the span of its columns. Concretely, for a 2×2 matrix:
+The determinant answers a yes/no question: did anything get flattened? **Rank** answers the detailed version:
+*how many independent directions are left?*
 
-- **rank 2** — the plane maps onto the plane. Nothing lost.
-- **rank 1** — the entire plane maps onto a single *line*. Two dimensions in, one dimension out.
-- **rank 0** — everything maps to the origin. Only true of the zero matrix.
+The definition: the rank of $A$ is the number of linearly independent columns it has, which is the same as the
+number of independent directions its outputs can span. For a 2×2 matrix there are three cases:
 
-Drag $\\sigma_2$ to zero in the figure below and watch the second case happen. That collapse *is* rank
-deficiency; there is nothing more to it.`),
+- **rank 2** — the two columns point in different directions, so weighted sums of them reach the whole plane.
+  Nothing was lost.
+- **rank 1** — the two columns lie on the same line, so every weighted sum of them lies on that line too. The
+  entire plane gets mapped onto a single line.
+- **rank 0** — both columns are zero, so everything maps to the origin. Only the zero matrix does this.
+
+Drag $\\sigma_2$ to zero in the figure below and watch the rank-1 case happen. That collapse *is* what "rank
+deficient" means; there is nothing more to it.`),
 
     viz('rank-collapse'),
 
-    warn(`Rank is a count of *directions*, not a measure of size. A matrix full of enormous numbers can have
-rank 1, and a matrix of tiny numbers can have full rank. And rank as a strict definition is brittle: change one
-entry by $10^{-9}$ and a rank-1 matrix becomes rank 2 on paper while behaving identically in practice.
+    warn(`Rank counts *directions*, not size. A matrix full of enormous numbers can have rank 1, and a matrix of
+tiny numbers can have full rank. The strict definition is also brittle: change one entry by $10^{-9}$ and a
+rank-1 matrix is technically rank 2, even though it behaves identically.
 
-This is why you will constantly read "approximately low rank" or "effective rank" rather than plain "rank". What
-people mean is: *the singular values after the first few are so small they might as well be zero.* The
-[SVD lesson](#/l/math-eigen-svd) makes that precise.`),
+That is why you will constantly read "approximately low rank" or "effective rank" instead of plain "rank". What
+people mean is that after the first few directions, the rest carry so little that they might as well be zero.
+The [SVD lesson](#/l/math-eigen-svd) makes "carry so little" into an exact measurement.`),
 
     t(`## Why low rank is a resource, not a defect
 
-The first time you meet rank deficiency it looks like a failure mode — a matrix that lost information. Flip it
-around: if a matrix's output only spans $r$ directions, then you do not need all $mn$ of its numbers to describe
-it. You need far fewer. **Low rank means compressible.**
+The first time you meet rank deficiency it looks like damage — a matrix that lost information. Turn it around.
+If a matrix's outputs only span $r$ directions, then it is doing a much simpler job than its $m \\times n$
+numbers suggest, and it should be describable with fewer of them. **Low rank means compressible.**
 
-The precise statement: a rank-$r$ matrix can always be written as a sum of $r$ **outer products** — a column
-times a row:
+To see how, we need one new operation. The **outer product** of a column vector $\\mathbf{u}$ (length $m$) and a
+row vector $\\mathbf{v}^{\\mathsf T}$ (length $n$) is the $m \\times n$ matrix whose entry in row $i$, column $j$
+is $u_i v_j$:
+
+$$\\mathbf{u}\\mathbf{v}^{\\mathsf T} = \\begin{pmatrix} u_1 \\\\ u_2 \\end{pmatrix}\\begin{pmatrix} v_1 & v_2 & v_3\\end{pmatrix} = \\begin{pmatrix} u_1v_1 & u_1v_2 & u_1v_3 \\\\ u_2v_1 & u_2v_2 & u_2v_3 \\end{pmatrix}$$
+
+Every column of that matrix is a copy of $\\mathbf{u}$, scaled by one entry of $\\mathbf{v}$. All the columns lie
+on the same line, so **an outer product always has rank 1** — and it took only $m + n$ numbers to write down a
+grid of $mn$ entries.
+
+The general fact, which the [SVD lesson](#/l/math-eigen-svd) proves, is that this goes the other way too: any
+rank-$r$ matrix can be written as a sum of exactly $r$ outer products.
 
 $$A = \\mathbf{u}_1\\mathbf{v}_1^{\\mathsf T} + \\mathbf{u}_2\\mathbf{v}_2^{\\mathsf T} + \\cdots + \\mathbf{u}_r\\mathbf{v}_r^{\\mathsf T}$$
 
-Each term $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$ is an $m\\times n$ *matrix* built from just $m + n$ numbers, and it is
-always rank 1 (every one of its rows is a multiple of $\\mathbf{v}$). Set the figure above to "sum of layers"
-if that has not clicked — the layers you stepped through were exactly these outer products.
-
-Stack $r$ of them and the storage cost is $r(m+n)$ instead of $mn$. When $r$ is small and $m, n$ are large, that
-is an enormous saving.`),
+Count the storage: $r(m+n)$ numbers instead of $mn$. When $r$ is small and $m, n$ are large, that gap is
+enormous. A $4096\\times4096$ matrix holds 16.8 million numbers; at rank 8 it needs $8(4096+4096) = 65{,}536$.`),
 
     viz('low-rank-approx'),
 
     t(`### Three places this pays off
 
-**PCA.** Data that arrives as 1000 measurements often really varies along 10 underlying factors. The data
-matrix is approximately rank 10, and PCA finds those 10 directions. [Covered later](#/l/math-eigen-svd).
+**PCA.** Data that arrives as 1000 measurements per sample often really varies along only about 10 underlying
+factors. The data matrix is then approximately rank 10, and PCA is the procedure that finds those 10 directions.
+[Covered in the next lesson](#/l/math-eigen-svd).
 
-**Recommender systems.** A user–item rating matrix might be 10⁶ users × 10⁵ films, but it is well approximated
-at rank ~50: there really are only about 50 independent "tastes" driving everyone's ratings. Netflix's
-recommender was, essentially, this observation.
+**Recommender systems.** A user-by-film rating matrix might be a million users tall and a hundred thousand films
+wide, yet be well approximated at rank 50 — there really are only about 50 independent "tastes" driving
+everyone's ratings. Netflix's recommender was essentially that observation, cashed in.
 
-**LoRA — fine-tuning giant models cheaply.** This one is worth doing slowly, because it is the most-cited
-practical consequence of everything above.`),
+**LoRA.** Fine-tuning a giant model cheaply. This one is worth walking through slowly, because it is the most
+widely used practical consequence of everything above.`),
 
     steps('LoRA, derived from what you now know', [
-      { h: 'Start with the problem', md: `A pretrained language model contains weight matrices $W$ of size, say, $4096 \\times 4096$. That is $4096^2 = 16{,}777{,}216$ numbers — in **one** matrix, and a model has hundreds of them. To fine-tune the model on your task the obvious approach is to update every one of those numbers, which needs GPU memory for the weights, their gradients, and the optimizer's bookkeeping. Expensive.` },
-      { h: 'Notice you only need the change', md: `Fine-tuning does not replace $W$; it nudges it. Write the nudge explicitly:  $W_{\\text{new}} = W_{\\text{pretrained}} + \\Delta W$. The pretrained part is frozen — you never touch it. All you actually have to learn is $\\Delta W$.` },
-      { h: 'Make the bet', md: `Here is the hypothesis, and it is an empirical one: **$\\Delta W$ is approximately low rank.** Adapting a general model to legal documents or to a chat style is a *focused* change, moving weights along a handful of directions rather than all 4096. The pretrained weights themselves are full rank — the bet is only about the update.` },
-      { h: 'Store the change as two skinny matrices', md: `If $\\Delta W$ has rank $r$, factor it: $\\Delta W = BA$ with $B \\in \\mathbb{R}^{4096 \\times r}$ (tall and thin) and $A \\in \\mathbb{R}^{r \\times 4096}$ (short and wide). Train $A$ and $B$; leave $W$ alone.` },
-      { h: 'Count the parameters', md: `With $r = 8$: $B$ holds $4096 \\times 8 = 32{,}768$ numbers and $A$ holds another $32{,}768$, for **65,536** trainable parameters versus 16.8 million. That is **0.4%** — a 256× reduction, from the single observation that a rank-8 matrix does not need $4096^2$ numbers to write down.` },
-      { h: 'Note the free bonus', md: `Because $W$ is untouched, one base model can serve many tasks: keep a 65k-parameter $(A, B)$ pair per task and swap them at inference. And since $\\Delta W = BA$ is just a matrix, you can add it back into $W$ when you are done, so deployment costs nothing extra.` },
+      { h: 'The problem', md: `A pretrained language model contains weight matrices $W$ of size around $4096 \\times 4096$ — $16{,}777{,}216$ numbers in **one** matrix, and a model has hundreds of them. Fine-tuning normally updates every one of those numbers, which means the GPU has to hold the weights, a gradient for each weight, and the optimizer's bookkeeping for each weight. That is the expense.` },
+      { h: 'You only need the change, not the result', md: `Fine-tuning does not replace $W$, it nudges it. Write the nudge on its own: $W_{\\text{new}} = W_{\\text{pretrained}} + \\Delta W$. Freeze the pretrained part and never touch it. The only thing left to learn is $\\Delta W$.` },
+      { h: 'The bet', md: `Here is the hypothesis, and it is an empirical one, not a theorem: **$\\Delta W$ is approximately low rank.** Teaching a general model to handle legal documents, or to answer in a particular style, is a focused change — it moves the weights along a handful of directions rather than all 4096. Note carefully what is *not* being claimed: the pretrained weights themselves are full rank. Only the update is assumed to be simple.` },
+      { h: 'Store the change as two skinny matrices', md: `If $\\Delta W$ has rank $r$, then by the sum-of-outer-products fact it factors as $\\Delta W = BA$ with $B \\in \\mathbb{R}^{4096 \\times r}$ (tall and thin) and $A \\in \\mathbb{R}^{r \\times 4096}$ (short and wide). Train $A$ and $B$; leave $W$ frozen.` },
+      { h: 'Count the parameters', md: `Take $r = 8$. Then $B$ holds $4096 \\times 8 = 32{,}768$ numbers, $A$ holds another $32{,}768$, and the total trained is **65,536** against 16.8 million. That is 0.4%, a 256× reduction, and it came entirely from "a rank-8 matrix does not need $4096^2$ numbers to write down".` },
+      { h: 'Two things you get for free', md: `Because $W$ is untouched, one copy of the base model can serve many tasks: keep a 65k-number $(A, B)$ pair per task and swap them at inference time. And since $\\Delta W = BA$ is just a matrix, you can add it into $W$ once you are finished, so the deployed model runs at exactly its original speed.` },
     ]),
 
     diagram('Full fine-tuning vs. LoRA, drawn to scale',
@@ -621,94 +646,105 @@ practical consequence of everything above.`),
   <text class="dtitle" x="390" y="30" text-anchor="middle">LoRA, rank 8</text>
   <text class="dlabel" x="390" y="220" text-anchor="middle" style="fill: var(--s3)">65,536 trained — 0.4%</text>
 </svg>`,
-      `The picture is the argument. The blue sliver and the green strip, multiplied together, produce something
-the same *shape* as the big square — but they are described by 256× fewer numbers. Whether that is *enough*
-description for your task is an empirical question, and for fine-tuning the answer is usually yes.`),
+      `The picture is the argument. The thin blue strip times the thin green strip produces something the same
+*shape* as the big square, but described by 256× fewer numbers. Whether that is *enough* description for your
+task is an empirical question, and for fine-tuning the answer has turned out to be usually yes.`),
+
+    t(`## The transpose, and why backprop is full of them
+
+The transpose $A^{\\mathsf T}$ flips the grid across its diagonal, so a $3 \\times 5$ matrix becomes $5 \\times 3$.
+On its own that is bookkeeping. The reason it appears constantly is one identity:
+
+$$\\mathbf{x} \\cdot (A\\mathbf{y}) = (A^{\\mathsf T}\\mathbf{x}) \\cdot \\mathbf{y}$$
+
+You can move a matrix from one side of a dot product to the other, as long as you transpose it. Here is the
+one-line proof, using only the definition of the dot product and of matrix-vector multiplication:
+
+$$\\mathbf{x}\\cdot(A\\mathbf{y}) = \\sum_i x_i \\sum_j A_{ij} y_j = \\sum_j \\Big(\\sum_i A_{ij} x_i\\Big) y_j = (A^{\\mathsf T}\\mathbf{x})\\cdot\\mathbf{y}$$
+
+All that happened was swapping the order of the two sums, and noticing that $\\sum_i A_{ij}x_i$ is row $j$ of
+$A^{\\mathsf T}$ dotted with $\\mathbf{x}$.`),
+
+    intuition(`When you meet $W^{\\mathsf T}\\delta$ in a backpropagation derivation, do not read it as "transpose,
+for algebraic reasons". Read it as routing. The forward pass sent information from one layer to the next through
+$W$. The backward pass has to send blame back along exactly those same wires, and $W^{\\mathsf T}$ is the matrix
+that runs the wiring in reverse. You will derive this properly in [backpropagation](#/l/nn-backprop).`),
 
     t(`## Special matrices worth recognizing on sight
 
 | Type | Condition | Why it matters |
 |---|---|---|
-| Symmetric | $A = A^{\\mathsf T}$ | Real eigenvalues, orthogonal eigenvectors. Covariance and Hessians are symmetric. |
-| Orthogonal | $A^{\\mathsf T}A = I$ | Rotation/reflection. Preserves lengths and angles. $A^{-1}=A^{\\mathsf T}$ — free inverse. |
-| Positive definite | $\\mathbf{x}^{\\mathsf T}A\\mathbf{x} > 0\\ \\forall \\mathbf{x}\\neq 0$ | Bowl-shaped quadratic → unique minimum. Covariance matrices, well-behaved Hessians. |
-| Diagonal | zero off-diagonal | Independent scaling per axis. Trivial to invert. |
-| Low-rank | $\\text{rank} \\ll \\min(m,n)$ | Compressible: $A \\approx UV^{\\mathsf T}$ with skinny $U, V$. |
+| Diagonal | zeros everywhere off the diagonal | Scales each axis independently. Trivial to invert: flip each diagonal entry. |
+| Identity $I$ | ones on the diagonal, zeros elsewhere | The do-nothing function, $I\\mathbf{x} = \\mathbf{x}$. |
+| Symmetric | $A = A^{\\mathsf T}$ | Covariance matrices and second-derivative matrices are always symmetric, and symmetry buys them very clean structure (next lesson). |
+| Orthogonal | $A^{\\mathsf T}A = I$ | A rotation or reflection. Preserves every length and angle, and its inverse is free: $A^{-1} = A^{\\mathsf T}$. |
+| Low rank | rank much smaller than $\\min(m,n)$ | Compressible, as above. |
 
-($I$ is the **identity matrix** — ones down the diagonal, zeros elsewhere. It is the do-nothing function:
-$I\\mathbf{x} = \\mathbf{x}$. The symbol $\\forall$ reads "for all". $\\ll$ means "much smaller than".)
-
-### The transpose, and why backprop is full of them
-
-$A^{\\mathsf T}$ just swaps rows and columns — \`A.T\` in NumPy, a $3\\times 5$ matrix becoming $5 \\times 3$. The
-reason it shows up everywhere is this identity:
-
-$$(\\mathbf{x},\\, A\\mathbf{y}) = (A^{\\mathsf T}\\mathbf{x},\\, \\mathbf{y})$$
-
-which says you can move a matrix from one side of a dot product to the other by transposing it. That is exactly
-the move backpropagation needs: the backward pass through a linear layer multiplies by $W^{\\mathsf T}$.`),
-
-    intuition(`When you see $W^{\\mathsf T}\\delta$ in a backprop derivation, do not read it as "the transpose for algebraic
-reasons." Read it as: *the forward pass sent information from layer $\\ell$ to layer $\\ell+1$ through $W$; the backward
-pass sends blame back along the same wires, and $W^{\\mathsf T}$ is the matrix that reverses the routing.*`),
+One more that is worth naming now because optimization leans on it. A symmetric matrix is **positive definite**
+when the number $\\mathbf{x}\\cdot(A\\mathbf{x})$ is strictly positive for every nonzero $\\mathbf{x}$. That
+expression is a quadratic in the entries of $\\mathbf{x}$, and "always positive" makes its graph a bowl with a
+single lowest point. That is exactly the shape you want a loss surface to have, which is why the condition keeps
+reappearing in [optimization](#/l/math-optimization).`),
 
     code('Matrices in NumPy', `import numpy as np
 
 A = np.array([[2.0, 1.0],
-              [0.0, 1.5]])
-x = np.array([1.0, 1.0])
+              [0.0, 3.0]])
+x = np.array([4.0, 5.0])
 
-print("A @ x            =", A @ x)
-print("as column sum    =", x[0]*A[:,0] + x[1]*A[:,1], " <- identical")
-print("det A            =", np.linalg.det(A))
-print("rank A           =", np.linalg.matrix_rank(A))
+print("A @ x                 =", A @ x)
+print("as a sum of columns   =", x[0]*A[:,0] + x[1]*A[:,1], " <- identical")
+print("det A                 =", np.linalg.det(A))
+print("rank A                =", np.linalg.matrix_rank(A))
 
-B = np.array([[0.0, -1.0], [1.0, 0.0]])       # 90 degree rotation
-print("AB != BA         :", not np.allclose(A@B, B@A))
+B = np.array([[0.0, -1.0], [1.0, 0.0]])       # a 90 degree rotation
+print("AB is not BA          :", not np.allclose(A@B, B@A))
 
-# rank deficiency: a rank-1 matrix, and what it does to space
-u = np.array([[1.0], [2.0]])
-v = np.array([[3.0, 1.0]])
-R = u @ v
-print("rank(u v^T)      =", np.linalg.matrix_rank(R), " det =", round(np.linalg.det(R), 12))
+# an outer product: one column times one row
+u = np.array([1.0, 2.0])
+v = np.array([3.0, 1.0])
+R = u[:, None] * v[None, :]                   # the 2x2 outer product u v^T
+print("\\nu v^T =\\n", R)
+print("rank                  =", np.linalg.matrix_rank(R), "   det =", round(np.linalg.det(R), 12))
 
-# every output lands on a single line — the span of u
-pts = np.random.default_rng(0).normal(size=(5, 2))
-out = pts @ R.T
-print("all outputs parallel to u?",
-      np.allclose(np.cross(out, u.ravel()), 0))`,
-      'The last check is worth pausing on: a rank-1 matrix maps the *entire plane* onto one line. That is what a zero determinant means concretely.'),
+# every output of R lands on the line through u
+pts  = np.random.default_rng(0).normal(size=(4, 2))
+outs = pts @ R.T
+for o in outs:
+    print(f"  output {np.round(o,3)}  ->  ratio to u: {np.round(o/u, 6)}")`,
+      'The last loop is the point. Each output divided by u gives the same number in both slots, meaning every output is a scalar multiple of u — the whole plane has been mapped onto one line. That is what rank 1 and a zero determinant mean concretely.'),
 
-    quiz('You fine-tune a 4096×4096 weight matrix with LoRA at rank 8. How many parameters do you train, versus full fine-tuning?',
+    quiz('You fine-tune a 4096×4096 weight matrix with LoRA at rank 8. How many numbers do you train, versus full fine-tuning?',
       ['65,536 vs 16,777,216 — about 0.4%',
        '8 vs 16,777,216',
        '4096 vs 16,777,216',
        'The same number; LoRA only changes the optimizer'],
       0,
-      'LoRA writes $\\Delta W = BA$ with $B \\in \\mathbb{R}^{4096\\times 8}$ and $A \\in \\mathbb{R}^{8 \\times 4096}$, so $2 \\times 4096 \\times 8 = 65{,}536$ trainable parameters against $4096^2 = 16.8$M. The bet — empirically a good one — is that the *update* a task needs is low-rank even though the pretrained weights are not.'),
+      'LoRA writes the update as $\\Delta W = BA$ with $B$ of shape $4096\\times 8$ and $A$ of shape $8 \\times 4096$, so $2 \\times 4096 \\times 8 = 65{,}536$ trainable numbers against $4096^2 = 16.8$ million. The bet — empirically a good one — is that the *update* the task needs is low rank, even though the pretrained weights are not.'),
 
     quiz('A 5×5 matrix has rank 2. Which of these is guaranteed?',
-      ['It can be written as the sum of exactly 2 outer products $\\mathbf{u}\\mathbf{v}^{\\mathsf T}$, and its determinant is 0',
+      ['It can be written as a sum of exactly 2 outer products, and its determinant is 0',
        'All of its entries are small',
        'It is invertible, but the inverse is hard to compute numerically',
        'It has exactly 2 nonzero entries'],
       0,
-      'Rank counts **surviving directions**, not magnitudes or nonzeros. Rank 2 in a 5-dimensional space means three dimensions were flattened, so volume is destroyed and $\\det = 0$ — no inverse exists. And rank $r$ is precisely the statement "expressible as $r$ outer products", which is what makes it a compression claim: $2(5+5) = 20$ numbers instead of 25. Scale that gap up to 4096×4096 and you have LoRA.'),
+      'Rank counts surviving directions, not magnitudes and not nonzero entries. Rank 2 inside a 5-dimensional space means three directions were flattened, so volume is destroyed, $\\det = 0$, and no inverse exists. And "rank $r$" is exactly the statement "writable as $r$ outer products", which is what makes it a compression claim: $2(5+5) = 20$ numbers instead of 25. Scale that same gap up to 4096×4096 and you have LoRA.'),
 
-    recap(`- Describe a matrix as a **function that moves space**, and say what linearity forbids (bending,
-  thresholds, moving the origin).
-- Read a matrix's columns as "where the basis vectors land", and matrix-vector products as **weighted sums of
-  columns**.
-- Explain $AB \\neq BA$ and the inner-dimension shape rule as facts about **function composition**.
-- Say what $\\det A = 0$ means physically (space got flattened, information destroyed, no inverse).
-- Define **rank** as the number of surviving directions, and connect it to outer products.
-- Derive LoRA's parameter count yourself, and state the empirical bet it rests on.`),
+    recap(`- Describe a matrix as a function that moves space, and say what linearity forbids: bending, thresholds,
+  and moving the origin.
+- Read a matrix's columns as "where the basis vectors land", and compute $A\\mathbf{x}$ as a weighted sum of
+  columns rather than a row-by-row recipe.
+- Explain both $AB \\neq BA$ and the inner-dimension shape rule as facts about doing one function after another.
+- Say what $\\det A = 0$ means physically: space was flattened, inputs collided, no inverse exists.
+- Define rank as the number of surviving directions, and explain why an outer product always has rank 1.
+- Derive LoRA's 65,536 from scratch, and state the empirical bet it rests on.
+- Prove $\\mathbf{x}\\cdot(A\\mathbf{y}) = (A^{\\mathsf T}\\mathbf{x})\\cdot\\mathbf{y}$ by swapping two sums.`),
   ],
   refs: [
-    video('Linear transformations and matrices', '3Blue1Brown', 2016, 'https://www.youtube.com/watch?v=kYB8IZa5AuE', 'The single best five minutes on why columns are the images of basis vectors.'),
+    video('Linear transformations and matrices', '3Blue1Brown', 2016, 'https://www.youtube.com/watch?v=kYB8IZa5AuE', 'The single best five minutes on why the columns are the images of the basis vectors.'),
     book('Mathematics for Machine Learning, Ch. 2', 'Deisenroth, Faisal & Ong', 2020, 'https://mml-book.github.io/', 'Rigorous treatment of vector spaces, rank, and linear maps.'),
     paper('LoRA: Low-Rank Adaptation of Large Language Models', 'Hu et al.', 2021, 'https://arxiv.org/abs/2106.09685', 'The low-rank-update idea, and the empirical evidence that fine-tuning updates really do have low intrinsic rank.'),
-    book('Matrix Computations', 'Golub & Van Loan', 2013, 'https://epubs.siam.org/doi/book/10.1137/1.9781421407944', 'The reference when you need numerical detail rather than intuition.'),
+    book('Matrix Computations', 'Golub & Van Loan', 2013, 'https://epubs.siam.org/doi/book/10.1137/1.9781421407944', 'The reference for when you need numerical detail rather than intuition.'),
   ],
 },
 

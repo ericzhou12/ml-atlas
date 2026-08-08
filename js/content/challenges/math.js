@@ -83,49 +83,91 @@ for d in [2, 10, 100, 1000, 10000]:
 },
 
 'math-matrices': {
-  title: 'Build a rank-1 matrix and watch the plane collapse',
-  prompt: `Write \`outer(u, v)\` without \`np.outer\`, confirm the result has rank 1, and check that every output of
-$R\\mathbf{x}$ lands on a single line — the span of $\\mathbf{u}$.`,
-  hint: 'Reshape one vector to a column and the other to a row, then rely on broadcasting.',
+  title: 'Outer products, low rank, and building LoRA by hand',
+  prompt: `Build the lesson's compression argument yourself, in three steps.
+
+1. \`outer(u, v)\` — the outer product, entry $[i,j] = u_i v_j$, without using \`np.outer\`. Confirm it comes out
+   rank 1.
+2. \`lowrank(B, A)\` — take a tall-thin $B$ and a short-wide $A$ and produce the full-size matrix $BA$. This is
+   exactly LoRA's $\\Delta W$. Confirm its rank is at most $r$, no matter how big the output looks.
+3. Then read the parameter count the script prints and check it against the number you derived in the lesson.`,
+  hint: 'For the outer product, make `u` a column with `u[:, None]` and `v` a row with `v[None, :]`, then multiply — NumPy broadcasting fills in the grid. For `lowrank`, it is one `@`.',
   starter: `import numpy as np
 
 def outer(u, v):
-    # TODO: return the (len(u), len(v)) matrix with entry [i,j] = u[i]*v[j]
+    # TODO: the (len(u), len(v)) matrix whose [i,j] entry is u[i]*v[j]
     return np.zeros((len(u), len(v)))
 
+def lowrank(B, A):
+    # TODO: the full-size matrix that the two skinny factors stand for
+    return np.zeros((B.shape[0], A.shape[1]))
+
+# --- check 1: an outer product is rank 1 ---
 u = np.array([1.0, 2.0, -1.0])
 v = np.array([3.0, 1.0])
 R = outer(u, v)
-
-assert R.shape == (3, 2)
+assert R.shape == (3, 2), "wrong shape"
 assert np.allclose(R, np.outer(u, v)), "does not match np.outer"
-print("rank:", np.linalg.matrix_rank(R), "(should be 1)")
+assert np.linalg.matrix_rank(R) == 1, "an outer product must have rank 1"
 
-# every output should be parallel to u
+# every column of R should be a multiple of u
+for j in range(R.shape[1]):
+    print(f"  column {j} = {np.round(R[:, j], 3)}  =  {R[0, j]/u[0]:.3g} * u")
+
+# --- check 2: a sum of r outer products has rank at most r ---
 rng = np.random.default_rng(0)
-outs = rng.normal(size=(5, 2)) @ R.T
-for o in outs:
-    ratio = o / u
-    print(f"output {np.round(o,3)} -> componentwise ratio to u: {np.round(ratio,6)}")
-print("\\nAll ratios equal within a row => the output is a scalar multiple of u.")`,
+m, n, r = 40, 30, 3
+B = rng.normal(size=(m, r))
+A = rng.normal(size=(r, n))
+dW = lowrank(B, A)
+assert dW.shape == (m, n), "delta W must be full size"
+assert np.linalg.matrix_rank(dW) == r, f"rank should be {r}"
+
+# the same matrix, written as a sum of r outer products
+S = sum(outer(B[:, k], A[k, :]) for k in range(r))
+assert np.allclose(S, dW), "B @ A must equal the sum of r outer products"
+print("\\nPASS")
+
+# --- the parameter count ---
+m = n = 4096
+for r in [1, 8, 64]:
+    full = m * n
+    lora = r * (m + n)
+    print(f"rank {r:3d}:  {lora:>10,} trained vs {full:>12,} full   ({100*lora/full:.2f}%)")`,
   solution: `import numpy as np
 
 def outer(u, v):
     return u[:, None] * v[None, :]
 
+def lowrank(B, A):
+    return B @ A
+
 u = np.array([1.0, 2.0, -1.0])
 v = np.array([3.0, 1.0])
 R = outer(u, v)
-
 assert R.shape == (3, 2)
 assert np.allclose(R, np.outer(u, v))
-print("rank:", np.linalg.matrix_rank(R), "(should be 1)")
+assert np.linalg.matrix_rank(R) == 1
+for j in range(R.shape[1]):
+    print(f"  column {j} = {np.round(R[:, j], 3)}  =  {R[0, j]/u[0]:.3g} * u")
 
 rng = np.random.default_rng(0)
-outs = rng.normal(size=(5, 2)) @ R.T
-for o in outs:
-    print(f"output {np.round(o,3)} -> ratio to u: {np.round(o/u, 6)}")
-print("\\nA rank-1 matrix maps the whole plane onto one line.")`,
+m, n, r = 40, 30, 3
+B = rng.normal(size=(m, r))
+A = rng.normal(size=(r, n))
+dW = lowrank(B, A)
+assert dW.shape == (m, n)
+assert np.linalg.matrix_rank(dW) == r
+S = sum(outer(B[:, k], A[k, :]) for k in range(r))
+assert np.allclose(S, dW)
+print("\\nPASS")
+
+m = n = 4096
+for r in [1, 8, 64]:
+    full = m * n
+    lora = r * (m + n)
+    print(f"rank {r:3d}:  {lora:>10,} trained vs {full:>12,} full   ({100*lora/full:.2f}%)")`,
+  explain: `Check 2 is the whole idea. \`dW\` is a 40×30 grid — 1200 numbers on screen — but it was built from only $3(40+30) = 210$, and \`matrix_rank\` confirms it genuinely spans just 3 directions. The assertion that \`B @ A\` equals the sum of $r$ outer products is the sum-of-outer-products fact from the lesson, verified numerically. The final table is LoRA: at rank 8 you train 0.39% of the numbers, and the only assumption is that the *update* your task needs is that simple.`,
 },
 
 'math-eigen-svd': {
