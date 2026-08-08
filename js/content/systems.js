@@ -141,7 +141,8 @@ for B in [1, 8, 32, 128]:
     compute_ms = 2 * 70e9 * B / H100["flops"] * 1e3
     step = max(weight_ms, compute_ms)
     print(f"  batch {B:4d}: {step:6.1f} ms/step -> {B*1000/step:8.1f} tok/s total, "
-          f"{1000/step:5.1f} tok/s per user")`),
+          f"{1000/step:5.1f} tok/s per user")`,
+      'The ridge point is the machine\'s own arithmetic intensity — roughly 300 operations per byte on an H100 — and every operation either clears that bar or does not. A large matmul clears it comfortably and is limited by arithmetic. A matvec and an elementwise op miss it by two orders of magnitude, so they are limited by memory and the arithmetic units are idle. Almost everything in a deep network is in the second group, which is why performance work is mostly about moving fewer bytes rather than doing less maths.'),
 
     quiz('Serving a 70B model, you increase batch size from 1 to 32. What happens to per-user latency?',
       ['Roughly unchanged — the same weight read serves the whole batch, so total throughput rises ~32×',
@@ -301,7 +302,8 @@ print("\\nper-step communication for a 7B model on 8 GPUs:")
 P = 7e9
 print(f"  DDP all-reduce   : {2*P*2/1e9:.1f} GB")
 print(f"  ZeRO-3 gather+rs : {(P*2 + P*2)/1e9:.1f} GB (but spread across layers, overlappable)")
-print(f"  tensor-parallel  : {2 * 32 * 4096 * 4096 * 2 * 2 / 1e9:.1f} GB (per layer, needs NVLink)")`),
+print(f"  tensor-parallel  : {2 * 32 * 4096 * 4096 * 2 * 2 / 1e9:.1f} GB (per layer, needs NVLink)")`,
+      'The gap between the weights and the total is the point. Weights are the small part; optimizer state is several times larger, and activations larger still, scaling with batch size and sequence length rather than with the model. That is why "will it fit?" is not answered by the parameter count, and why the first thing to try when a run runs out of memory is gradient checkpointing rather than a smaller model.'),
 
     quiz('You can fit a 7B model for inference on one 80GB GPU but not for training. Why?',
       ['Training also needs gradients, fp32 master weights, and two Adam moments — about 16 bytes/param versus 2',
@@ -476,7 +478,8 @@ print("\\nteacher distribution at different temperatures:")
 for T in [1, 2, 4]:
     print(f"  T={T}: {np.round(soft(teacher, T), 4)}")
 print("  ^ higher T exposes that classes 1 and 2 are nearly as plausible as 0.")
-print("    That similarity structure is the 'dark knowledge' the student learns.")`),
+print("    That similarity structure is the 'dark knowledge' the student learns.")`,
+      'Compare the per-tensor rows against the grouped rows at the same bit width. One outlier weight stretches the quantization range and squeezes every other weight into fewer effective levels — so splitting the tensor into groups, each with its own scale, contains the damage to one group. That is the whole idea behind group-wise quantization, and it costs one extra number per 64 or 128 weights.'),
 
     quiz('Why is weight-only 4-bit quantization nearly lossless while 4-bit activation quantization is not?',
       ['Activations develop extreme per-channel outliers that grow with model size; weights stay roughly Gaussian',
@@ -639,7 +642,8 @@ lengths = rng.integers(50, 2000, 200)
 print(f"  reserved: {200*4096:,} token-slots")
 print(f"  used    : {lengths.sum():,}")
 print(f"  wasted  : {1 - lengths.sum()/(200*4096):.1%}")
-print(f"  paged (block=16): wasted {1 - lengths.sum()/(np.ceil(lengths/16).sum()*16):.1%}")`),
+print(f"  paged (block=16): wasted {1 - lengths.sum()/(np.ceil(lengths/16).sum()*16):.1%}")`,
+      'The cache figures are the reason long context is expensive at serving time: the cache grows with sequence length, batch size, layers and heads, and for a long conversation it can exceed the weights themselves. That is what grouped-query attention is attacking. The speculative-decoding table shows the other lever — verifying several drafted tokens costs one weight read, so a good draft model buys real speedup with no change to the output distribution at all.'),
 
     quiz('Why can speculative decoding be strictly free — same output distribution, more speed?',
       ['Verifying k drafted tokens is one forward pass, and a rejection-sampling rule makes the accepted output identical in distribution to the target',

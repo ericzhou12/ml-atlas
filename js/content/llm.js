@@ -369,7 +369,8 @@ for dk_test in [16, 128, 1024]:
     print(f"\\nd_k={dk_test:5d}  logit sd={raw.std():7.2f}")
     print(f"  unscaled softmax max weight: {softmax(raw).max():.4f}")
     print(f"  scaled   softmax max weight: {softmax(raw/np.sqrt(dk_test)).max():.4f}")
-print("\\nUnscaled, large d_k saturates the softmax -> no gradient -> no learning.")`),
+print("\\nUnscaled, large d_k saturates the softmax -> no gradient -> no learning.")`,
+      'Two things to read. The printed matrix has an upper triangle of exact zeros — that is the causal mask, and it is why a position cannot see its own future. Every row sums to 1, which means each output is a weighted *average* of value vectors rather than a sum, so its scale does not grow with sequence length. Then the second block is the scaling derivation, measured: as $d_k$ climbs, the unscaled softmax puts essentially all its weight on one key, and a softmax that has saturated has no gradient left to learn with.'),
 
     quiz('Why must the attention matrix rows sum to 1?',
       ['Softmax makes the output a convex combination of value vectors, keeping its scale independent of sequence length',
@@ -598,7 +599,8 @@ for layer in range(6):
     print(f"after layer {layer+1}: residual stream norm = {np.linalg.norm(x, axis=-1).mean():.3f}")
 
 print("\\nNote the norm growing with depth — that is why a final norm before")
-print("the output head is standard in pre-norm architectures.")`),
+print("the output head is standard in pre-norm architectures.")`,
+      'Count what is actually here: two matrix multiplies for attention scores and values, two for the MLP, two normalizations, and two additions. That is the entire architecture, and a frontier model is this same function called ninety times in a row with bigger matrices. Note also that the residual additions mean the input is still present in the output — the block adds to the stream rather than replacing it.'),
 
     quiz('In a pre-norm transformer, why is a final normalization layer applied before the output head?',
       ['Each block adds to the residual stream without rescaling it, so its magnitude grows with depth',
@@ -1126,7 +1128,8 @@ print(f"\\nfitting a rank-1 target with rank-{r} LoRA:")
 print(f"  relative error: {np.linalg.norm((alpha/r)*(A@B) - target_delta)/np.linalg.norm(target_delta):.4f}")
 
 print(f"\\nmerged and unmerged agree: {np.allclose(forward(x), forward(x, merged=True), atol=1e-9)}")
-print("-> adapters can be folded into W after training, so inference costs nothing extra.")`),
+print("-> adapters can be folded into W after training, so inference costs nothing extra.")`,
+      'The assertion at the top is the property that makes LoRA safe to attach: with $B$ initialised to zero the adapter contributes exactly nothing, so the model you start fine-tuning from is bit-for-bit the model you loaded. The merge check at the bottom is the property that makes it free to deploy: since $\\frac{\\alpha}{r}BA$ is just a matrix, you can fold it into $W$ afterwards and serve a model of the original shape at the original speed.'),
 
     quiz('LoRA at rank 8 trains 0.1% of the parameters yet often matches full fine-tuning. Why?',
       ['The weight *update* a task needs has low intrinsic rank, even though the pretrained weights do not',
@@ -1294,7 +1297,8 @@ for name, p in [
 print("\\nnucleus size adapts to confidence:")
 for desc, lg in [("confident", np.array([8.,1.,0.,0.,0.,0.,0.,0.,0.,0.])),
                  ("uncertain", np.array([1.,.9,.8,.8,.7,.7,.6,.6,.5,.5]))]:
-    print(f"  {desc:10s} -> top-p 0.9 keeps {(top_p(softmax(lg), 0.9) > 0).sum()} tokens")`),
+    print(f"  {desc:10s} -> top-p 0.9 keeps {(top_p(softmax(lg), 0.9) > 0).sum()} tokens")`,
+      'Read the "kept" column against the "entropy" column. Temperature changes the shape of the distribution but never removes an option — even a hopeless token keeps a small probability. Top-k, top-p and min-p *truncate*: they set tokens to exactly zero, which is what actually prevents nonsense from being sampled. And notice that top-p keeps a different number of tokens than top-k does, because it is reading the model\'s confidence rather than following a fixed count.'),
 
     quiz('Why does beam search produce bland text for open-ended generation?',
       ['The highest-probability sequence is not representative of human text, which contains genuine surprise',
@@ -1435,7 +1439,8 @@ print("\\nthe scatter matters — if the model is CONSISTENTLY wrong:")
 for modes in [1, 2, 4, 8, 20]:
     print(f"  wrong answers over {modes:2d} mode(s) -> {simulate(0.4, 21, modes):.3f}")
 print("\\nMajority voting exploits the fact that there are many ways to be wrong")
-print("and only one way to be right. A systematically biased model gains nothing.")`),
+print("and only one way to be right. A systematically biased model gains nothing.")`,
+      'Majority voting works for one reason: correct answers agree with each other and wrong answers do not. So the correct answer accumulates votes while the wrong ones split. That also tells you exactly when it fails — if the model is *consistently* wrong in the same way, its mistakes agree too, and voting elects them faster.'),
 
     quiz('Why does chain-of-thought prompting improve multi-step reasoning?',
       ['It converts a depth-limited computation into a longer one — each generated token is another forward pass',
@@ -1658,7 +1663,8 @@ for q in ["how many tokens per parameter should I train on?",
     print(f"\\nQ: {q}")
     for name, s in [("BM25", s_sparse), ("dense", s_dense), ("hybrid (RRF)", rrf(s_sparse, s_dense))]:
         top = np.argsort(-s)[0]
-        print(f"  {name:14s} -> {docs[top][:68]}...")`),
+        print(f"  {name:14s} -> {docs[top][:68]}...")`,
+      'The recall number at the end is the one that matters, and it is the number most RAG projects never measure. If the right passage is not retrieved, no prompt engineering downstream can recover it — the model is being asked a question whose answer it was never shown. Measure retrieval recall before touching the generation prompt.'),
 
     quiz('Your RAG system answers wrongly. Retrieval recall@5 is 55%. What should you fix first?',
       ['Retrieval — nearly half of queries never see the answer, and no prompt can fix that',
@@ -1821,7 +1827,8 @@ dense = d*d_ff*2
 moe_total, moe_active = E*dense, k*dense
 print(f"\\ndense FFN params      : {dense:,}")
 print(f"MoE total params      : {moe_total:,}  ({E}x)")
-print(f"MoE params per token  : {moe_active:,}  ({k}x)  <- compute grows by k, not E")`),
+print(f"MoE params per token  : {moe_active:,}  ({k}x)  <- compute grows by k, not E")`,
+      'Watch the load distribution rather than the loss. Nothing in the training objective rewards using all the experts, so left alone the router develops favourites, and the favourites improve because they get all the gradient. The balancing term exists purely to interrupt that loop, and without it you are paying to store experts that never run.'),
 
     quiz('An MoE model has 8 experts with top-2 routing. Compared to one dense expert, what changes?',
       ['8× the parameters and memory, but only 2× the compute per token',
@@ -1973,7 +1980,8 @@ print("\\ndetecting a true 55% win rate:")
 for n in [30, 100, 300, 1000]:
     se = np.sqrt(0.55*0.45/n)
     print(f"  n={n:5d}: 95% CI = [{0.55-1.96*se:.3f}, {0.55+1.96*se:.3f}]"
-          f"  {'significant' if 0.55-1.96*se > 0.5 else 'NOT significant'}")`),
+          f"  {'significant' if 0.55-1.96*se > 0.5 else 'NOT significant'}")`,
+      'The first number is the diagnostic worth stealing: compare a model against *itself* and see what the judge reports. Anything other than 50% is measuring presentation rather than quality. Run this before trusting any judge-based comparison, because the bias it reveals is often larger than the differences you are trying to detect.'),
 
     quiz('A new model reports 89% on MMLU, up from 86%. What is the appropriate reaction?',
       ['Treat it as weak evidence — contamination, prompt format, and evaluation choices easily move MMLU by a few points',
