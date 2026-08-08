@@ -1626,7 +1626,9 @@ Modern architectures frequently drop pooling in favour of **strided convolutions
 learned downsampling beats a hardcoded one.
 
 The **receptive field** is how much of the original input a single deep neuron can see. It starts tiny and grows
-with depth: stack $L$ layers of $k\\times k$ convolutions and you get $1 + L(k-1)$.
+with depth, and you can count it: one $3\\times3$ kernel sees 3 pixels. Feed those into a second $3\\times3$
+kernel and it sees the 3 pixels either side of its own 3, so 5 in total. A third gives 7. Each layer adds
+$k-1$, so $L$ layers of $k\\times k$ convolution reach $1 + L(k-1)$ pixels.
 
 Plug in numbers and the practical consequence appears. With $3\\times3$ kernels, each layer adds 2 — so seeing a
 224-pixel-wide object requires about 110 layers of plain convolution. **This is why vision networks are deep**:
@@ -1648,8 +1650,10 @@ dense. Everything is already here.
 **VGG** (2014) — the observation that stacking small 3×3 kernels beats using large ones. Uniform, simple, and still a
 common feature extractor.
 
-**GoogLeNet / Inception** (2014) — parallel branches at multiple kernel sizes; 1×1 convolutions as cheap channel-mixing
-and dimensionality reduction.
+**GoogLeNet / Inception** (2014) — parallel branches at several kernel sizes at once, plus $1\\times1$
+convolutions. A $1\\times1$ kernel looks at a single pixel, so it does no spatial work at all — what it does is
+mix the *channels* at that pixel, which makes it a cheap way to change how many channels a layer has. Putting one
+before an expensive $5\\times5$ layer to cut 256 channels down to 64 saves most of the cost.
 
 **ResNet** (2015) — the one that mattered most. Add a skip connection so each block learns a *residual*:
 
@@ -1711,7 +1715,8 @@ print("\\nlayer  receptive field")
 rf, jump = 1, 1
 for L in range(1, 9):
     rf += 2 * jump            # 3x3 kernel, stride 1
-    print(f"{L:5d}  {rf:3d} x {rf}")`),
+    print(f"{L:5d}  {rf:3d} x {rf}")`,
+      'The Sobel output is worth looking at: the response is zero across the flat interior of the box and nonzero only at its vertical edges, from nine numbers that were never trained. That is what a convolution kernel is. The parameter comparison shows the same layer costing about 74 thousand weights as a convolution and 25 million as a dense layer, and the receptive-field table shows the cost of that thrift — after eight layers a neuron still only sees 17 pixels, which is why real architectures use stride and pooling to grow it multiplicatively instead.'),
 
     quiz('Why do modern CNNs stack 3×3 convolutions instead of using 7×7 kernels?',
       ['Three stacked 3×3 layers see the same 7×7 region with fewer parameters and two extra nonlinearities',

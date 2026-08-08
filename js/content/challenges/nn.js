@@ -910,11 +910,16 @@ you have a bug, and every hour spent tuning the learning rate is wasted.`,
 },
 
 'nn-cnn': {
-  title: 'Convolution by hand, and the parameter-count argument',
-  prompt: `Implement 2-D convolution with stride and padding, verify a Sobel filter finds edges, then compute how
-many parameters a dense layer would need for the same job.`,
-  hint: 'Frameworks actually implement cross-correlation (no kernel flip) — do the same.',
+  title: 'Convolve by hand, then test whether equivariance is real',
+  prompt: `1. Implement 2-D convolution with stride and padding, and confirm a Sobel kernel responds at edges and
+   nowhere else.
+2. **Equivariance, tested.** The lesson claimed that shifting the input shifts the output by exactly the same
+   amount, and that a dense layer has no such property. Shift an image by 3 pixels, convolve both versions, and
+   check whether one output is a shifted copy of the other. Then do the same for a dense layer.
+3. Read the parameter counts, and the receptive-field table that shows what weight sharing costs you.`,
+  hint: 'Frameworks implement cross-correlation (no kernel flip) — do the same: for each output position, multiply the window by the kernel and sum. For part 2, compare `conv(shifted)` against `shift(conv(original))` on the region where both are valid.',
   starter: `import numpy as np
+rng = np.random.default_rng(0)
 
 def conv2d(x, k, stride=1, pad=0):
     if pad: x = np.pad(x, pad)
@@ -922,7 +927,7 @@ def conv2d(x, k, stride=1, pad=0):
     H = (x.shape[0]-kh)//stride + 1
     W = (x.shape[1]-kw)//stride + 1
     out = np.zeros((H, W))
-    # TODO
+    # TODO: for each output position, dot the window with the kernel
     return out
 
 img = np.zeros((12, 12)); img[3:9, 3:9] = 1.0
@@ -931,16 +936,43 @@ sobel_x = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], float)
 r = conv2d(img, sobel_x, pad=1)
 print("vertical-edge response:")
 print(r.astype(int))
-assert r.shape == (12, 12), "same-padding should preserve size"
-assert abs(r[6, 3]) > 2 and abs(r[6, 6]) < 1e-9, "should fire at edges, not the interior"
-print("\\nPASS\\n")
+assert r.shape == (12, 12), "same-padding should preserve the size"
+assert abs(r[6, 3]) > 2 and abs(r[6, 6]) < 1e-9, "should fire at the edges, not in the interior"
+print("PASS\\n")
 
-for cin, cout, k, h, w in [(64, 128, 3, 56, 56)]:
-    conv = cin*cout*k*k + cout
-    dense = h*w*cin * cout + cout
-    print(f"{k}x{k} conv {cin}->{cout}: {conv:,} params")
-    print(f"dense {h}x{w}x{cin} -> {cout}: {dense:,} params  ({dense/conv:,.0f}x more)")`,
+# ---------- 2. shift the input; does the output shift with it? ----------
+S = 3
+big = np.zeros((24, 24)); big[5:12, 5:12] = 1.0        # a square
+moved = np.roll(big, S, axis=1)                        # the same square, 3 px right
+
+a = conv2d(big,   sobel_x, pad=1)
+b = conv2d(moved, sobel_x, pad=1)
+same = np.allclose(b[:, S:], a[:, :-S])
+print(f"convolution: output of the shifted image equals the shifted output? {same}")
+
+# now a dense layer doing the same job: 576 inputs -> 576 outputs, random weights
+W = rng.normal(0, 0.05, (576, 576))
+da = (big.ravel()   @ W).reshape(24, 24)
+db = (moved.ravel() @ W).reshape(24, 24)
+shifted_match = np.abs(db[:, S:] - da[:, :-S]).mean()
+print(f"dense layer: average mismatch between the two outputs = {shifted_match:.4f}")
+print(f"             (for reference, the outputs themselves average {np.abs(da).mean():.4f})")
+assert same, "convolution must be equivariant to shifts"
+assert shifted_match > 0.1 * np.abs(da).mean(), "the dense layer should NOT be equivariant"
+print("PASS\\n")
+
+# ---------- 3. what weight sharing buys and what it costs ----------
+cin, cout, k, h, w = 64, 128, 3, 56, 56
+print(f"3x3 conv, {cin}->{cout} channels: {cin*cout*k*k + cout:>12,} parameters")
+print(f"dense {h}x{w}x{cin} -> {cout}:    {h*w*cin*cout + cout:>12,} parameters")
+
+print("\\nlayers of 3x3 convolution   how much of the input one neuron sees")
+rf = 1
+for L in range(1, 9):
+    rf += 2
+    print(f"{L:15d}   {rf:>12d} x {rf}")`,
   solution: `import numpy as np
+rng = np.random.default_rng(0)
 
 def conv2d(x, k, stride=1, pad=0):
     if pad: x = np.pad(x, pad)
@@ -950,23 +982,62 @@ def conv2d(x, k, stride=1, pad=0):
     out = np.zeros((H, W))
     for i in range(H):
         for j in range(W):
-            patch = x[i*stride:i*stride+kh, j*stride:j*stride+kw]
-            out[i, j] = (patch * k).sum()
+            out[i, j] = (x[i*stride:i*stride+kh, j*stride:j*stride+kw] * k).sum()
     return out
 
 img = np.zeros((12, 12)); img[3:9, 3:9] = 1.0
 sobel_x = np.array([[-1,0,1],[-2,0,2],[-1,0,1]], float)
+
 r = conv2d(img, sobel_x, pad=1)
+print("vertical-edge response:")
 print(r.astype(int))
 assert r.shape == (12, 12)
 assert abs(r[6, 3]) > 2 and abs(r[6, 6]) < 1e-9
-print("\\nPASS\\n")
+print("PASS\\n")
+
+S = 3
+big = np.zeros((24, 24)); big[5:12, 5:12] = 1.0
+moved = np.roll(big, S, axis=1)
+
+a = conv2d(big,   sobel_x, pad=1)
+b = conv2d(moved, sobel_x, pad=1)
+same = np.allclose(b[:, S:], a[:, :-S])
+print(f"convolution: output of the shifted image equals the shifted output? {same}")
+
+W = rng.normal(0, 0.05, (576, 576))
+da = (big.ravel()   @ W).reshape(24, 24)
+db = (moved.ravel() @ W).reshape(24, 24)
+shifted_match = np.abs(db[:, S:] - da[:, :-S]).mean()
+print(f"dense layer: average mismatch between the two outputs = {shifted_match:.4f}")
+print(f"             (for reference, the outputs themselves average {np.abs(da).mean():.4f})")
+assert same
+assert shifted_match > 0.1 * np.abs(da).mean()
+print("PASS\\n")
 
 cin, cout, k, h, w = 64, 128, 3, 56, 56
-conv = cin*cout*k*k + cout
-dense = h*w*cin*cout + cout
-print(f"{k}x{k} conv {cin}->{cout}: {conv:,} params")
-print(f"dense equivalent:          {dense:,} params  ({dense/conv:,.0f}x more)")`,
+print(f"3x3 conv, {cin}->{cout} channels: {cin*cout*k*k + cout:>12,} parameters")
+print(f"dense {h}x{w}x{cin} -> {cout}:    {h*w*cin*cout + cout:>12,} parameters")
+
+print("\\nlayers of 3x3 convolution   how much of the input one neuron sees")
+rf = 1
+for L in range(1, 9):
+    rf += 2
+    print(f"{L:15d}   {rf:>12d} x {rf}")`,
+  explain: `Part 2 is the claim that matters, and the two lines are as different as they could be. The convolution's
+output for the shifted image is *exactly* the shifted output — \`allclose\` returns True, not approximately. The
+dense layer's two outputs are unrelated: the mismatch is on the same scale as the outputs themselves, meaning the
+shift produced a completely different answer.
+
+That is the whole argument for convolution. The dense layer has no idea that pixel $(5,5)$ and pixel $(5,8)$ have
+anything to do with each other, so it would have to see the square in every position to learn about it in every
+position. The convolution learns "vertical edge" once and gets it everywhere for free — and the nine numbers in
+\`sobel_x\` are the entire detector, unchanged as the square moves.
+
+Part 3 is the price and the bill. Weight sharing turns 25 million parameters into 74 thousand, which is why this
+is affordable at all. But look at the receptive-field table: after eight layers a neuron still sees only 17
+pixels of the input, because each $3\\times3$ layer adds just 2. To recognise an object spanning 200 pixels you
+would need about a hundred layers of plain convolution. This is the real reason vision networks are deep, and
+why stride and pooling exist — they grow the receptive field by multiplying rather than adding.`,
 },
 
 'nn-rnn': {
