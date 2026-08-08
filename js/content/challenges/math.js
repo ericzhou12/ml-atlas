@@ -855,27 +855,68 @@ undoes the difference in scale between the axes, which is exactly the job it was
 },
 
 'math-numerics': {
-  title: 'Make a variance computation fail, then fix it',
-  prompt: `Compute variance with the textbook $\\mathbb{E}[X^2]-\\mathbb{E}[X]^2$ formula in float32 on data with a
-large mean. Get it to return something clearly wrong, then implement the two-pass version.`,
-  hint: 'Catastrophic cancellation: both terms are huge and nearly equal, so their difference loses all its significant digits.',
+  title: 'Break a variance computation, then break a least-squares solve',
+  prompt: `Two failures, both invisible unless you go looking.
+
+1. **Cancellation.** \`var_naive\` uses the textbook $\\mathbb{E}[X^2]-\\mathbb{E}[X]^2$. Write \`var_twopass\`,
+   which subtracts the mean *before* squaring, and watch the two diverge in float32 as the mean grows. The
+   spread is 2.0 in every row — only the offset changes.
+2. **Conditioning.** Write \`solve_normal\`, which fits least squares the textbook way by forming
+   $X^{\\mathsf T}X$. Compare it against \`np.linalg.lstsq\` on a matrix with two nearly identical columns, and
+   check the answer against the $\\log_{10}\\kappa$ digits-lost rule.
+
+Read the last block carefully — it shows a case where even the good variance formula cannot help you.`,
+  hint: 'For the two-pass version: compute the mean, subtract it from every entry, then average the squares. For the normal equations: `np.linalg.solve(X.T @ X, X.T @ y)`.',
   starter: `import numpy as np
 
+# ---------- part 1: cancellation ----------
 def var_naive(x):
     return (x**2).mean() - x.mean()**2
 
 def var_twopass(x):
-    # TODO: subtract the mean first
+    # TODO: subtract the mean first, then average the squares
     return 0.0
 
-for offset in [0.0, 1e3, 1e6, 1e8]:
-    x = (np.array([1.0, 2.0, 3.0, 4.0, 5.0]) + offset).astype(np.float32)
-    print(f"offset {offset:>10.0e}: naive {var_naive(x):>14.6f}   "
-          f"two-pass {var_twopass(x):>10.6f}   numpy {x.var():.6f}")
+base = np.array([1.0, 2.0, 3.0, 4.0, 5.0])       # variance is exactly 2.0
+print("all five rows describe data with a spread of 2.0:\\n")
+print("      offset |          naive |   two-pass")
+for offset in [0.0, 1e2, 1e4, 1e5, 1e6]:
+    x = (base + offset).astype(np.float32)
+    print(f"  {offset:10.0e} | {var_naive(x):14.6f} | {var_twopass(x):10.6f}")
 
-x = (np.arange(5, dtype=np.float32) + 1e8)
-assert abs(var_twopass(x) - 2.0) < 0.1, "two-pass should stay accurate"
-print("\\nPASS")`,
+x = (base + 1e4).astype(np.float32)
+assert abs(var_twopass(x) - 2.0) < 0.01, "the two-pass version should stay accurate here"
+assert abs(var_naive(x) - 2.0) > 0.01,   "the naive version should already be wrong here"
+print("\\nPASS -- part 1\\n")
+
+# ---------- part 2: conditioning ----------
+def solve_normal(X, y):
+    # TODO: solve the normal equations X^T X w = X^T y
+    return np.zeros(X.shape[1])
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(200, 6))
+X[:, 1] = X[:, 0] + 1e-7 * rng.normal(size=200)   # column 1 nearly copies column 0
+w_true = rng.normal(size=6)
+y = X @ w_true
+
+k = np.linalg.cond(X)
+print(f"cond(X)      = {k:.2e}      -> about {np.log10(k):.1f} digits lost")
+print(f"cond(X^T X)  = {np.linalg.cond(X.T @ X):.2e}      -> about {2*np.log10(k):.1f} digits lost")
+print(f"float64 carries about 16 digits.\\n")
+
+w_norm  = solve_normal(X, y)
+w_lstsq = np.linalg.lstsq(X, y, rcond=None)[0]
+print(f"prediction error, normal equations: {np.abs(X @ w_norm  - y).max():.3e}")
+print(f"prediction error, lstsq           : {np.abs(X @ w_lstsq - y).max():.3e}")
+print("PASS -- part 2" if np.abs(X @ w_lstsq - y).max() < np.abs(X @ w_norm - y).max() else "FAIL")
+
+# ---------- where no formula saves you ----------
+x = (base + 1e8).astype(np.float32)
+print("\\nat offset 1e8 in float32 the five inputs are:", np.unique(x))
+print("two-pass variance:", var_twopass(x))
+print("Nothing was cancelled here -- the five distinct numbers stopped being distinct")
+print("on the way in. No choice of formula can recover data the format cannot hold.")`,
   solution: `import numpy as np
 
 def var_naive(x):
@@ -885,15 +926,56 @@ def var_twopass(x):
     m = x.mean()
     return ((x - m) ** 2).mean()
 
-for offset in [0.0, 1e3, 1e6, 1e8]:
-    x = (np.array([1.0, 2.0, 3.0, 4.0, 5.0]) + offset).astype(np.float32)
-    print(f"offset {offset:>10.0e}: naive {var_naive(x):>14.6f}   "
-          f"two-pass {var_twopass(x):>10.6f}   numpy {x.var():.6f}")
+base = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+print("all five rows describe data with a spread of 2.0:\\n")
+print("      offset |          naive |   two-pass")
+for offset in [0.0, 1e2, 1e4, 1e5, 1e6]:
+    x = (base + offset).astype(np.float32)
+    print(f"  {offset:10.0e} | {var_naive(x):14.6f} | {var_twopass(x):10.6f}")
 
-x = (np.arange(5, dtype=np.float32) + 1e8)
-assert abs(var_twopass(x) - 2.0) < 0.1
-print("\\nPASS")`,
-  explain: 'At an offset of $10^8$ in float32 the naive formula can return 0 or even a negative variance. The true answer is 2.0 the whole time. This is the same failure mode that makes `log(softmax(x))` unusable.',
+x = (base + 1e4).astype(np.float32)
+assert abs(var_twopass(x) - 2.0) < 0.01
+assert abs(var_naive(x) - 2.0) > 0.01
+print("\\nPASS -- part 1\\n")
+
+def solve_normal(X, y):
+    return np.linalg.solve(X.T @ X, X.T @ y)
+
+rng = np.random.default_rng(0)
+X = rng.normal(size=(200, 6))
+X[:, 1] = X[:, 0] + 1e-7 * rng.normal(size=200)
+w_true = rng.normal(size=6)
+y = X @ w_true
+
+k = np.linalg.cond(X)
+print(f"cond(X)      = {k:.2e}      -> about {np.log10(k):.1f} digits lost")
+print(f"cond(X^T X)  = {np.linalg.cond(X.T @ X):.2e}      -> about {2*np.log10(k):.1f} digits lost")
+print(f"float64 carries about 16 digits.\\n")
+
+w_norm  = solve_normal(X, y)
+w_lstsq = np.linalg.lstsq(X, y, rcond=None)[0]
+print(f"prediction error, normal equations: {np.abs(X @ w_norm  - y).max():.3e}")
+print(f"prediction error, lstsq           : {np.abs(X @ w_lstsq - y).max():.3e}")
+print("PASS -- part 2" if np.abs(X @ w_lstsq - y).max() < np.abs(X @ w_norm - y).max() else "FAIL")
+
+x = (base + 1e8).astype(np.float32)
+print("\\nat offset 1e8 in float32 the five inputs are:", np.unique(x))
+print("two-pass variance:", var_twopass(x))
+print("Nothing was cancelled here -- the five distinct numbers stopped being distinct")
+print("on the way in. No choice of formula can recover data the format cannot hold.")`,
+  explain: `Part 1: by an offset of $10^4$ the naive formula returns exactly **0.000000** — every significant
+digit of the answer has cancelled away — and by $10^6$ it returns **65536**, off by four orders of magnitude in
+the other direction. Subtracting the mean first keeps every squared quantity small, and gives 2.0 in every row.
+
+Part 2: two nearly duplicate columns push $\\kappa(X)$ to around $10^7$, which the rule says costs seven of
+float64's sixteen digits. Forming $X^{\\mathsf T}X$ squares that to $10^{14}$ and costs fourteen — nearly
+everything. \`lstsq\` never builds that product, and its residual comes out orders of magnitude smaller.
+
+The last block is the part worth remembering longest. At an offset of $10^8$, consecutive float32 values are
+8 apart, so the five distinct inputs collapse into just **two** stored values before any arithmetic happens at
+all — and the two-pass formula dutifully reports 12.8, the correct variance of the data that actually made it
+into memory. A better formula cannot help here. Only a wider format, or centring the data before you store it,
+can.`,
 },
 
 };

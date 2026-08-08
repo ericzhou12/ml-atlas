@@ -2440,159 +2440,168 @@ for name, lr, kw in [("sgd", 0.4, {}), ("sgd", 0.49, {}), ("sgd", 0.51, {}),
   tags: ['numerics', 'systems'],
   sections: [
     tldr(`Every number in a model is stored in a fixed number of bits, and that storage format leaks into your
-results. Most of the time you can ignore it. When you cannot, the symptoms are dramatic: \`NaN\` losses,
-negative variances, training that diverges only on some hardware.
+results. Most of the time you can ignore it. When you cannot, the symptoms are dramatic and confusing: a loss
+that becomes \`NaN\`, a variance that comes out negative, a run that diverges on one GPU and not another.
 
-Two ideas cover almost all of it. **Precision** — how many digits a format keeps — and **range** — the biggest
-and smallest magnitudes it can express. bf16 beat fp16 for training because it traded away precision to keep
-range, and range is what attention logits need.`),
+Two ideas cover nearly all of it. **Precision** is how many digits a format keeps. **Range** is the largest and
+smallest magnitudes it can express at all. With a fixed number of bits you buy one with the other, and the
+central lesson of the last decade of training is that neural networks tolerate low precision easily and do not
+tolerate running out of range at all.
+
+That single fact is why bf16 replaced fp16 as the default format for training.`),
 
     jargon([
-      ['floating point', 'How computers store non-integer numbers: a few bits for the exponent (the scale) and the rest for the mantissa (the digits). Scientific notation in binary.'],
-      ['mantissa', 'The significant digits. More mantissa bits = finer distinctions between nearby numbers = more **precision**.'],
-      ['exponent', 'The scale. More exponent bits = a wider span between the largest and smallest representable magnitudes = more **range**.'],
-      ['fp32 / fp16 / bf16', '32-bit float, 16-bit float, and "brain float" 16. The number is the total bit count; the difference between fp16 and bf16 is how those 16 bits are split.'],
-      ['overflow / underflow', 'A value too large for the format (becomes `inf`) or too small (becomes `0`). Both silently destroy your computation.'],
-      ['mixed precision', 'Doing most arithmetic in 16 bits for speed and memory, but keeping a 32-bit copy of the weights so tiny updates are not lost.'],
-      ['loss scaling', 'Multiplying the loss by a large constant before the backward pass so small gradients do not underflow to zero in fp16. bf16 does not need this.'],
-      ['catastrophic cancellation', 'Subtracting two nearly-equal large numbers. The leading digits cancel and you are left with mostly rounding error.'],
-      ['conditioning', 'How much a small change to a problem\'s input can change its answer. Badly conditioned problems amplify floating-point error.'],
-      ['quantization', 'Deliberately storing weights in very few bits (8 or 4) to shrink a model for inference.'],
+      ['floating point', 'How computers store non-integer numbers: a few bits for the exponent (the scale) and the rest for the mantissa (the digits). It is scientific notation, in binary.'],
+      ['mantissa', 'The significant digits. More mantissa bits means finer distinctions between nearby numbers — more **precision**.'],
+      ['exponent', 'The scale. More exponent bits means a wider span between the largest and smallest magnitudes you can write down — more **range**.'],
+      ['fp32 / fp16 / bf16', '32-bit float, 16-bit float, and "brain float" 16. The number is the total bit count; fp16 and bf16 differ only in how their 16 bits are divided up.'],
+      ['overflow / underflow', 'A value too large for the format (it becomes `inf`) or too small (it becomes `0`). Both destroy the computation silently.'],
+      ['mixed precision', 'Doing most arithmetic in 16 bits for speed and memory, while keeping a 32-bit copy of the weights so that tiny updates are not lost.'],
+      ['loss scaling', 'Multiplying the loss by a large constant before the backward pass so that small gradients do not underflow to zero in fp16, then dividing it back out. bf16 does not need this.'],
+      ['catastrophic cancellation', 'Subtracting two nearly equal large numbers. The leading digits cancel and what remains is mostly rounding error.'],
+      ['conditioning', 'How much a small change in a problem\'s input can change its answer. A badly conditioned problem amplifies floating-point error.'],
+      ['quantization', 'Deliberately storing weights in very few bits — 8 or 4 — to shrink a model for inference.'],
     ]),
 
     t(`## Floats are not real numbers
 
-The mathematics in this track assumed real numbers: infinitely many, infinitely precise. Your hardware has 32
-bits. Something has to give.
+Everything so far in this track assumed real numbers: infinitely many of them, each infinitely precise. Your
+hardware has 32 bits. Something has to give.
 
-A floating-point number is stored as $\\pm m \\times 2^{e}$ — a sign bit, some **exponent** bits, and some
-**mantissa** bits. It is scientific notation in binary, and the split between those two groups is the entire
-design space:
+A floating-point number is stored as $\\pm m \\times 2^{e}$ — one sign bit, some **exponent** bits, and some
+**mantissa** bits. The split between those two groups is the entire design space:
 
-- More **exponent** bits ⇒ wider **range**. You can represent $10^{38}$ and $10^{-38}$ without overflowing.
-- More **mantissa** bits ⇒ finer **precision**. You can tell $1.0000001$ from $1.0000002$.
+- More **exponent** bits means wider **range**. You can write down $10^{38}$ and $10^{-38}$ without trouble.
+- More **mantissa** bits means finer **precision**. You can tell $1.0000001$ apart from $1.0000002$.
 
-With a fixed total bit budget, you buy one with the other. Every format in the table below is a different answer
-to that trade, and the reason bf16 won for training is that it made the right call about which one matters.`),
+With the total number of bits fixed, you buy one only by giving up the other.`),
 
     viz('float-precision'),
 
-    t(`| Format | Bits | Exponent | Mantissa | Max value | Where used |
+    t(`| Format | Bits | Exponent | Mantissa | Largest value | Where it is used |
 |---|---|---|---|---|---|
 | fp32 | 32 | 8 | 23 | $3.4\\times10^{38}$ | master weights, optimizer state |
-| tf32 | 19* | 8 | 10 | $3.4\\times10^{38}$ | NVIDIA tensor cores, transparent |
+| tf32 | 19 | 8 | 10 | $3.4\\times10^{38}$ | NVIDIA tensor cores, applied transparently |
 | bf16 | 16 | 8 | 7 | $3.4\\times10^{38}$ | **the default for training** |
-| fp16 | 16 | 5 | 10 | $65{,}504$ | older hardware, needs loss scaling |
-| fp8 | 8 | 4 or 5 | 3 or 2 | $448$ | H100+ training, inference |
+| fp16 | 16 | 5 | 10 | $65{,}504$ | older hardware; requires loss scaling |
+| fp8 | 8 | 4 or 5 | 3 or 2 | $448$ | H100 and later, and inference |
 | int8 / int4 | 8 / 4 | — | — | — | quantized inference |
 
-Read the exponent column and the story tells itself. **bf16 is simply fp32 with the mantissa chopped off** — it
-keeps all 8 exponent bits, so exactly the same *range* of magnitudes is representable. You lose precision, not
-reach. Casting fp32 → bf16 can never overflow.
+Read the exponent column and the story tells itself. **bf16 is fp32 with the mantissa chopped off.** It keeps
+all 8 exponent bits, so exactly the same span of magnitudes is representable. You lose digits, not reach — and
+casting fp32 down to bf16 can never overflow.
 
-fp16 made the opposite bet: 5 exponent bits, 10 mantissa bits. More precision, far less range — its largest
-value is 65,504. That sounds like plenty until you remember attention logits are dot products over thousands of
-dimensions, which routinely exceed it. Training in fp16 therefore requires **loss scaling** (multiply the loss
-up before the backward pass, divide out after) plus overflow detection and step-skipping, all of which is
-machinery you simply do not need with bf16.
+fp16 made the opposite bet: 5 exponent bits and 10 mantissa bits. More precision, far less range, with a largest
+value of 65,504. That sounds like plenty until you remember that an attention score is a dot product over
+thousands of dimensions, which can comfortably exceed it. Training in fp16 therefore needs **loss scaling**
+(multiply the loss up before the backward pass, divide it out after) plus overflow detection and step-skipping
+machinery — all of which simply does not exist in a bf16 pipeline.
 
-That is the whole reason the industry switched. Not that bf16 is more accurate — it is *less* accurate — but
-that neural network training turns out to be robust to low precision and extremely fragile to overflow.`),
+So the industry did not switch because bf16 is more accurate. It is *less* accurate. It switched because
+training is robust to rounding and extremely fragile to overflow.`),
+
+    warn(`Seven mantissa bits is fewer than it sounds. bf16 distinguishes numbers about 1 part in 256 apart,
+which is roughly two or three decimal digits — so in bf16, $1.0 + 0.001$ rounds back to exactly $1.0$.
+
+Now recall that one optimizer step changes a weight by something on the order of $10^{-7}$ of its size. In bf16
+that update disappears completely and the weight never moves, no matter how many steps you take. This is not a
+subtle degradation; it is training silently doing nothing. It is also exactly the problem the next section
+solves.`),
 
     t(`## Mixed precision, in practice
 
-You do not pick one format — you use several at once, each where it is strongest. The standard recipe:`),
+You do not choose one format. You use several at once, each where it is strongest.`),
 
     steps('The mixed-precision training loop', [
-      { h: 'Keep master weights in fp32', md: `A single optimizer step changes a weight by something like $10^{-7}$ of its magnitude. In bf16, with 7 mantissa bits, that update rounds to *exactly nothing* and the weight never moves. The fp32 master copy is what makes tiny accumulated updates possible at all.` },
-      { h: 'Cast to bf16 for the forward and backward passes', md: `Half the bytes means half the memory traffic, and matrix-multiply units run several times faster on 16-bit inputs. This is where nearly all the speedup comes from.` },
-      { h: 'Accumulate matmul results in fp32', md: `Summing thousands of products in 16 bits would lose precision badly. The hardware multiplies in bf16 but accumulates in fp32 internally — you get the speed without the error. This happens automatically inside tensor cores.` },
-      { h: 'Apply the optimizer update in fp32', md: `Back on the master copy, at full precision. Then cast down again for the next forward pass.` },
-      { h: 'Keep the precision-sensitive operations in fp32 regardless', md: `Softmax denominators, layer-norm statistics, and the loss itself all involve sums or divisions where small errors compound. Frameworks maintain an allowlist of ops that stay in fp32 no matter what the surrounding cast says.` },
+      { h: 'Keep master weights in fp32', md: `This is the fix for the problem above. The optimizer reads and writes a full-precision copy of every weight, so a $10^{-7}$ update lands somewhere real instead of rounding away. Accumulate a few thousand of those and the weight has genuinely moved.` },
+      { h: 'Cast to bf16 for the forward and backward passes', md: `Half the bytes means half the memory traffic, and matrix-multiply hardware runs several times faster on 16-bit inputs. Nearly all of the speedup comes from this step.` },
+      { h: 'Accumulate matmul results in fp32', md: `Adding up thousands of products in 16 bits would lose precision badly — each addition rounds, and the errors pile up. So the hardware multiplies in bf16 but keeps the running total in fp32 internally. You get the speed without the accumulated error, and it happens automatically inside the tensor cores.` },
+      { h: 'Apply the optimizer update in fp32', md: `On the master copy, at full precision. Then cast down again for the next forward pass.` },
+      { h: 'Keep the fragile operations in fp32 regardless', md: `Softmax denominators, layer-norm statistics, and the loss itself all involve sums or divisions where small errors compound. Frameworks keep an allowlist of operations that stay in fp32 whatever the surrounding cast says.` },
     ]),
 
-    warn(`**Catastrophic cancellation.** Subtracting nearly-equal numbers destroys significant digits. The classic
-example is computing variance as $\\mathbb{E}[X^2]-\\mathbb{E}[X]^2$: if the mean is large relative to the spread, both
-terms are huge and nearly equal, and you can get a *negative* variance. Use a stable two-pass or Welford algorithm.
+    warn(`**Catastrophic cancellation.** Subtracting nearly equal numbers destroys significant digits, because the
+digits that agree cancel and only the ones that disagree — which are the least reliable — survive.
 
-The same issue is why softmax subtracts the max before exponentiating, and why you should never write
-\`log(softmax(x))\` instead of \`log_softmax(x)\`.`),
+The classic case is computing variance as $\\mathbb{E}[X^2]-\\mathbb{E}[X]^2$. If the mean is large compared with
+the spread, both terms are huge and almost identical, and after subtracting you can be left with pure rounding
+noise — sometimes a *negative* variance, which is impossible for a sum of squares. The fix is to subtract the
+mean first and then square, so the numbers being squared are small to begin with.
+
+The same concern is behind two things you have already seen: softmax subtracts its maximum before
+exponentiating, and \`log_softmax\` exists so you never compute \`log(softmax(x))\` yourself.`),
 
     t(`## Conditioning: when the problem itself amplifies error
 
-Floating-point error is small. Whether it *stays* small depends on the problem, and the condition number is
-what tells you.
+Floating-point error starts out tiny. Whether it *stays* tiny depends on the problem, and the condition number
+is what tells you which case you are in.
 
 The **condition number** measures how much the answer can move when the input is nudged. For solving
-$A\\mathbf{x}=\\mathbf{b}$ it is the same ratio from the [SVD lesson](#/l/math-eigen-svd),
+$A\\mathbf{x}=\\mathbf{b}$ it is the same ratio as in [the SVD lesson](#/l/math-eigen-svd),
 $\\kappa(A)=\\sigma_{\\max}/\\sigma_{\\min}$, and it comes with a blunt rule of thumb:
 
-> **You lose about $\\log_{10}\\kappa$ digits of accuracy.**
+> **You lose about $\\log_{10}\\kappa$ decimal digits of accuracy.**
 
-float32 carries roughly 7 decimal digits. So a problem with $\\kappa=10^8$ consumes all of them and your answer
-is pure noise — not "slightly off", but meaningless. And you get no warning: the solver returns
-confident-looking numbers either way.
+float32 carries roughly 7 decimal digits in total. So a problem with $\\kappa=10^8$ consumes all of them, and the
+answer you get back is noise — not "slightly off", but meaningless. You get no warning either: the solver
+returns confident-looking numbers in both cases.
 
-This has one very concrete consequence worth memorising. You should never solve the normal
-equations $X^{\\mathsf T}X\\mathbf{w}=X^{\\mathsf T}\\mathbf{y}$ by forming $X^{\\mathsf T}X$ — that **squares** the condition
-number. Use a QR or SVD-based least-squares solver (\`np.linalg.lstsq\`) instead.`),
+That has one very concrete consequence worth remembering. To fit a least-squares model you could solve the
+normal equations $X^{\\mathsf T}X\\mathbf{w}=X^{\\mathsf T}\\mathbf{y}$ — but forming $X^{\\mathsf T}X$ **squares** the
+condition number, because the singular values of $X^{\\mathsf T}X$ are the squares of those of $X$. A merely
+awkward problem at $\\kappa = 10^4$ becomes a hopeless one at $10^8$. Call \`np.linalg.lstsq\` instead, which
+works on $X$ directly and never forms that product.`),
 
     code('Where floating point bites', `import numpy as np
 
-# 1. The classic
-print("0.1 + 0.2 == 0.3 ?", 0.1 + 0.2 == 0.3, " diff =", 0.1+0.2-0.3)
+# 1. the classic
+print("0.1 + 0.2 == 0.3 ?", 0.1 + 0.2 == 0.3, "   difference:", 0.1+0.2-0.3)
 
-# 2. Catastrophic cancellation in a variance formula
+# 2. catastrophic cancellation in a variance formula
 x = np.array([1e8, 1e8 + 1, 1e8 + 2], dtype=np.float32)
-naive = (x**2).mean() - x.mean()**2
-print("\\nnaive variance :", naive, " <- can even go negative")
-print("two-pass       :", ((x - x.mean())**2).mean())
-print("numpy          :", x.var())
+print("\\nE[X^2] - E[X]^2 :", (x**2).mean() - x.mean()**2, "  <- should be about 0.667")
+print("subtract first  :", ((x - x.mean())**2).mean())
 
-# 3. fp16 overflow in attention logits
-logits = np.array([100.0, 200.0, 300.0], dtype=np.float32)
-print("\\nfp16 max is 65504")
-print("exp(300) in fp32:", np.exp(logits[2]))          # inf even in fp32
+# 3. overflow, and the shift that avoids it
+scores = np.array([100.0, 200.0, 300.0], dtype=np.float32)
+print("\\nexp(300) in fp32:", np.exp(scores[2]), "  <- and fp16 tops out at 65504")
 def softmax_stable(z):
     z = z - z.max()
-    e = np.exp(z)
-    return e / e.sum()
-print("stable softmax  :", softmax_stable(logits))
+    return np.exp(z) / np.exp(z).sum()
+print("stable softmax  :", softmax_stable(scores))
 
-# 4. Conditioning: never form X^T X
+# 4. conditioning: why you never form X^T X
 rng = np.random.default_rng(0)
-n, d = 100, 8
-X = rng.normal(size=(n, d))
-X[:, 1] = X[:, 0] + 1e-6 * rng.normal(size=n)          # near-duplicate column
-y = rng.normal(size=n)
-print("\\ncond(X)    =", f"{np.linalg.cond(X):.2e}")
-print("cond(X^T X) =", f"{np.linalg.cond(X.T @ X):.2e}", " <- squared!")
+X = rng.normal(size=(100, 8))
+X[:, 1] = X[:, 0] + 1e-6 * rng.normal(size=100)      # two nearly identical columns
+y = rng.normal(size=100)
+print(f"\\ncond(X)     = {np.linalg.cond(X):.2e}")
+print(f"cond(X^T X) = {np.linalg.cond(X.T @ X):.2e}   <- squared")
 w_normal = np.linalg.solve(X.T @ X, X.T @ y)
 w_lstsq  = np.linalg.lstsq(X, y, rcond=None)[0]
-print("difference between the two solutions:",
-      np.abs(w_normal - w_lstsq).max())`),
+print("the two answers differ by:", np.abs(w_normal - w_lstsq).max())`,
+      'Block 2 is the cancellation: both terms are around 10^16 and agree to seven digits, so subtracting them in float32 leaves nothing but rounding error, while subtracting the mean first keeps every number small and gets the right answer. Block 4 is the conditioning rule in action — squaring the condition number pushes the problem past what float64 can carry, and the two solutions disagree in digits you were relying on.'),
 
     quiz('Why did bf16 replace fp16 as the default for large model training?',
-      ['It keeps all 8 exponent bits of fp32, so it has the same dynamic range and needs no loss scaling',
+      ['It keeps all 8 exponent bits of fp32, so it has the same range and needs no loss scaling',
        'It has more mantissa bits, so it is more precise',
        'It is faster on GPUs',
        'It uses less memory than fp16'],
       0,
-      'bf16 and fp16 are both 16 bits and use identical memory. bf16 trades mantissa bits for exponent bits: **less precise, but the same range as fp32**. Since training blows up from overflow far more often than from rounding, that is the right trade — and it removes the loss-scaling machinery fp16 requires.'),
+      'bf16 and fp16 are both 16 bits, so they use identical memory and run at the same speed. bf16 spends its bits differently: fewer on the mantissa, more on the exponent, making it *less* precise than fp16 but giving it the same range as fp32. Since training blows up from overflow far more often than it suffers from rounding, that is the right trade — and it deletes the entire loss-scaling apparatus that fp16 requires.'),
 
-    recap(`- Explain the exponent/mantissa trade in one sentence, and map it onto range vs. precision.
+    recap(`- Explain the exponent-versus-mantissa trade in one sentence, and map it onto range versus precision.
 - Say why bf16 replaced fp16 for training, and why "it is more accurate" is the wrong answer.
-- Describe the mixed-precision recipe and, in particular, why fp32 master weights are not optional.
-- Recognise catastrophic cancellation, and name two places it is deliberately engineered around
-  (\\\`log_softmax\\\`, the softmax max-subtraction).
+- Describe the mixed-precision recipe, and in particular why fp32 master weights are not optional.
+- Recognise catastrophic cancellation, and name two places it has been deliberately engineered around.
 - Use $\\log_{10}\\kappa$ to predict how many digits a computation will cost you.
 - Explain why forming $X^{\\mathsf T}X$ is a bad idea, and what to call instead.`),
   ],
   refs: [
-    paper('What Every Computer Scientist Should Know About Floating-Point Arithmetic', 'David Goldberg', 1991, 'https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html', 'The definitive reference. Long, but the first few sections are essential.'),
-    paper('Mixed Precision Training', 'Micikevicius et al.', 2017, 'https://arxiv.org/abs/1710.03740', 'The original recipe: master weights, loss scaling, and which ops must stay fp32.'),
-    paper('FP8 Formats for Deep Learning', 'Micikevicius et al.', 2022, 'https://arxiv.org/abs/2209.05433', 'E4M3 and E5M2, and where each is appropriate.'),
-    book('Accuracy and Stability of Numerical Algorithms', 'Nicholas Higham', 2002, 'https://epubs.siam.org/doi/book/10.1137/1.9780898718027', 'The serious treatment of conditioning and stability.'),
+    paper('What Every Computer Scientist Should Know About Floating-Point Arithmetic', 'David Goldberg', 1991, 'https://docs.oracle.com/cd/E19957-01/806-3568/ncg_goldberg.html', 'The definitive reference. Long, but the first few sections are the essential ones.'),
+    paper('Mixed Precision Training', 'Micikevicius et al.', 2017, 'https://arxiv.org/abs/1710.03740', 'The original recipe: master weights, loss scaling, and which operations must stay in fp32.'),
+    paper('FP8 Formats for Deep Learning', 'Micikevicius et al.', 2022, 'https://arxiv.org/abs/2209.05433', 'E4M3 and E5M2, and where each of the two 8-bit layouts is appropriate.'),
+    book('Accuracy and Stability of Numerical Algorithms', 'Nicholas Higham', 2002, 'https://epubs.siam.org/doi/book/10.1137/1.9780898718027', 'The serious treatment of conditioning and stability, when you need one.'),
   ],
 },
 
