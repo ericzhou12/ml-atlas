@@ -50,7 +50,13 @@ print("\\nquantization is a BANDWIDTH optimization (70B, batch 1):")
 for bits, name in [(16, "bf16"), (8, "int8"), (4, "int4")]:
     read = 70e9 * bits/8
     ms = read / H100["bw"] * 1e3
-    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s")`,
+    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s")
+
+def ai(flops, bytes_moved): return flops / bytes_moved
+assert ai(2*d**3, 3*d*d*2) > ridge, "a large matmul should be compute-bound"
+assert ai(2*d*d, d*d*2) < ridge/10, "a matvec should be far below the ridge point"
+assert 70e9*2/H100["bw"] > 0.03, "a 70B model in bf16 cannot generate faster than ~24 tok/s"
+print("\\nPASS")`,
   solution: `import numpy as np
 H100 = dict(flops=989e12, bw=3.35e12)
 ridge = H100["flops"] / H100["bw"]
@@ -86,7 +92,13 @@ print("\\nquantization is a BANDWIDTH optimization (70B, batch 1):")
 for bits, name in [(16, "bf16"), (8, "int8"), (4, "int4")]:
     read = 70e9 * bits/8
     ms = read / H100["bw"] * 1e3
-    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s")`,
+    print(f"  {name:5s}: {read/1e9:5.0f} GB/token -> {ms:6.1f} ms -> {1000/ms:6.1f} tok/s")
+
+def ai(flops, bytes_moved): return flops / bytes_moved
+assert ai(2*d**3, 3*d*d*2) > ridge, "a large matmul should be compute-bound"
+assert ai(2*d*d, d*d*2) < ridge/10, "a matvec should be far below the ridge point"
+assert 70e9*2/H100["bw"] > 0.03, "a 70B model in bf16 cannot generate faster than ~24 tok/s"
+print("\\nPASS")`,
   explain: `The first three lines sort the operations by which resource they exhaust. A large matmul has arithmetic
 intensity in the hundreds and is compute-bound — the GPU is doing what it was built for. A matvec is around 1,
 three hundred times below the ridge point, and a ReLU is below that: both spend essentially all their time
@@ -136,7 +148,14 @@ for label, kw in [
 
 print("\\npipeline bubble = (P-1)/(m+P-1):")
 for P in [4, 8]:
-    print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))`,
+    print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))
+
+assert train_memory(7, checkpointing=False) > train_memory(7), \\
+    "checkpointing should reduce memory"
+assert train_memory(7, gpus=8, zero_stage=3) < train_memory(7, gpus=8, zero_stage=1), \\
+    "each ZeRO stage should shard more than the last"
+assert train_memory(7, gpus=8, zero_stage=3) < 80, "ZeRO-3 across 8 GPUs should fit a 7B model"
+print("\\nPASS")`,
   solution: `import numpy as np
 
 def train_memory(params_b, gpus=8, zero_stage=0, seq=4096, batch=4,
@@ -163,7 +182,14 @@ for label, kw in [
 
 print("\\npipeline bubble = (P-1)/(m+P-1):")
 for P in [4, 8]:
-    print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))`,
+    print(f"  {P} stages: " + "  ".join(f"m={m}: {(P-1)/(m+P-1):5.1%}" for m in [1,4,16,64]))
+
+assert train_memory(7, checkpointing=False) > train_memory(7), \\
+    "checkpointing should reduce memory"
+assert train_memory(7, gpus=8, zero_stage=3) < train_memory(7, gpus=8, zero_stage=1), \\
+    "each ZeRO stage should shard more than the last"
+assert train_memory(7, gpus=8, zero_stage=3) < 80, "ZeRO-3 across 8 GPUs should fit a 7B model"
+print("\\nPASS")`,
   explain: `Read the first block top to bottom. A 7B model — small by current standards — needs 258 GB to fine-tune
 naively, which is three H100s for a model whose weights are only 14 GB. The other 244 GB is optimizer state and
 activations, and the activations are the larger surprise: they scale with batch size and sequence length rather
@@ -208,7 +234,14 @@ for bits in [8, 4, 3]:
     for group in [None, 128, 64]:
         g = "per-tensor" if group is None else f"group={group}"
         print(f"  {bits}-bit {g:22s} {err(w, quantize(w,bits,group)):8.4f} "
-              f"{err(w_out, quantize(w_out,bits,group)):14.4f}")`,
+              f"{err(w_out, quantize(w_out,bits,group)):14.4f}")
+
+w = np.random.default_rng(1).normal(size=4096)
+w[0] = 40.0                                    # one outlier
+err = lambda b, g: np.abs(quantize(w, b, g) - w).mean()
+assert err(4, 64) < err(4, None), "group-wise scales should beat a single tensor-wide scale"
+assert err(8, None) < err(4, None), "more bits should mean less error"
+print("\\nPASS")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -240,7 +273,14 @@ P = 7e9
 print("\\n7B model:")
 for name, bits, oh in [("bf16",16,0), ("int8",8,0.02), ("int4 g=128",4,0.04)]:
     gb = P * bits/8 * (1+oh) / 1e9
-    print(f"  {name:12s} {gb:6.1f} GB   decode ceiling {3.35e12/(gb*1e9):6.1f} tok/s")`,
+    print(f"  {name:12s} {gb:6.1f} GB   decode ceiling {3.35e12/(gb*1e9):6.1f} tok/s")
+
+w = np.random.default_rng(1).normal(size=4096)
+w[0] = 40.0                                    # one outlier
+err = lambda b, g: np.abs(quantize(w, b, g) - w).mean()
+assert err(4, 64) < err(4, None), "group-wise scales should beat a single tensor-wide scale"
+assert err(8, None) < err(4, None), "more bits should mean less error"
+print("\\nPASS")`,
   explain: `The first table is the case for group-wise quantization, and the mechanism is worth naming. Quantizing means
 mapping a tensor's whole range onto a handful of levels — so one outlier weight stretches the range and every
 *other* weight gets squeezed into fewer effective levels. Splitting the tensor into groups of 64 or 128, each
@@ -284,7 +324,15 @@ def speedup(alpha, k, draft_cost):
 print("\\nspeculative decoding speedup (draft costs 10% of target):")
 print(f"{'accept':>8}" + "".join(f"{'k='+str(k):>8}" for k in [1,2,4,6,8]))
 for a in [0.5, 0.7, 0.8, 0.9]:
-    print(f"{a:8.1f}" + "".join(f"{speedup(a,k,0.10):8.2f}" for k in [1,2,4,6,8]))`,
+    print(f"{a:8.1f}" + "".join(f"{speedup(a,k,0.10):8.2f}" for k in [1,2,4,6,8]))
+
+assert kv_bytes(80, 8, 128, 128_000, 1) > kv_bytes(80, 8, 128, 8_000, 1), \\
+    "the cache grows with context length"
+assert kv_bytes(80, 8, 128, 8_000, 1) < kv_bytes(80, 64, 128, 8_000, 1), \\
+    "grouped-query attention should shrink the cache"
+assert speedup(0.9, 4, 0.1) > speedup(0.5, 4, 0.1), \\
+    "a better draft model should give a bigger speedup"
+print("\\nPASS")`,
   solution: `import numpy as np
 
 def kv_bytes(layers, kv_heads, d_head, seq, batch, bits=16):
@@ -311,7 +359,15 @@ for a in [0.5, 0.7, 0.8, 0.9]:
 
 for a in [0.6, 0.8, 0.9]:
     best = max(((speedup(a,k,0.10), k) for k in range(1,17)))
-    print(f"\\nalpha={a}: optimal k={best[1]} giving {best[0]:.2f}x")`,
+    print(f"\\nalpha={a}: optimal k={best[1]} giving {best[0]:.2f}x")
+
+assert kv_bytes(80, 8, 128, 128_000, 1) > kv_bytes(80, 8, 128, 8_000, 1), \\
+    "the cache grows with context length"
+assert kv_bytes(80, 8, 128, 8_000, 1) < kv_bytes(80, 64, 128, 8_000, 1), \\
+    "grouped-query attention should shrink the cache"
+assert speedup(0.9, 4, 0.1) > speedup(0.5, 4, 0.1), \\
+    "a better draft model should give a bigger speedup"
+print("\\nPASS")`,
   explain: `Speculative decoding works because verifying $k$ drafted tokens costs one weight-read — the same as generating
 a single token. So when the draft is usually right, you get several tokens for the price of one.
 

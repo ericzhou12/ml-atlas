@@ -1531,7 +1531,13 @@ print("\\ndetecting a true 55% win rate:")
 for n in [30, 100, 300, 1000]:
     se = np.sqrt(0.55*0.45/n)
     sig = "significant" if 0.55 - 1.96*se > 0.5 else "NOT significant"
-    print(f"  n={n:5d}: 95% CI [{0.55-1.96*se:.3f}, {0.55+1.96*se:.3f}]  {sig}")`,
+    print(f"  n={n:5d}: 95% CI [{0.55-1.96*se:.3f}, {0.55+1.96*se:.3f}]  {sig}")
+
+fixed = sum(judge(1.0, 1.0) for _ in range(N)) / N
+assert fixed > 0.55, "two identical models should reveal the judge's position bias"
+long_win = sum(judge(0.9, 1.0, len_bias=0.35, a_len=2.0) for _ in range(N)) / N
+assert long_win > 0.6, "a worse but longer answer should still win most of the time"
+print("\\nPASS")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -1559,7 +1565,13 @@ print("\\ndetecting a true 55% win rate:")
 for n in [30, 100, 300, 1000]:
     se = np.sqrt(0.55*0.45/n)
     sig = "significant" if 0.55 - 1.96*se > 0.5 else "NOT significant"
-    print(f"  n={n:5d}: 95% CI [{0.55-1.96*se:.3f}, {0.55+1.96*se:.3f}]  {sig}")`,
+    print(f"  n={n:5d}: 95% CI [{0.55-1.96*se:.3f}, {0.55+1.96*se:.3f}]  {sig}")
+
+fixed = sum(judge(1.0, 1.0) for _ in range(N)) / N
+assert fixed > 0.55, "two identical models should reveal the judge's position bias"
+long_win = sum(judge(0.9, 1.0, len_bias=0.35, a_len=2.0) for _ in range(N)) / N
+assert long_win > 0.6, "a worse but longer answer should still win most of the time"
+print("\\nPASS")`,
   explain: `Line 1 is the one to be alarmed by. Two *identical* models were compared, so the honest answer is 50%
 by construction — and the judge reports **64%** for whichever answer it happened to see first. Any leaderboard
 built on fixed-order comparisons is measuring presentation order and reporting it as quality.

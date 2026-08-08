@@ -15,10 +15,12 @@ sweep the learning rate, inspect per-layer gradient norms, and gradient-check ag
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
-def make_model(n_in=20, n_hidden=32, n_out=3, seed=0):
+def make_model(n_in=20, n_hidden=32, n_out=3, seed=0, head_scale=0.01):
     r = np.random.default_rng(seed)
-    return [(r.normal(0, np.sqrt(2/a), (a,b)), np.zeros(b))
-            for a,b in [(n_in,n_hidden), (n_hidden,n_out)]]
+    # He scaling for the hidden layer; a deliberately SMALL output head, so the
+    # model starts with no opinion and the initial loss is exactly log(K).
+    return [(r.normal(0, np.sqrt(2/n_in), (n_in, n_hidden)), np.zeros(n_hidden)),
+            (r.normal(0, head_scale,      (n_hidden, n_out)), np.zeros(n_out))]
 
 def forward(P, X):
     h = np.maximum(0, X @ P[0][0] + P[0][1])
@@ -52,10 +54,12 @@ print(f"CHECK 1  initial loss {l0:.4f}  expected {np.log(3):.4f}  "
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
-def make_model(n_in=20, n_hidden=32, n_out=3, seed=0):
+def make_model(n_in=20, n_hidden=32, n_out=3, seed=0, head_scale=0.01):
     r = np.random.default_rng(seed)
-    return [(r.normal(0, np.sqrt(2/a), (a,b)), np.zeros(b))
-            for a,b in [(n_in,n_hidden), (n_hidden,n_out)]]
+    # He scaling for the hidden layer; a deliberately SMALL output head, so the
+    # model starts with no opinion and the initial loss is exactly log(K).
+    return [(r.normal(0, np.sqrt(2/n_in), (n_in, n_hidden)), np.zeros(n_hidden)),
+            (r.normal(0, head_scale,      (n_hidden, n_out)), np.zeros(n_out))]
 
 def forward(P, X):
     h = np.maximum(0, X @ P[0][0] + P[0][1])

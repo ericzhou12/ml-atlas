@@ -51,7 +51,10 @@ V, iters = value_iteration()
 print(f"converged in {iters} sweeps")
 for gamma in [0.5, 0.9, 0.99]:
     Vg, _ = value_iteration(gamma)
-    print(f"  gamma={gamma:.2f}: V(0,0)={Vg[(0,0)]:+.4f}")`,
+    print(f"  gamma={gamma:.2f}: V(0,0)={Vg[(0,0)]:+.4f}")
+assert value_iteration(0.99)[0][(0,0)] > value_iteration(0.5)[0][(0,0)], \\
+    "a patient agent should value the start square more highly"
+print("\\nPASS")`,
   solution: `import numpy as np
 
 W, H = 4, 4
@@ -165,7 +168,10 @@ for algo in ["q", "sarsa"]:
         s, _, done = step(s, Q[s].argmax())
         if done or s == START: break
     heights[algo] = max(p[1] for p in path)
-    print(f"{algo.upper():6s} avg return {avg:7.1f}   max path height {heights[algo]}")`,
+    print(f"{algo.upper():6s} avg return {avg:7.1f}   max path height {heights[algo]}")
+
+assert heights["sarsa"] > heights["q"], "SARSA should learn a path further from the cliff edge"
+print("\\nPASS")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -262,7 +268,12 @@ def ppo_obj(ratio, adv, eps=0.2):
 
 print("\\nPPO clipped objective (eps=0.2):")
 for r in [0.5, 0.8, 1.0, 1.2, 1.5, 2.0]:
-    print(f"  ratio {r:.1f}: A=+1 -> {ppo_obj(r,1.0):+.2f}   A=-1 -> {ppo_obj(r,-1.0):+.2f}")`,
+    print(f"  ratio {r:.1f}: A=+1 -> {ppo_obj(r,1.0):+.2f}   A=-1 -> {ppo_obj(r,-1.0):+.2f}")
+assert abs(ppo_obj(2.0, 1.0) - ppo_obj(1.5, 1.0)) < 1e-9, \\
+    "past the clip the objective must be flat, so the gradient is zero"
+assert abs(ppo_obj(1.0, 1.0) - ppo_obj(1.1, 1.0)) > 1e-9, \\
+    "inside the trust region the objective must still respond"
+print("\\nPASS")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 

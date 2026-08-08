@@ -91,7 +91,10 @@ for n in [4, 16, 64, 256]:
     lat = rng.normal(size=(n, D))
     i, t = l2(lat + rng.normal(0,0.35,(n,D))), l2(lat + rng.normal(0,0.35,(n,D)))
     S = i @ t.T / 0.07
-    print(f"  N={n:4d}: chance {1/n:.4f}, achieved {(S.argmax(1)==np.arange(n)).mean():.3f}")`,
+    print(f"  N={n:4d}: chance {1/n:.4f}, achieved {(S.argmax(1)==np.arange(n)).mean():.3f}")
+assert classes[int(np.argmax(p))] == "cat", "the caption matching the image should win"
+assert p.max() > 0.8, "and it should win clearly, not by a nose"
+print("\\nPASS")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
