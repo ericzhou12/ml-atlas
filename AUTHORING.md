@@ -242,6 +242,39 @@ This is the part that makes it worth reading. The pattern every lesson follows:
    that teaches, and it is shown whether the reader was right or wrong.
 6. **Code should run.** Every Python block runs in the lab as-is, against NumPy only (no torch, no sklearn, no
    matplotlib). Helpers `aplot()` and `describe()` are pre-injected. Test anything non-trivial before shipping.
+7. **Every code block needs an `explain`.** Not a description of what the code does — the reader can see that.
+   Tell them which number in the output to look at and what it means. `audit.mjs` warns if one is missing.
+
+### The reader you are writing for
+
+Assume single-variable calculus and an introductory statistics course, and nothing else. Concretely, before you
+ship a paragraph, ask two questions of every sentence:
+
+1. **Is every concept in it either common knowledge, or taught earlier in the atlas?** If not, gloss it inline or
+   add it to `jargon()`. This includes notation: `$\mathbf{x} \in \mathbb{R}^d$` needs reading aloud the first
+   time, and so does `$\arg\max$`, `$\odot$`, and `$\propto$`.
+2. **Does the sentence do work?** Not "is it true" — is it load-bearing for the explanation? Cut sentences that
+   only demonstrate that the author knows something.
+
+The tools available for rule 1 are: derive it (best), gloss it in one clause, or link to the lesson that covers
+it. Naming a technique without explaining it is fine *only* when the name is the point — "this is called
+superposition, and there is a whole lesson on it later" is useful; a list of five method names is not.
+
+### Challenges
+
+The rule is that a challenge must be **completable from the lesson it belongs to**, and it should test a claim
+the lesson actually made rather than exercise generic coding. Every entry needs four things:
+
+- a `starter` with `TODO`s and a **self-check** — assertions with messages, ending in `print("PASS")`, so the
+  learner gets a verdict without reading the solution;
+- a `solution` that runs (`runsol.mjs` is the gate);
+- an `explain` that says what the output *means*, referring to the actual numbers it produces;
+- a prompt that, wherever there is a surprise coming, asks the reader to **predict before running**.
+
+The best challenges measure something the lesson asserted: that a gradient vanishes, that two definitions
+coincide, that a method fails on a case it was never designed for. If an experiment does not support the claim
+you wrote, change the claim — several explanations in this atlas were rewritten after the numbers disagreed with
+them.
 
 ---
 
@@ -267,19 +300,37 @@ lesson that explains it.
 
 **c. Add or extend a learning path** in `PATHS` if the track fits an existing route.
 
-**d. Run the checks.** Both live in the session scratchpad; copy them into the repo as `scratch/` if you want
-them permanently:
+**d. Run the checks.** All of them live in `scratch/`:
 
 ```bash
 node scratch/check.mjs      # every module parses (catches the backtick and ** bugs)
 node scratch/smoke.mjs      # content graph integrity
+node scratch/runsol.mjs     # every challenge solution actually runs, under python3 + numpy
+node scratch/audit.mjs      # missing code explanations, challenge explains, self-checks
 ```
 
 `smoke.mjs` validates: unique lesson ids · every `viz()` id exists in the registry · every `prereq` resolves ·
 every `#/l/` link resolves · glossary `see:` targets · path lesson ids · quiz answer indices in range · every
 markdown block renders without throwing · and it lists figures built but never placed.
 
-It exits non-zero on any error. Treat that as the gate.
+`runsol.mjs` extracts each challenge's `solution` and executes it. It is the gate that matters most, because a
+challenge whose own reference solution fails is worse than no challenge — and three of them did, silently, before
+it existed. It needs `numpy` (`pip install numpy`); a few solutions also want `matplotlib`.
+
+All of them exit non-zero on any error. Treat that as the gate.
+
+**Editing helpers** (also in `scratch/`), useful because lesson and challenge entries are large template
+literals that are awkward to edit by hand:
+
+```bash
+node scratch/splice.mjs <file> <startLine> <endLine> <replacementFile>   # replace a line range
+node scratch/setentry.mjs <challengesFile> <lessonId> <replacementFile>  # replace a whole challenge entry
+node scratch/appendcheck.mjs <challengesFile> <lessonId> <blockFile>     # append a self-check to both
+                                                                        # starter and solution
+```
+
+`appendcheck.mjs` escapes the block for embedding in a template literal. Doing that by hand is how you end up
+with a `\n` that reaches Python as a real newline and produces an unterminated string.
 
 **e. Serve it.**
 
