@@ -506,15 +506,23 @@ that is not evidence.
 That is the instability elastic net was designed to fix: adding a little L2 to the L1 makes interchangeable
 features share the credit instead of fighting over it.`,
 },
+
 'ml-logistic': {
-  title: 'Logistic regression, and watching ‖w‖ run away',
-  prompt: `Implement the gradient and train on separable data with no regularization. Watch $\\|w\\|$ grow without
-bound, then add an L2 penalty and confirm it stops.`,
-  hint: 'The gradient is $\\frac1n X^{\\mathsf T}(\\sigma(Xw) - y)$ — remember not to penalize the intercept.',
+  title: 'Train it, watch ‖w‖ run away, and measure the gradient squared error throws away',
+  prompt: `Implement the gradient, then use it to check two claims from the lesson.
+
+1. **Separable data diverges.** Fill in \`train\`. With no penalty, the weights should grow without bound while
+   the loss creeps toward zero; with a small L2 penalty they should settle.
+2. **The vanishing gradient.** The last block takes a single confidently-wrong example ($p = 0.001$ when the
+   answer is 1) and computes what cross-entropy and squared error each tell the model to do about it. The
+   lesson said one of them says almost nothing. **Predict the ratio before you run it.**
+
+Both losses are attached to the same sigmoid, so any difference comes entirely from the loss.`,
+  hint: 'The mean binary cross-entropy gradient is $\\frac1n X^{\\mathsf T}(\\sigma(Xw) - y)$, plus $\\lambda w$ on the non-intercept weights. For the last block, differentiate each loss with respect to the logit $z$: cross-entropy gives $p - y$, and squared error gives $2(p-y)\\,p(1-p)$.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
-# perfectly separable data
+# two clusters far enough apart that a line separates them perfectly
 n = 200
 X = np.vstack([rng.normal([-2, -2], 0.5, (n//2, 2)),
                rng.normal([ 2,  2], 0.5, (n//2, 2))])
@@ -523,20 +531,37 @@ Xb = np.column_stack([np.ones(n), X])
 
 def sigmoid(z): return 1/(1+np.exp(-np.clip(z, -500, 500)))
 
-def train(l2, steps=20000, lr=0.5):
+def train(l2, steps=20000, lr=0.5, verbose=True):
     w = np.zeros(3)
     for t in range(steps):
         p = sigmoid(Xb @ w)
-        # TODO: gradient of mean BCE + l2 penalty on w[1:] only
+        # TODO: mean cross-entropy gradient, plus l2 on w[1:] only (never the intercept)
         grad = np.zeros(3)
-        w -= lr * grad
-        if t in (100, 1000, 5000, 19999):
+        w = w - lr * grad
+        if verbose and t in (100, 1000, 5000, 19999):
             loss = -np.mean(y*np.log(p+1e-12) + (1-y)*np.log(1-p+1e-12))
-            print(f"  step {t:6d}  loss {loss:.6f}  |w| {np.linalg.norm(w[1:]):8.3f}")
+            print(f"  step {t:6d}  loss {loss:.6f}  |w| {np.linalg.norm(w[1:]):9.3f}")
     return w
 
-print("no regularization:");  train(0.0)
-print("\\nwith L2 = 0.01:");  train(0.01)`,
+print("no regularization, on separable data:")
+w_free = train(0.0)
+print("\\nwith L2 = 0.01:")
+w_reg = train(0.01)
+
+assert np.linalg.norm(w_free[1:]) > 2 * np.linalg.norm(w_reg[1:]), \\
+    "the unregularized run should end up with noticeably larger weights"
+print("\\nsame decision boundary direction?",
+      np.allclose(w_free[1:]/np.linalg.norm(w_free[1:]),
+                  w_reg[1:]/np.linalg.norm(w_reg[1:]), atol=0.05))
+print("PASS\\n")
+
+# ---------- 2. what each loss says about a confidently wrong example ----------
+print("  p       cross-entropy grad    squared-error grad     ratio")
+for p in [0.5, 0.1, 0.01, 0.001, 0.0001]:
+    y_true = 1.0
+    g_ce = p - y_true                       # d/dz of cross-entropy
+    g_sq = 2*(p - y_true) * p * (1 - p)     # d/dz of squared error, via the sigmoid
+    print(f"  {p:<8.4f}  {g_ce:16.6f}  {g_sq:19.9f}  {abs(g_ce/g_sq):9.0f}x")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -548,22 +573,48 @@ Xb = np.column_stack([np.ones(n), X])
 
 def sigmoid(z): return 1/(1+np.exp(-np.clip(z, -500, 500)))
 
-def train(l2, steps=20000, lr=0.5):
+def train(l2, steps=20000, lr=0.5, verbose=True):
     w = np.zeros(3)
     for t in range(steps):
         p = sigmoid(Xb @ w)
         grad = Xb.T @ (p - y) / n + l2 * np.r_[0.0, w[1:]]
-        w -= lr * grad
-        if t in (100, 1000, 5000, 19999):
+        w = w - lr * grad
+        if verbose and t in (100, 1000, 5000, 19999):
             loss = -np.mean(y*np.log(p+1e-12) + (1-y)*np.log(1-p+1e-12))
-            print(f"  step {t:6d}  loss {loss:.6f}  |w| {np.linalg.norm(w[1:]):8.3f}")
+            print(f"  step {t:6d}  loss {loss:.6f}  |w| {np.linalg.norm(w[1:]):9.3f}")
     return w
 
-print("no regularization:");  train(0.0)
-print("\\nwith L2 = 0.01:");  train(0.01)`,
-  explain: 'On separable data the log-loss has no minimum — scaling $w$ up always improves it, so $\\|w\\|\\to\\infty$ and the loss creeps toward 0 forever. L2 gives the objective a finite optimum. The *direction* it diverges along converges to the max-margin separator, which is a neat connection to SVMs.',
-},
+print("no regularization, on separable data:")
+w_free = train(0.0)
+print("\\nwith L2 = 0.01:")
+w_reg = train(0.01)
 
+assert np.linalg.norm(w_free[1:]) > 2 * np.linalg.norm(w_reg[1:])
+print("\\nsame decision boundary direction?",
+      np.allclose(w_free[1:]/np.linalg.norm(w_free[1:]),
+                  w_reg[1:]/np.linalg.norm(w_reg[1:]), atol=0.05))
+print("PASS\\n")
+
+print("  p       cross-entropy grad    squared-error grad     ratio")
+for p in [0.5, 0.1, 0.01, 0.001, 0.0001]:
+    y_true = 1.0
+    g_ce = p - y_true
+    g_sq = 2*(p - y_true) * p * (1 - p)
+    print(f"  {p:<8.4f}  {g_ce:16.6f}  {g_sq:19.9f}  {abs(g_ce/g_sq):9.0f}x")`,
+  explain: `Part 1: look at the two \`|w|\` columns. The regularized run is finished by step 1000 and does not
+move again. The unregularized one is still climbing at step 20,000, and it always will be — on separable data
+there is no optimum to reach, because any correct boundary scaled up is more confident and therefore scores
+better. The growth is only logarithmic, so it looks tame in a short run; leave it going and the weights pass
+any number you name while the loss crawls toward zero. Notice the last line though: the two boundaries point in nearly the same
+*direction*. Regularization did not change what the model believes, only how loudly it says it.
+
+Part 2 is the reason cross-entropy exists. At $p = 0.001$ with the true answer 1 — the model is as wrong as it
+can be — cross-entropy reports a gradient of $-0.999$, essentially the largest it ever produces. Squared error
+reports $-0.002$, about **500 times smaller**, and it keeps shrinking the more wrong the model gets. The
+$p(1-p)$ from the sigmoid is still sitting in the squared-error gradient, and in the tail it is nearly zero.
+Cross-entropy's logarithms cancel it exactly. A model trained with squared error would be stuck hardest on the
+examples it most needs to fix.`,
+},
 'ml-trees-ensembles': {
   title: 'Grow a regression stump, then boost it',
   prompt: `Write a depth-1 regression tree that picks the best split by variance reduction, then boost a hundred of

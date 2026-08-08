@@ -1123,20 +1123,23 @@ $-\\log(1-p_i)$ instead. Either way: *how surprised was the model by what actual
 This is convex in $\\mathbf{w}$, its gradient is remarkably clean, and — as the derivation below shows — it
 solves the vanishing-gradient problem exactly.`),
 
-    deriv('The gradient, and why it looks like linear regression', `With $p = \\sigma(z)$ and $z = \\mathbf{w}^{\\mathsf T}\\mathbf{x}$, use $\\sigma'(z) = \\sigma(z)(1-\\sigma(z))$:
+    deriv('The gradient, and why it looks like linear regression', `**First, the derivative of the sigmoid**, which you need for anything that follows. Write $\\sigma(z) = (1+e^{-z})^{-1}$ and use the chain rule:
 
-$$\\frac{\\partial \\mathcal{L}_i}{\\partial z} = -\\left[\\frac{y}{p} - \\frac{1-y}{1-p}\\right]p(1-p) = -\\big[y(1-p) - (1-y)p\\big] = p - y$$
+$$\\sigma'(z) = -(1+e^{-z})^{-2}\\cdot(-e^{-z}) = \\frac{e^{-z}}{(1+e^{-z})^{2}} = \\underbrace{\\frac{1}{1+e^{-z}}}_{\\sigma}\\cdot\\underbrace{\\frac{e^{-z}}{1+e^{-z}}}_{1-\\sigma}$$
 
-and therefore
+so $\\sigma'(z) = \\sigma(z)\\big(1-\\sigma(z)\\big) = p(1-p)$. Worth remembering: it is largest at $p = 0.5$ (where it equals $0.25$) and collapses toward zero at both ends. Those flat tails are where the trouble lives.
+
+**Now the loss gradient.** With $p = \\sigma(z)$ and $z = \\mathbf{w}\\cdot\\mathbf{x}$, the per-example loss is $\\mathcal{L}_i = -[y\\log p + (1-y)\\log(1-p)]$. Differentiate with respect to $p$, then chain through $\\sigma$:
+
+$$\\frac{\\partial \\mathcal{L}_i}{\\partial z} = \\underbrace{-\\left[\\frac{y}{p} - \\frac{1-y}{1-p}\\right]}_{\\partial\\mathcal{L}/\\partial p}\\cdot\\underbrace{p(1-p)}_{\\partial p/\\partial z} = -\\big[y(1-p) - (1-y)p\\big] = p - y$$
+
+Multiply by $\\partial z/\\partial w_j = x_j$ and average over the data:
 
 $$\\nabla_{\\mathbf{w}}\\mathcal{L} = \\frac{1}{n}\\sum_i (p_i - y_i)\\,\\mathbf{x}_i$$
 
-Identical in form to linear regression's gradient, with $p_i$ in place of $\\hat y_i$. **This is not a coincidence** —
-both are generalized linear models, and every GLM with its canonical link has gradient (prediction − target) × input.
+That is the *same shape* as linear regression's gradient, with the predicted probability in place of the predicted number: (prediction − target) times input. You have now seen this form three times — least squares, softmax with cross-entropy, and here — which is a good sign it is worth remembering.
 
-Note the $p(1-p)$ factors *cancelled*. That cancellation is exactly why cross-entropy is the right loss: with squared
-error they would survive, and a confidently-wrong prediction ($p\\approx0$ when $y=1$) would produce a vanishing
-gradient — the model would be stuck precisely where it most needs to move.`),
+**And notice what happened to the $p(1-p)$.** It appeared from the sigmoid and was cancelled by the $1/p$ and $1/(1-p)$ coming out of the logarithms. That cancellation is the whole reason cross-entropy is the right loss here. With squared error there are no logarithms, nothing cancels the $p(1-p)$, and a confidently wrong prediction — $p \\approx 0$ when $y = 1$ — sits in the flat tail where $p(1-p) \\approx 0$ and receives almost no gradient. Cross-entropy gives that same example a gradient of $p - y \\approx -1$: the largest it can be.`),
 
     viz('logistic-regression'),
 
@@ -1228,7 +1231,8 @@ print("\\npredicted   actual    count")
 for lo in np.arange(0, 1, 0.2):
     m = (p >= lo) & (p < lo + 0.2)
     if m.sum() > 5:
-        print(f"  {lo:.1f}-{lo+0.2:.1f}    {y[m].mean():.3f}   {m.sum():5d}")`),
+        print(f"  {lo:.1f}-{lo+0.2:.1f}    {y[m].mean():.3f}   {m.sum():5d}")`,
+      'The calibration table at the end is the check worth running on any classifier. Group the predictions into bins and, for each bin, compare what the model claimed against what actually happened. The two columns track each other closely here — when this model says 0.7, roughly 70% of those cases really are positive. Run the same table on a deep network trained to near-zero training loss and the right column will fall well below the left.'),
 
     quiz('Why is squared error a bad loss for classification with a sigmoid output?',
       ["It is non-convex, and its gradient vanishes exactly when the model is confidently wrong",
