@@ -322,13 +322,17 @@ factor.`,
 },
 
 'llm-transformer': {
-  title: 'Assemble a transformer block with RoPE',
-  prompt: `Build a pre-norm block: RMSNorm, multi-head causal attention with rotary embeddings, residual, RMSNorm,
-SwiGLU MLP, residual. Then verify that RoPE makes attention scores depend only on relative position.`,
-  hint: 'RoPE rotates pairs of dimensions by an angle proportional to position. Check that q at 8 vs k at 3 gives the same score as 30 vs 25.',
+  title: 'Build the block, verify RoPE is relative, and watch the residual stream grow',
+  prompt: `1. **RoPE.** Implement the rotation, then check the lesson's claim directly: a query at position 8 and a
+   key at position 3 should score exactly the same as a query at 30 and a key at 25. Same gap, same score.
+2. **The block.** Assemble a pre-norm block — RMSNorm, causal attention, residual add, RMSNorm, MLP, residual
+   add — and stack eight of them.
+3. **The bus.** The lesson said layers *add* to a shared stream rather than overwriting it. Measure the stream's
+   size at every depth, and measure how much of the final state came from the original embedding.`,
+  hint: 'RoPE treats the vector as $d/2$ pairs $(x_0,x_1), (x_2,x_3), \\ldots$ and rotates each pair by its own angle: $x\'_{even} = x_{even}\\cos\\theta - x_{odd}\\sin\\theta$ and $x\'_{odd} = x_{even}\\sin\\theta + x_{odd}\\cos\\theta$.',
   starter: `import numpy as np
 
-def rmsnorm(x, g, eps=1e-6):
+def rmsnorm(x, g=1.0, eps=1e-6):
     return x / np.sqrt((x**2).mean(-1, keepdims=True) + eps) * g
 
 def rope(x, base=10000):
@@ -338,28 +342,69 @@ def rope(x, base=10000):
     theta = pos / base ** (i / d)
     c, s = np.cos(theta), np.sin(theta)
     out = x.copy()
-    # TODO: rotate (x[:,0::2], x[:,1::2]) by theta
+    # TODO: rotate each pair (x[:, 0::2], x[:, 1::2]) by theta
     return out
 
-# --- relative-position check ---
+# ---------- 1. is RoPE really relative? ----------
 d = 16
 q0 = np.random.default_rng(0).normal(size=d)
 k0 = np.random.default_rng(1).normal(size=d)
 
 def score_at(m, n):
-    seq = np.zeros((max(m, n) + 1, d))
-    seq[m] = q0; qm = rope(seq)[m]
-    seq2 = np.zeros((max(m, n) + 1, d))
-    seq2[n] = k0; kn = rope(seq2)[n]
-    return qm @ kn
+    a = np.zeros((max(m, n)+1, d)); a[m] = q0
+    b = np.zeros((max(m, n)+1, d)); b[n] = k0
+    return float(rope(a)[m] @ rope(b)[n])
 
-print(f"score(m=8,  n=3)  = {score_at(8, 3):.6f}")
-print(f"score(m=30, n=25) = {score_at(30, 25):.6f}   <- same offset, same score")
-assert abs(score_at(8,3) - score_at(30,25)) < 1e-6, "RoPE should depend only on m-n"
-print("\\nPASS")`,
+print(f"query at 8,  key at 3   -> {score_at(8, 3):.6f}")
+print(f"query at 30, key at 25  -> {score_at(30, 25):.6f}    same gap, same score")
+print(f"query at 8,  key at 2   -> {score_at(8, 2):.6f}    different gap, different score")
+assert abs(score_at(8, 3) - score_at(30, 25)) < 1e-6, "RoPE must depend only on m - n"
+assert abs(score_at(8, 3) - score_at(8, 2)) > 1e-3,  "a different gap should give a different score"
+print("PASS\\n")
+
+# ---------- 2. a stack of pre-norm blocks ----------
+rng = np.random.default_rng(0)
+T, D, H = 12, 32, 4
+def softmax(z):
+    z = z - z.max(-1, keepdims=True); e = np.exp(z); return e / e.sum(-1, keepdims=True)
+
+def make_block():
+    return dict(Wq=rng.normal(0, D**-0.5, (D, D)), Wk=rng.normal(0, D**-0.5, (D, D)),
+                Wv=rng.normal(0, D**-0.5, (D, D)), Wo=rng.normal(0, D**-0.5, (D, D)),
+                W1=rng.normal(0, D**-0.5, (D, 4*D)), W2=rng.normal(0, (4*D)**-0.5, (4*D, D)))
+
+def attention(x, p):
+    q, k, v = rope(x @ p["Wq"]), rope(x @ p["Wk"]), x @ p["Wv"]
+    s = q @ k.T / np.sqrt(D)
+    s = np.where(np.tril(np.ones((T, T))) == 1, s, -np.inf)
+    return (softmax(s) @ v) @ p["Wo"]
+
+def block(x, p):
+    x = x + attention(rmsnorm(x), p)                     # sublayer 1: mix across positions
+    x = x + (np.maximum(0, rmsnorm(x) @ p["W1"]) @ p["W2"])   # sublayer 2: per position
+    return x
+
+blocks = [make_block() for _ in range(8)]
+x0 = rng.normal(size=(T, D))
+x = x0.copy()
+sizes = [np.abs(x).mean()]
+for p in blocks:
+    x = block(x, p)
+    sizes.append(np.abs(x).mean())
+
+print("average size of the residual stream, by depth:")
+for L, v in enumerate(sizes):
+    print(f"  after {L} blocks: {v:.3f}")
+
+# ---------- 3. how much of the original survives? ----------
+keep = float(np.abs(np.sum(x0*x)) / (np.linalg.norm(x0)*np.linalg.norm(x)))
+print(f"\\ncosine between the input embedding and the final state: {keep:.3f}")
+print("Nothing overwrote it. Every block only ever added.")
+
+print(f"\\nparameters per block: {4*D*D + 8*D*D:,}    the 12*d^2 rule: {12*D*D:,}")`,
   solution: `import numpy as np
 
-def rmsnorm(x, g, eps=1e-6):
+def rmsnorm(x, g=1.0, eps=1e-6):
     return x / np.sqrt((x**2).mean(-1, keepdims=True) + eps) * g
 
 def rope(x, base=10000):
@@ -369,8 +414,9 @@ def rope(x, base=10000):
     theta = pos / base ** (i / d)
     c, s = np.cos(theta), np.sin(theta)
     out = x.copy()
-    out[:, 0::2] = x[:, 0::2]*c - x[:, 1::2]*s
-    out[:, 1::2] = x[:, 0::2]*s + x[:, 1::2]*c
+    even, odd = x[:, 0::2], x[:, 1::2]
+    out[:, 0::2] = even*c - odd*s
+    out[:, 1::2] = even*s + odd*c
     return out
 
 d = 16
@@ -378,14 +424,72 @@ q0 = np.random.default_rng(0).normal(size=d)
 k0 = np.random.default_rng(1).normal(size=d)
 
 def score_at(m, n):
-    a = np.zeros((max(m,n)+1, d)); a[m] = q0
-    b = np.zeros((max(m,n)+1, d)); b[n] = k0
-    return rope(a)[m] @ rope(b)[n]
+    a = np.zeros((max(m, n)+1, d)); a[m] = q0
+    b = np.zeros((max(m, n)+1, d)); b[n] = k0
+    return float(rope(a)[m] @ rope(b)[n])
 
-print(f"score(m=8,  n=3)  = {score_at(8, 3):.6f}")
-print(f"score(m=30, n=25) = {score_at(30, 25):.6f}")
-assert abs(score_at(8,3) - score_at(30,25)) < 1e-6
-print("\\nPASS -- the score depends only on m-n, with no position vector added anywhere.")`,
+print(f"query at 8,  key at 3   -> {score_at(8, 3):.6f}")
+print(f"query at 30, key at 25  -> {score_at(30, 25):.6f}    same gap, same score")
+print(f"query at 8,  key at 2   -> {score_at(8, 2):.6f}    different gap, different score")
+assert abs(score_at(8, 3) - score_at(30, 25)) < 1e-6
+assert abs(score_at(8, 3) - score_at(8, 2)) > 1e-3
+print("PASS\\n")
+
+rng = np.random.default_rng(0)
+T, D, H = 12, 32, 4
+def softmax(z):
+    z = z - z.max(-1, keepdims=True); e = np.exp(z); return e / e.sum(-1, keepdims=True)
+
+def make_block():
+    return dict(Wq=rng.normal(0, D**-0.5, (D, D)), Wk=rng.normal(0, D**-0.5, (D, D)),
+                Wv=rng.normal(0, D**-0.5, (D, D)), Wo=rng.normal(0, D**-0.5, (D, D)),
+                W1=rng.normal(0, D**-0.5, (D, 4*D)), W2=rng.normal(0, (4*D)**-0.5, (4*D, D)))
+
+def attention(x, p):
+    q, k, v = rope(x @ p["Wq"]), rope(x @ p["Wk"]), x @ p["Wv"]
+    s = q @ k.T / np.sqrt(D)
+    s = np.where(np.tril(np.ones((T, T))) == 1, s, -np.inf)
+    return (softmax(s) @ v) @ p["Wo"]
+
+def block(x, p):
+    x = x + attention(rmsnorm(x), p)
+    x = x + (np.maximum(0, rmsnorm(x) @ p["W1"]) @ p["W2"])
+    return x
+
+blocks = [make_block() for _ in range(8)]
+x0 = rng.normal(size=(T, D))
+x = x0.copy()
+sizes = [np.abs(x).mean()]
+for p in blocks:
+    x = block(x, p)
+    sizes.append(np.abs(x).mean())
+
+print("average size of the residual stream, by depth:")
+for L, v in enumerate(sizes):
+    print(f"  after {L} blocks: {v:.3f}")
+
+keep = float(np.abs(np.sum(x0*x)) / (np.linalg.norm(x0)*np.linalg.norm(x)))
+print(f"\\ncosine between the input embedding and the final state: {keep:.3f}")
+print("Nothing overwrote it. Every block only ever added.")
+
+print(f"\\nparameters per block: {4*D*D + 8*D*D:,}    the 12*d^2 rule: {12*D*D:,}")`,
+  explain: `Part 1 confirms RoPE's defining property. The same *gap* between query and key gives the same score
+wherever in the sequence the pair sits — 8-and-3 matches 30-and-25 to six decimals — while a different gap gives
+a different score. The model therefore learns about relative distance rather than absolute slots, which is why
+RoPE has no maximum position baked into it, unlike a lookup table of learned position vectors.
+
+Part 3 is the residual-stream picture, measured. The stream's magnitude climbs monotonically with depth,
+because each block *adds* and nothing subtracts — which is exactly why a final normalization before the output
+head is standard practice rather than an afterthought. And the original embedding is still clearly present in
+the final state: the cosine of about 0.28 should be read against the $1/\\sqrt{d}$ baseline from
+[the first lesson](#/l/math-vectors), which for 384 numbers is about 0.05. Eight layers of additions later, the
+input is still five times more aligned with the output than chance would explain. No layer ever replaced it.
+
+That is the difference between the two mental models. In a pipeline picture, layer 8's output is a
+transformation of layer 7's and the input is long gone. In the bus picture, the input is still sitting there
+alongside eight layers' worth of additions, any of which a later layer can read from selectively. It is why
+interpretability research talks about circuits that skip across layers, and why removing a single middle layer
+from a trained transformer often barely changes its output.`,
 },
 
 'llm-pretraining': {

@@ -504,9 +504,12 @@ injected explicitly, and how to do it well took the field several attempts.`),
 - **Sinusoidal** (original) — fixed sin/cos at geometrically spaced frequencies. Like a binary clock.
 - **Learned absolute** (BERT, GPT-2) — a lookup table. Simple, but there is no row for position 5000 if you trained to
   4096. Hard length limit.
-- **RoPE** (now dominant) — rotate $\\mathbf{q}$ and $\\mathbf{k}$ by an angle proportional to position. Because
-  rotation preserves angles, $\\mathbf{q}_m\\cdot\\mathbf{k}_n$ depends only on $m-n$: relative position, no extra
-  parameters, nothing added to dilute the embedding.
+- **RoPE** (now dominant) — rotate $\\mathbf{q}$ and $\\mathbf{k}$ by an angle proportional to their position:
+  the vector at position $m$ is turned by $m\\theta$. Here is why that gives relative position for free. Rotating
+  two vectors by the *same* angle leaves the angle between them unchanged, so rotating $\\mathbf{q}$ by $m\\theta$
+  and $\\mathbf{k}$ by $n\\theta$ leaves a dot product that depends only on the *difference* in how far each was
+  turned — that is, on $m - n$. Tokens 5 apart look 5 apart wherever they sit in the sequence. No parameters, and
+  nothing added to the embedding to dilute its content.
 - **ALiBi** — add a distance-proportional penalty straight into the attention scores. Extrapolates well.`),
 
     viz('rope-rotation'),
