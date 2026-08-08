@@ -134,11 +134,19 @@ Nothing improper happened anywhere. No model trained on the test set. The only t
 candidates allowed to compete, and the maximum of many noisy numbers drifts upward on its own. A seven-point
 lead, conjured out of nothing but looking. This is why the rule is to look once.`,
 },
+
 'ml-linear-regression': {
-  title: 'Three ways to solve least squares, and one that breaks',
-  prompt: `Solve the same regression with the normal equations, \`lstsq\`, and gradient descent. Then add a
-near-duplicate column and watch one of them fall apart.`,
-  hint: 'Forming $X^{\\mathsf T}X$ squares the condition number — compare `np.linalg.cond` before and after.',
+  title: 'Check the right angle, then break the coefficients without breaking the predictions',
+  prompt: `Three things the lesson claimed. Verify all three.
+
+1. Implement \`solve_normal\` and \`solve_gd\`. Closed form and gradient descent should agree to several decimals,
+   because they are solving the same problem.
+2. **The right angle.** The lesson said least squares works by dropping a perpendicular: the residual ends up
+   orthogonal to every feature column. Fill in \`max_alignment\` and confirm it — every dot product should be
+   zero to floating-point dust.
+3. **Multicollinearity.** The last block adds a near-duplicate column, then reports the standard errors and the
+   prediction error. One of those two explodes and one does not. **Predict which before you run it.**`,
+  hint: 'The residual is `y - X @ w`. Orthogonal to every column means `X.T @ residual` is the zero vector. For the standard errors, use $\\sigma^2 (X^{\\mathsf T}X)^{-1}$ with $\\sigma^2$ estimated from the residuals.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -148,25 +156,49 @@ w_true = np.array([2.0, -1.0, 0.5, 0.0, 3.0])
 y = X @ w_true + rng.normal(0, 0.3, n)
 
 def solve_normal(X, y):
-    # TODO: (X^T X)^-1 X^T y
+    # TODO: solve X^T X w = X^T y
     return np.zeros(X.shape[1])
 
-def solve_gd(X, y, lr=0.01, steps=5000):
-    # TODO: gradient descent on ||Xw - y||^2 / n
+def solve_gd(X, y, lr=0.01, steps=8000):
+    # TODO: gradient descent. The gradient of ||Xw - y||^2 / n is 2 X^T (Xw - y) / n.
     return np.zeros(X.shape[1])
+
+def max_alignment(X, y, w):
+    """The largest |dot product| between a feature column and the residual."""
+    # TODO
+    return 1.0
+
+w_n  = solve_normal(X, y)
+w_ls = np.linalg.lstsq(X, y, rcond=None)[0]
+w_gd = solve_gd(X, y)
 
 print("truth  :", w_true)
-print("normal :", solve_normal(X, y).round(4))
-print("lstsq  :", np.linalg.lstsq(X, y, rcond=None)[0].round(4))
-print("gd     :", solve_gd(X, y).round(4))
+print("normal :", w_n.round(4))
+print("lstsq  :", w_ls.round(4))
+print("gd     :", w_gd.round(4))
+assert np.abs(w_n - w_ls).max() < 1e-8,  "closed forms must agree"
+assert np.abs(w_gd - w_ls).max() < 1e-3, "gradient descent should converge to the same place"
 
-# --- now make it ill-conditioned ---
-Xb = X.copy()
-Xb[:, 1] = Xb[:, 0] + 1e-7 * rng.normal(size=n)
-print(f"\\ncond(X)     = {np.linalg.cond(Xb):.3e}")
-print(f"cond(X^T X) = {np.linalg.cond(Xb.T @ Xb):.3e}   <- squared")
-print("normal :", solve_normal(Xb, y).round(3))
-print("lstsq  :", np.linalg.lstsq(Xb, y, rcond=None)[0].round(3))`,
+print(f"\\nlargest |column . residual| at the solution : {max_alignment(X, y, w_ls):.2e}")
+print(f"the same, for a deliberately wrong w        : {max_alignment(X, y, w_ls + 0.1):.2e}")
+assert max_alignment(X, y, w_ls) < 1e-9, "at the optimum the residual must be orthogonal to every column"
+print("PASS -- the right angle is real\\n")
+
+# ---------- multicollinearity ----------
+def std_errors(X, y, w):
+    r = y - X @ w
+    sigma2 = (r @ r) / (len(y) - X.shape[1])
+    return np.sqrt(np.diag(sigma2 * np.linalg.inv(X.T @ X)))
+
+Xdup = np.column_stack([X, X[:, 0] + 1e-4 * rng.normal(size=n)])   # a 6th, redundant column
+
+for label, Xi in [("five independent columns", X),
+                  ("plus a sixth that nearly copies column 0", Xdup)]:
+    wi = np.linalg.lstsq(Xi, y, rcond=None)[0]
+    print(f"{label}:")
+    print(f"   coefficients   : {np.round(wi, 2)}")
+    print(f"   standard errors: {np.round(std_errors(Xi, y, wi), 2)}")
+    print(f"   prediction RMSE: {np.sqrt(np.mean((Xi @ wi - y)**2)):.4f}\\n")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -178,26 +210,60 @@ y = X @ w_true + rng.normal(0, 0.3, n)
 def solve_normal(X, y):
     return np.linalg.solve(X.T @ X, X.T @ y)
 
-def solve_gd(X, y, lr=0.01, steps=5000):
+def solve_gd(X, y, lr=0.01, steps=8000):
     w = np.zeros(X.shape[1])
     for _ in range(steps):
-        w -= lr * 2 * X.T @ (X @ w - y) / len(y)
+        w = w - lr * 2 * X.T @ (X @ w - y) / len(y)
     return w
 
+def max_alignment(X, y, w):
+    return np.abs(X.T @ (y - X @ w)).max()
+
+w_n  = solve_normal(X, y)
+w_ls = np.linalg.lstsq(X, y, rcond=None)[0]
+w_gd = solve_gd(X, y)
+
 print("truth  :", w_true)
-print("normal :", solve_normal(X, y).round(4))
-print("lstsq  :", np.linalg.lstsq(X, y, rcond=None)[0].round(4))
-print("gd     :", solve_gd(X, y).round(4))
+print("normal :", w_n.round(4))
+print("lstsq  :", w_ls.round(4))
+print("gd     :", w_gd.round(4))
+assert np.abs(w_n - w_ls).max() < 1e-8
+assert np.abs(w_gd - w_ls).max() < 1e-3
 
-Xb = X.copy()
-Xb[:, 1] = Xb[:, 0] + 1e-7 * rng.normal(size=n)
-print(f"\\ncond(X)     = {np.linalg.cond(Xb):.3e}")
-print(f"cond(X^T X) = {np.linalg.cond(Xb.T @ Xb):.3e}   <- squared")
-print("normal :", solve_normal(Xb, y).round(3))
-print("lstsq  :", np.linalg.lstsq(Xb, y, rcond=None)[0].round(3))`,
-  explain: 'With two near-identical columns, `lstsq` (which uses SVD) stays sane while the normal equations produce enormous coefficients that cancel. This is why you should never write `inv(X.T @ X)` in production code.',
+print(f"\\nlargest |column . residual| at the solution : {max_alignment(X, y, w_ls):.2e}")
+print(f"the same, for a deliberately wrong w        : {max_alignment(X, y, w_ls + 0.1):.2e}")
+assert max_alignment(X, y, w_ls) < 1e-9
+print("PASS -- the right angle is real\\n")
+
+def std_errors(X, y, w):
+    r = y - X @ w
+    sigma2 = (r @ r) / (len(y) - X.shape[1])
+    return np.sqrt(np.diag(sigma2 * np.linalg.inv(X.T @ X)))
+
+Xdup = np.column_stack([X, X[:, 0] + 1e-4 * rng.normal(size=n)])   # a 6th, redundant column
+
+for label, Xi in [("five independent columns", X),
+                  ("plus a sixth that nearly copies column 0", Xdup)]:
+    wi = np.linalg.lstsq(Xi, y, rcond=None)[0]
+    print(f"{label}:")
+    print(f"   coefficients   : {np.round(wi, 2)}")
+    print(f"   standard errors: {np.round(std_errors(Xi, y, wi), 2)}")
+    print(f"   prediction RMSE: {np.sqrt(np.mean((Xi @ wi - y)**2)):.4f}\\n")`,
+  explain: `Part 2 is the geometric claim, checked. At the least-squares solution every feature column is
+orthogonal to the residual — the dot products come out around $10^{-13}$, which is zero as far as float64 is
+concerned. Nudge $\\mathbf{w}$ off the optimum and they immediately become large. That is the whole content of
+the normal equations: *stop when there is no feature left that correlates with your error.*
+
+Part 3 is multicollinearity, and the numbers are worth reading carefully. Adding one redundant column turns the
+weight on column 0 from a sober **1.98** into **+405.7**, with **−403.7** on its near-twin. The standard errors
+jump from 0.03 to 277, which is the fit telling you outright that it cannot separate the two.
+
+Now look at the last line of each block: **the prediction error does not change at all.** The *sum* of those two
+coefficients is still about 2.0 — the true weight — even though the split between them is arbitrary. So the model
+predicts exactly as well as before, while every story you might tell about an individual coefficient has become
+worthless. Nothing in the fit fails loudly; only the standard errors give it away. Regularization, in [the next lessons](#/l/ml-regularization), is how you force the fit
+to pick a sensible split.`,
 },
-
 'ml-overfitting': {
   title: 'Reproduce the bias-variance decomposition numerically',
   prompt: `Fit the same model to many independent datasets, then estimate bias² and variance directly from the

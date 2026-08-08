@@ -332,24 +332,21 @@ model cannot express. Least squares drops a perpendicular onto that plane. The r
 T}(X\\mathbf{w}-\\mathbf{y}) = 0$, which *is* the normal equations. That is also why they are called "normal" —
 the word means perpendicular here, and has nothing to do with the normal distribution.`),
 
-    deriv('The normal equations', `Minimize $\\mathcal{L}(\\mathbf{w}) = \\|X\\mathbf{w}-\\mathbf{y}\\|^2 = (X\\mathbf{w}-\\mathbf{y})^{\\mathsf T}(X\\mathbf{w}-\\mathbf{y})$.
+    deriv('The normal equations, one partial derivative at a time', `We want the $\\mathbf{w}$ minimising $\\mathcal{L}(\\mathbf{w}) = \\sum_{i=1}^{n} (\\mathbf{x}_i \\cdot \\mathbf{w} - y_i)^2$, where $\\mathbf{x}_i$ is row $i$ of $X$. Nothing here needs matrix calculus — a partial derivative and the chain rule are enough.
 
-Expand:
-$$\\mathcal{L} = \\mathbf{w}^{\\mathsf T}X^{\\mathsf T}X\\mathbf{w} - 2\\mathbf{y}^{\\mathsf T}X\\mathbf{w} + \\mathbf{y}^{\\mathsf T}\\mathbf{y}$$
+Differentiate with respect to one weight $w_j$, holding the others fixed. The outer function is a square, whose derivative is twice the inside; the inside is $\\mathbf{x}_i\\cdot\\mathbf{w} - y_i$, and the only term of that dot product containing $w_j$ is $x_{ij}w_j$, so its derivative is $x_{ij}$. Multiply them and sum over the data:
 
-Differentiate (using $\\partial(\\mathbf{w}^{\\mathsf T}A\\mathbf{w})/\\partial\\mathbf{w} = 2A\\mathbf{w}$ for symmetric $A$):
+$$\\frac{\\partial \\mathcal{L}}{\\partial w_j} = \\sum_{i=1}^{n} 2\\,(\\mathbf{x}_i\\cdot\\mathbf{w} - y_i)\\,x_{ij}$$
 
-$$\\nabla_{\\mathbf w}\\mathcal{L} = 2X^{\\mathsf T}X\\mathbf{w} - 2X^{\\mathsf T}\\mathbf{y} = 0$$
+Now read that sum. The quantity $r_i = \\mathbf{x}_i\\cdot\\mathbf{w} - y_i$ is residual $i$, and $x_{ij}$ is entry $i$ of column $j$ of $X$. So the sum is twice the dot product of column $j$ with the residual vector. Setting every one of these to zero at once — one equation per column — gives, in matrix form:
 
-$$\\boxed{\\ \\hat{\\mathbf{w}} = (X^{\\mathsf T}X)^{-1}X^{\\mathsf T}\\mathbf{y}\\ }$$
+$$X^{\\mathsf T}(X\\mathbf{w}-\\mathbf{y}) = \\mathbf{0} \\qquad\\Longrightarrow\\qquad \\hat{\\mathbf{w}} = (X^{\\mathsf T}X)^{-1}X^{\\mathsf T}\\mathbf{y}$$
 
-**The geometry.** The condition $X^{\\mathsf T}(X\\mathbf{w}-\\mathbf{y}) = 0$ says the residual is orthogonal to every
-column of $X$. That is the defining property of an orthogonal projection: $\\hat{\\mathbf y} = X\\hat{\\mathbf w}$ is the
-point in the column space of $X$ closest to $\\mathbf{y}$, and $H = X(X^{\\mathsf T}X)^{-1}X^{\\mathsf T}$ is the projection
-matrix (statisticians call it the "hat matrix").
+**Now read the condition geometrically.** "Column $j$ of $X$, dotted with the residual, is zero" is exactly "the residual is orthogonal to feature $j$" — and it holds for every feature at once. That is the defining property of dropping a perpendicular, which is why the picture above and the algebra here are the same statement. It also explains the name: *normal* is the old word for perpendicular.
 
-**Do not implement this literally.** Forming $X^{\\mathsf T}X$ squares the condition number. Use \`np.linalg.lstsq\`,
-which goes through QR or SVD.`),
+There is a sanity check hiding in it, too. If the residual still had any component along a feature column, you could reduce your error by moving a little along that feature. Being orthogonal to all of them means there is nothing left to gain — which is what "minimum" should mean.
+
+**Do not implement the boxed formula literally.** Forming $X^{\\mathsf T}X$ squares the condition number, as [the numerics lesson](#/l/math-numerics) showed. Call \`np.linalg.lstsq\`, which works on $X$ directly.`),
 
     viz('regression-loss-surface'),
 
@@ -418,6 +415,26 @@ engineered features.
 Which raises the obvious next question, and it is not a happy one: if I can always add more features and always
 reduce my training error, when should I stop? That is [the next lesson](#/l/ml-overfitting).`),
 
+    t(`## How much would these coefficients move on different data?
+
+Your coefficients came from one particular sample. Had you collected a different sample from the same source,
+you would have got different numbers. A **standard error** estimates how much different — it is the standard
+deviation of a coefficient across the samples you might have drawn.
+
+You do not need to actually collect more data to estimate it. The residuals tell you how noisy $y$ is, and
+$X^{\\mathsf T}X$ tells you how much the features overlap:
+
+$$\\text{Var}(\\hat{\\mathbf{w}}) = \\sigma^2 (X^{\\mathsf T}X)^{-1}, \\qquad \\sigma^2 \\approx \\frac{\\sum_i r_i^2}{n - d - 1}$$
+
+The standard error of $w_j$ is the square root of the $j$-th diagonal entry. Two things fall out of that formula,
+and both match intuition. More noise in $y$ means bigger standard errors. And if two features are nearly
+identical, $X^{\\mathsf T}X$ is nearly singular, its inverse is enormous, and the standard errors explode — which
+is precisely the multicollinearity problem from earlier, now with a number attached.
+
+Divide a coefficient by its own standard error and you get a **t-statistic**: how many standard errors the
+estimate sits away from zero. A magnitude below about 2 means this data cannot distinguish the coefficient from
+zero, so do not tell a story about its sign.`),
+
     code('Least squares, three ways', `import numpy as np
 
 rng = np.random.default_rng(0)
@@ -458,7 +475,8 @@ se = np.sqrt(np.diag(cov))
 print("\\ncoef     estimate    std.err     t-stat")
 for i, (c, s) in enumerate(zip(w2, se)):
     print(f"w{i}   {c:10.4f} {s:10.4f} {c/s:10.2f}")
-print("\\nw4 (true value 0) should have |t| < 2 -> not distinguishable from zero")`),
+print("\\nw4 (true value 0) should have |t| < 2 -> not distinguishable from zero")`,
+      'All three fitting methods land on the same weights, which is the point: the closed form and gradient descent are solving the same problem, and the closed form only exists because squared error is quadratic. The diagnostics at the end are where the practical value is. The residual standard deviation recovers the true noise level of 0.30, meaning the model has explained everything except the noise — and the coefficient with a true value of zero is the one whose t-statistic comes out small, exactly as it should.'),
 
     quiz('Two features in your regression are correlated at 0.99. What should you expect?',
       ['Individually unstable coefficients with huge standard errors, though predictions may still be fine',
