@@ -752,53 +752,59 @@ for o in outs:
 {
   id: 'math-eigen-svd',
   title: 'Eigenvectors, SVD, and Low-Rank Structure',
-  sub: 'The directions a matrix does not rotate, and the universal decomposition.',
+  sub: 'The directions a matrix does not rotate, and the decomposition that works on every matrix.',
   mins: 30, level: 'foundations',
   prereq: ['math-matrices'],
   tags: ['linear algebra', 'SVD', 'PCA'],
   sections: [
-    tldr(`Some matrices have special directions along which they only *stretch* — no rotation. Those directions
-are **eigenvectors**, the stretch factors are **eigenvalues**, and finding them turns a complicated matrix into
-a list of independent one-dimensional problems.
+    tldr(`Most vectors come out of a matrix pointing somewhere new. A few special directions come out pointing
+the same way, only longer or shorter. Those are the **eigenvectors**, and the amount of stretch is the
+**eigenvalue**. Finding them turns one complicated matrix into a list of independent one-number problems.
 
-The **SVD** is the version of that idea that works for *every* matrix, with no exceptions. It says any linear
-map is nothing more than: rotate, stretch along axes, rotate again. Truncating the small stretches gives the
-provably best low-rank approximation — which is why the same three letters show up behind PCA, image
-compression, recommender systems, and LoRA.`),
+Eigenvectors are great when they exist, and they often don't — a non-square matrix has none at all. The
+**SVD** is the repair. It says that *every* matrix, with no exceptions, does exactly three things in order:
+rotate, stretch along axes, rotate again.
+
+Because the stretches come out sorted from largest to smallest, you can drop the small ones and keep a
+simplified version of the matrix. That single move — keep the big stretches, discard the rest — is what PCA,
+image compression, recommender systems, and LoRA all are underneath.`),
 
     jargon([
-      ['eigenvector', 'A direction that a matrix does not turn — it only lengthens or shortens it. "Eigen" is German for "own"; these are the matrix\'s *own* natural axes.'],
-      ['eigenvalue $\\lambda$', 'The stretch factor along an eigenvector. $\\lambda = 2$ doubles it; $\\lambda = -1$ flips it; $|\\lambda| < 1$ shrinks it.'],
-      ['symmetric matrix', '$A = A^{\\mathsf T}$ — the grid is a mirror image across its diagonal. Covariance matrices and Hessians are always symmetric, which is lucky, because symmetric matrices behave far better than general ones.'],
-      ['singular value $\\sigma_i$', 'Like an eigenvalue, but always real and non-negative, and defined for *any* matrix — even non-square ones. It measures how much the matrix stretches along the $i$-th special direction.'],
-      ['SVD', 'Singular Value Decomposition. Splitting any matrix $A$ into $U\\Sigma V^{\\mathsf T}$ = rotate, stretch, rotate. `np.linalg.svd`.'],
-      ['orthogonal matrix', 'A matrix that only rotates and reflects — never stretches. Preserves all lengths and angles. Its inverse is just its transpose, which is a free lunch.'],
-      ['spectrum', 'The list of eigenvalues (or singular values) of a matrix. "Spectral" as an adjective always means "about that list".'],
-      ['covariance matrix', 'For a dataset, the grid of "how much do features $i$ and $j$ vary together". Its eigenvectors are the directions the data spreads out along.'],
-      ['Hessian', 'The matrix of second derivatives of a loss. It describes the *curvature* of the loss surface — how bowl-shaped it is, and in which directions.'],
-      ['condition number $\\kappa$', 'Biggest stretch divided by smallest, $\\sigma_1/\\sigma_r$. A large $\\kappa$ means the problem is numerically delicate and gradient descent will crawl.'],
+      ['eigenvector', 'A direction a matrix does not turn; it only lengthens or shortens it. "Eigen" is German for "own" — these are the matrix\'s own natural axes.'],
+      ['eigenvalue $\\lambda$', 'The stretch factor along an eigenvector. $\\lambda = 2$ doubles the vector, $\\lambda = -1$ flips it, and $|\\lambda| < 1$ shrinks it.'],
+      ['symmetric matrix', '$A = A^{\\mathsf T}$: the grid is its own mirror image across the diagonal. Covariance matrices and second-derivative matrices are always symmetric, which is lucky, because symmetric matrices behave much better than general ones.'],
+      ['singular value $\\sigma_i$', 'Like an eigenvalue, but always real and never negative, and defined for *any* matrix including non-square ones. It measures how much the matrix stretches along its $i$-th special direction.'],
+      ['SVD', 'Singular Value Decomposition — splitting any matrix $A$ into $U\\Sigma V^{\\mathsf T}$, which reads "rotate, stretch, rotate". In code it is one call, `np.linalg.svd`.'],
+      ['orthogonal matrix', 'A matrix that only rotates or reflects and never stretches, so it preserves every length and angle. From the last lesson: $A^{\\mathsf T}A = I$, so its inverse is free.'],
+      ['spectrum', 'The list of a matrix\'s eigenvalues or singular values. Whenever you see the adjective "spectral", it means "about that list".'],
+      ['covariance matrix', 'For a dataset, the grid whose $(i,j)$ entry says how much features $i$ and $j$ vary together. Its eigenvectors are the directions the data spreads along.'],
+      ['Hessian', 'The matrix of second derivatives of a loss function. It describes curvature — how bowl-shaped the loss is, and in which directions. Built properly in [the Jacobian lesson](#/l/math-jacobian).'],
+      ['Frobenius norm', 'The size of a whole matrix: flatten it into one long list and take the ordinary length. $\\|A\\|_F = \\sqrt{\\sum_{ij}A_{ij}^2}$.'],
+      ['condition number $\\kappa$', 'The biggest stretch divided by the smallest, $\\sigma_1/\\sigma_r$. A large $\\kappa$ means the problem is numerically delicate and gradient descent will crawl.'],
     ]),
 
-    t(`## Eigenvectors: the axes of a transformation
+    t(`## Eigenvectors: the directions a matrix leaves alone
 
-Push a random vector through a matrix and two things generally happen: it gets rotated to point somewhere new,
-*and* it gets stretched. A few special vectors get only the second treatment — they come out pointing along the
-same line they went in on:
+Push a random vector through a matrix and two things usually happen at once: it gets rotated to point somewhere
+new, and it gets stretched. A few special vectors only get the stretch — they come out lying on the same line
+they went in on:
 
 $$A\\mathbf{v} = \\lambda \\mathbf{v}$$
 
-Read that equation carefully. The left side is "apply the whole matrix to $\\mathbf{v}$", a real piece of work.
-The right side is "multiply $\\mathbf{v}$ by a single number". For these particular directions, a matrix — with
-all $n^2$ of its entries — collapses into one scalar.
+Read both sides. The left side applies a whole matrix, doing $n^2$ multiplications. The right side multiplies by
+one number. For these particular directions, the entire matrix collapses to a single scalar.
 
-$\\mathbf{v}$ is an **eigenvector** and $\\lambda$ is its **eigenvalue**. Note that eigenvectors come in
-families: if $\\mathbf{v}$ works then so does $3\\mathbf{v}$, so what really matters is the *direction*, and by
-convention we normalise them to length 1.
+$\\mathbf{v}$ is an **eigenvector** and $\\lambda$ is its **eigenvalue**. If $\\mathbf{v}$ satisfies the equation
+then so does $3\\mathbf{v}$ (scale both sides), so what an eigenvector really names is a *direction*; by
+convention we pick the one of length 1.`),
 
-Go back to the [matrix transformation figure](#/l/math-matrices) and watch the thick arrows — those are the
-eigenvectors, and they stay on their own line no matter what you do to the other entries. Until, that is, you
-build a rotation, at which point they vanish: under a pure rotation *nothing* stays on its own line, and the
-eigenvalues become complex numbers. That is not a technicality, it is the geometry telling you the truth.`),
+    steps('Finding the eigenvectors of a small matrix, once', [
+      { h: 'Rewrite the equation so one side is zero', md: `$A\\mathbf{v} = \\lambda\\mathbf{v}$ becomes $A\\mathbf{v} - \\lambda\\mathbf{v} = \\mathbf{0}$, and since $\\lambda\\mathbf{v} = \\lambda I \\mathbf{v}$ we can factor: $(A - \\lambda I)\\mathbf{v} = \\mathbf{0}$.` },
+      { h: 'Ask what that requires', md: `We want a **nonzero** $\\mathbf{v}$ that the matrix $A - \\lambda I$ sends to the origin. A matrix that squashes a nonzero vector to zero has flattened a direction — so by the last lesson, $\\det(A - \\lambda I) = 0$.` },
+      { h: 'Solve that for $\\lambda$', md: `Take $A = \\begin{pmatrix} 3 & 1 \\\\ 0 & 2\\end{pmatrix}$. Then $A - \\lambda I = \\begin{pmatrix} 3-\\lambda & 1 \\\\ 0 & 2-\\lambda\\end{pmatrix}$, whose determinant is $(3-\\lambda)(2-\\lambda)$. Setting that to zero gives $\\lambda = 3$ and $\\lambda = 2$.` },
+      { h: 'Get each eigenvector back', md: `For $\\lambda = 3$, solve $(A - 3I)\\mathbf{v} = 0$, i.e. $\\begin{pmatrix} 0 & 1 \\\\ 0 & -1\\end{pmatrix}\\mathbf{v} = 0$, which forces $v_2 = 0$ and leaves $v_1$ free: $\\mathbf{v} = (1, 0)$. For $\\lambda = 2$ the same steps give $\\mathbf{v} = (1, -1)$ up to scaling.` },
+      { h: 'Sanity check', md: `$A(1,0) = (3, 0) = 3(1,0)$. ✓ You will never do this by hand past 2×2 — \`np.linalg.eig\` exists — but doing it once shows where the determinant condition comes from instead of leaving it as a rule.` },
+    ]),
 
     diagram('Eigenvector vs. ordinary vector, under the same matrix',
 `<svg viewBox="0 0 620 210" role="img" aria-label="An eigenvector stays on its line while an ordinary vector rotates">
@@ -825,56 +831,68 @@ eigenvalues become complex numbers. That is not a technicality, it is the geomet
     <text class="dtitle" x="30" y="190" style="fill: var(--s3)">eigenvector: same line, just longer</text>
   </g>
 </svg>`,
-      `The dotted line on the right is the point: the eigenvector never leaves it. Everything a matrix does can
-be described as "stretch by $\\lambda_i$ along each of these lines" — provided enough such lines exist, which
-is exactly the caveat the SVD removes.`),
+      `The dotted line on the right is the whole point: the eigenvector never leaves it. If a matrix has enough
+such lines, then everything it does can be described as "stretch by $\\lambda_i$ along line $i$" — and that
+"if" is exactly the gap the SVD closes.`),
 
-    t(`### Why they matter in practice
+    warn(`Some matrices have no eigenvectors at all in the ordinary sense. Take a 90° rotation: it moves
+*every* direction off its own line, so there is nothing for the equation to describe. Solving
+$\\det(A - \\lambda I) = 0$ for that matrix gives $\\lambda^2 + 1 = 0$, whose solutions are imaginary. That is
+not a technicality to route around; it is the algebra correctly reporting that no real direction is preserved.`),
 
-The payoff is repeated application. Applying $A$ a hundred times to a general vector is a hundred matrix
-multiplies. Applying it to an eigenvector is one exponentiation: $A^k\\mathbf{v} = \\lambda^k\\mathbf{v}$. And
-since any vector decomposes into eigenvectors, *every* repeated-application question reduces to asking what
-$\\lambda^k$ does.
+    t(`### Why eigenvectors matter in practice
 
-That one observation explains three separate things you will meet later:
+The payoff is what happens when you apply the same matrix over and over. Applying $A$ a hundred times to a
+general vector is a hundred matrix multiplications. Applying it to an eigenvector is one power:
 
-- **Stability of recurrent networks.** An RNN's hidden state evolves roughly as $h_t \\approx W^t h_0$. If the
-  largest $|\\lambda| > 1$, then $\\lambda^t$ blows up and the state explodes; if $|\\lambda| < 1$ it decays to
-  nothing. There is no comfortable middle. That is the entire vanishing/exploding gradient problem, stated in
-  one line.
-- **Curvature of a loss surface.** The eigenvalues of the Hessian are how sharply the loss curves along each
-  principal direction — big $\\lambda$ means a narrow steep valley, small $\\lambda$ a flat plain. Their ratio,
-  the **condition number**, determines how badly gradient descent zig-zags.
-- **Directions of variance.** The eigenvectors of a covariance matrix are the directions your data actually
-  spreads along, which is precisely what PCA computes.`),
+$$A^k\\mathbf{v} = \\lambda^k\\mathbf{v}$$
+
+Each application just multiplies by $\\lambda$ again. And since any vector can be written as a combination of
+eigenvectors (when there are enough of them), every "what happens after many steps" question turns into "what
+does $\\lambda^k$ do", which you can answer by looking at whether $|\\lambda|$ is above or below 1.
+
+That single observation explains three things you will meet later:
+
+- **Recurrent networks that blow up or forget.** An RNN's hidden state evolves roughly as $h_t \\approx W^t h_0$.
+  If the largest $|\\lambda| > 1$, then $\\lambda^t$ grows without bound and the state explodes. If
+  $|\\lambda| < 1$, it decays to nothing. There is no comfortable middle, which is the
+  [vanishing and exploding gradient problem](#/l/nn-rnn) in one line.
+- **How curved a loss surface is.** The eigenvalues of the Hessian say how sharply the loss bends along each
+  direction: a big $\\lambda$ is a steep narrow valley, a small one is a flat plain.
+- **Which directions data varies along.** The eigenvectors of a covariance matrix are the directions the data
+  actually spreads out in, which is precisely what PCA computes.`),
 
     viz('quadratic-form'),
 
-    mathnote(`For **symmetric** matrices (covariance, Hessian, Gram matrices — most of the ones you meet) the spectral
-theorem guarantees: all eigenvalues are real, and eigenvectors for distinct eigenvalues are orthogonal. So
-$A = Q\\Lambda Q^{\\mathsf T}$ with $Q$ orthogonal. That is a *very* strong structure and it is why symmetric matrices
-are so pleasant.
+    mathnote(`**Symmetric matrices are the well-behaved case**, and most of the matrices you meet in ML —
+covariance, Hessians — are symmetric. For them a theorem guarantees two things: every eigenvalue is a real
+number (no imaginary surprises), and eigenvectors belonging to different eigenvalues are orthogonal to each
+other. So a symmetric matrix has a full set of perpendicular natural axes, and can be written
+$A = Q\\Lambda Q^{\\mathsf T}$ where $Q$ holds those axes as columns and $\\Lambda$ is diagonal with the
+eigenvalues on it. Read right to left, that says: rotate into the natural axes, scale each one, rotate back.
 
-A symmetric matrix is **positive definite** iff all $\\lambda_i > 0$, which is exactly the condition for
-$\\mathbf{x}^{\\mathsf T}A\\mathbf{x}$ to be a bowl with a unique minimum.`),
+The positive-definite condition from the last lesson has a clean reading here too: a symmetric matrix is
+positive definite exactly when all of its eigenvalues are positive. Every direction curves upward, so the bowl
+has a single bottom.`),
 
     t(`## SVD: the decomposition that always exists
 
-Eigenvectors are wonderful when they exist. The problem is that they often don't. Eigendecomposition needs a
-*square* matrix — so a 50×3 data matrix is out immediately — and even for square matrices the eigenvectors may
-be complex, or there may not be enough of them to span the space.
+Eigendecomposition has real limits. It needs a square matrix, so a 50×3 table of data is disqualified
+immediately. Even for square matrices the eigenvalues can be imaginary, or there can be too few independent
+eigenvectors to describe the whole space.
 
-The **singular value decomposition** has none of those caveats. *Every* matrix — square or not, full rank or
-not, real or complex — factors as:
+The **singular value decomposition** has none of those restrictions. Every matrix — square or not, full rank or
+not — can be written as
 
 $$A = U\\Sigma V^{\\mathsf T}$$
 
-Here $U$ and $V$ are **orthogonal** (pure rotations/reflections — they never stretch anything) and $\\Sigma$ is
-**diagonal** with non-negative entries $\\sigma_1 \\ge \\sigma_2 \\ge \\cdots \\ge 0$ running down it, sorted
-largest first. Reading right to left, in the order the operations apply to a vector:
+where $U$ and $V$ are orthogonal (pure rotations and reflections, no stretching) and $\\Sigma$ is diagonal with
+non-negative entries $\\sigma_1 \\ge \\sigma_2 \\ge \\cdots \\ge 0$ sorted largest first.
 
-**every linear map is a rotation, then a stretch along the axes, then another rotation.** That is all a matrix
-can ever do. No exceptions, no fine print — which is a genuinely surprising structural fact.`),
+Apply it to a vector and read right to left, since that is the order the operations happen in:
+$A\\mathbf{x} = U(\\Sigma(V^{\\mathsf T}\\mathbf{x}))$. **Every linear map is a rotation, then a stretch along the
+axes, then another rotation.** That is the complete list of what a matrix can do, with no exceptions — a
+genuinely surprising structural fact given how varied matrices look.`),
 
     diagram('SVD as three moves: rotate, stretch, rotate',
 `<svg viewBox="0 0 660 190" role="img" aria-label="A circle rotated, stretched into an ellipse, then rotated again">
@@ -911,136 +929,135 @@ can ever do. No exceptions, no fine print — which is a genuinely surprising st
     <text class="dlabel" x="55" y="157" text-anchor="middle">A times the circle</text>
   </g>
 </svg>`,
-      `Read right to left when applying it to a vector, which is why $V^{\\mathsf T}$ comes first: $A\\mathbf{x} =
-U(\\Sigma(V^{\\mathsf T}\\mathbf{x}))$. The middle step is where all the interesting behaviour lives — the two
-rotations never destroy anything, so **only $\\Sigma$ can flatten a dimension**. A singular value of zero is
-exactly a lost dimension, which reconnects this to rank.`),
+      `Start with a circle of all the length-1 inputs and follow it across. The two rotations change orientation
+but never shape, so a circle stays a circle under them. Only the middle step changes the shape, which means
+**only $\\Sigma$ can flatten a dimension**. A singular value of zero is exactly one lost dimension — which is
+how this connects back to rank: the rank of a matrix is the number of nonzero singular values.`),
 
     viz('svd-demo'),
 
     t(`## Low-rank approximation, and why it is everywhere
 
-Multiply the SVD out and it becomes a sum of rank-1 pieces — the same outer-product layers from
-[the matrices lesson](#/l/math-matrices), now with explicit weights attached:
+Multiply the SVD out and it becomes a sum of the outer products from
+[the last lesson](#/l/math-matrices), each with a weight attached:
 
 $$A = \\sigma_1 \\mathbf{u}_1 \\mathbf{v}_1^{\\mathsf T} + \\sigma_2 \\mathbf{u}_2 \\mathbf{v}_2^{\\mathsf T} + \\cdots + \\sigma_r \\mathbf{u}_r \\mathbf{v}_r^{\\mathsf T}$$
 
-The $\\sigma_i$ are sorted big to small, so this is a list of layers *ordered by importance*. The first layer
-carries the most structure, the last carries the least.
+This is the promise made earlier — that any rank-$r$ matrix is a sum of $r$ outer products — now delivered, with
+a bonus: because the $\\sigma_i$ are sorted from big to small, the pieces come **ordered by importance**. The
+first term carries the most structure; the last carries the least.
 
-Now truncate: throw away everything after the $k$-th term. The result $A_k$ is not merely a decent rank-$k$
-approximation of $A$ — it is the **provably optimal one**, the closest any rank-$k$ matrix can get, measured in
-either the Frobenius or the spectral norm. That is the **Eckart–Young theorem**, and "provably optimal" is
-doing real work in that sentence: it means no cleverer factorization exists, so you can stop looking.
+So truncate. Keep the first $k$ terms and throw the rest away, giving a rank-$k$ matrix $A_k$. The
+**Eckart–Young theorem** says $A_k$ is not merely a decent approximation of $A$ — it is the *best possible one*.
+No rank-$k$ matrix anywhere is closer to $A$, measured in Frobenius norm. That guarantee is worth a lot in
+practice: it means you can stop looking for a cleverer factorization, because there isn't one.
 
-This single theorem underwrites:
+Every one of these is the same move — look at the singular values, notice they fall off quickly, keep the first
+few:
 
 | Application | What gets truncated |
 |---|---|
-| PCA | Covariance eigenvalues → keep top-$k$ directions of variance |
-| Image compression | Singular values of the pixel matrix |
-| Latent semantic analysis | Term–document matrix |
-| Recommender systems | User–item matrix |
-| LoRA | The *update* to a weight matrix, constrained to rank $r$ |
-| Model compression | Weight matrices factored into two skinny ones |
+| PCA | The covariance spectrum — keep the top $k$ directions of variance |
+| Image compression | The singular values of the pixel grid |
+| Search over documents | The word-by-document count matrix |
+| Recommender systems | The user-by-item rating matrix |
+| LoRA | The *update* to a weight matrix, forced to rank $r$ |
 
-Every row of that table is the same move: *look at the singular values, notice they decay fast, keep the first
-few.* Whether the object is a photo, a ratings table, or a weight matrix changes nothing about the mathematics.`),
+Nothing in the mathematics knows whether the matrix holds a photo, a ratings table, or neural network weights.`),
 
-    key(`**The singular value spectrum is a diagnostic you can run on any matrix.** Plot $\\sigma_1, \\sigma_2,
-\\ldots$ in order:
+    key(`**The singular value spectrum is a diagnostic you can run on any matrix before committing to anything.**
+Compute the $\\sigma_i$ and look at how they fall:
 
-- A sharp **cliff** after a few values ⇒ genuine low-dimensional structure. Compress aggressively; the data
-  really only varies in $k$ directions.
-- A **slow, smooth decay** ⇒ no free lunch. The data fills its space and truncating will cost you real
-  information.
+- A sharp **cliff** after a few values means there is genuine low-dimensional structure. Compress hard — the
+  data really only varies in $k$ directions.
+- A **slow, smooth decay** means there is no free lunch. The data fills its space, and truncating will throw
+  away information you needed.
 
-This is the first thing to check before assuming PCA, a low-rank factorization, or a small LoRA rank will work
-for your problem. The code block below prints exactly this.`),
+Run this before assuming PCA, a low-rank factorization, or a small LoRA rank will work on your problem. The code
+block below prints exactly this.`),
 
-    t(`### One more thing the spectrum tells you: conditioning
+    t(`### One more thing the spectrum tells you
 
-The **condition number** is the ratio of the largest to the smallest singular value:
+The **condition number** is the largest singular value divided by the smallest:
 
 $$\\kappa = \\frac{\\sigma_1}{\\sigma_r}$$
 
-It measures how much a small wobble in the input can be amplified into a large wobble in the output. If
-$\\kappa = 10^6$, then six digits of precision in your input can be entirely eaten by the matrix, and solving
-$A\\mathbf{x} = \\mathbf{b}$ will give you an answer you should not trust.
+It says how much a small wobble in the input can be amplified into a large wobble in the output. If
+$\\kappa = 10^6$, six digits of accuracy in your input can be entirely eaten by the matrix, so an answer you
+compute from it deserves suspicion.
 
-For optimization the interpretation is even more concrete: a large $\\kappa$ means the loss surface is a long
-narrow valley, and plain gradient descent will bounce off the steep walls while barely moving along the floor.
-Momentum, Adam, and normalization layers all exist largely to fight this.`),
+For optimization the picture is concrete: the loss surface is a bowl stretched $\\kappa$ times longer in one
+direction than another — a long narrow valley. Gradient descent then has to use a step size small enough not to
+overshoot the steep walls, and that same small step barely moves it along the flat floor. Momentum, Adam, and
+normalization layers all exist largely to fight this.`),
 
-    deriv('Connecting SVD to eigendecomposition', `Consider $A^{\\mathsf T}A$, which is symmetric and positive semi-definite:
+    deriv('Where the SVD comes from, if you already believe in eigenvectors', `The SVD is not pulled from nowhere. It falls out of applying the symmetric-matrix result to $A^{\\mathsf T}A$.
+
+For any matrix $A$, the product $A^{\\mathsf T}A$ is square and symmetric — check the second claim: $(A^{\\mathsf T}A)^{\\mathsf T} = A^{\\mathsf T}(A^{\\mathsf T})^{\\mathsf T} = A^{\\mathsf T}A$. So it has real eigenvalues and orthogonal eigenvectors, no matter what shape $A$ had. Now suppose the SVD exists and substitute it in:
 
 $$A^{\\mathsf T}A = (U\\Sigma V^{\\mathsf T})^{\\mathsf T}(U\\Sigma V^{\\mathsf T}) = V\\Sigma^{\\mathsf T}U^{\\mathsf T}U\\Sigma V^{\\mathsf T} = V\\Sigma^2 V^{\\mathsf T}$$
 
-using $U^{\\mathsf T}U = I$. So the **right singular vectors $V$ are the eigenvectors of $A^{\\mathsf T}A$**, and the
-singular values are the square roots of its eigenvalues. Symmetrically, $AA^{\\mathsf T} = U\\Sigma^2 U^{\\mathsf T}$ gives
-the left singular vectors.
+using $U^{\\mathsf T}U = I$ because $U$ is orthogonal. Compare that with the symmetric form $Q\\Lambda Q^{\\mathsf T}$: the **right singular vectors $V$ are the eigenvectors of $A^{\\mathsf T}A$**, and the singular values are the square roots of its eigenvalues. Running the same argument on $AA^{\\mathsf T} = U\\Sigma^2U^{\\mathsf T}$ produces $U$.
 
-This also explains why PCA is usually described *both* as "eigendecomposition of the covariance matrix" and as
-"SVD of the centered data matrix" — for centered data $X$, the covariance is $\\frac{1}{n}X^{\\mathsf T}X$, so they are
-the same computation. In practice you do the SVD directly: forming $X^{\\mathsf T}X$ squares the condition number and
-loses precision.`),
+This also explains why PCA is described sometimes as "eigendecomposition of the covariance matrix" and sometimes as "SVD of the centred data matrix". For centred data $X$ the covariance is $\\frac{1}{n}X^{\\mathsf T}X$, so the two are the same computation. In practice you run the SVD directly on $X$: forming $X^{\\mathsf T}X$ first squares the condition number and throws away precision for no reason.`),
 
-    code('SVD and rank truncation', `import numpy as np
+    code('Reading a singular value spectrum', `import numpy as np
 
 rng = np.random.default_rng(0)
 
-# a matrix that is secretly rank 3, plus noise
-U_true = rng.normal(size=(50, 3))
-V_true = rng.normal(size=(3, 40))
-A = U_true @ V_true + 0.05 * rng.normal(size=(50, 40))
+# a 50x40 matrix that is secretly rank 3, plus a little noise
+A = rng.normal(size=(50, 3)) @ rng.normal(size=(3, 40)) + 0.05 * rng.normal(size=(50, 40))
 
 U, S, Vt = np.linalg.svd(A, full_matrices=False)
 print("singular values:", np.round(S[:8], 3))
-print("  ^ notice the cliff after the 3rd\\n")
+print("  ^ the cliff after the 3rd is the low-rank structure showing through\\n")
 
 def rank_k(k):
+    """Keep only the first k terms of the sum of outer products."""
     return U[:, :k] @ np.diag(S[:k]) @ Vt[:k]
 
 for k in [1, 2, 3, 5, 10]:
     err = np.linalg.norm(A - rank_k(k)) / np.linalg.norm(A)
-    print(f"rank {k:2d}: relative error {err:.4f}   "
-          f"storage {(50*k + 40*k)/ (50*40):.1%} of full")
+    store = k * (50 + 40) / (50 * 40)
+    print(f"rank {k:2d}:  relative error {err:.4f}    storage {store:.0%} of full")
 
-print("\\ncondition number:", round(S[0]/S[-1], 1))
+print("\\ncondition number:", round(S[0] / S[-1], 1))`,
+      'Two things to take away. The error barely improves past k=3, because there was never any structure past the third direction — only noise. And rank 3 costs 13% of the storage. The spectrum told you where to cut before you tried a single value of k.'),
 
-# Eckart-Young: no rank-3 matrix does better than the truncated SVD
-best = np.linalg.norm(A - rank_k(3))
-for _ in range(5):
-    Ur = rng.normal(size=(50,3)); Vr = rng.normal(size=(3,40))
-    # least-squares fit of a random-subspace rank-3 approximation
-    P = Ur @ np.linalg.lstsq(Ur, A, rcond=None)[0]
-    print("random rank-3 subspace error:", round(np.linalg.norm(A-P), 3),
-          " vs SVD:", round(best, 3))`,
-      'The singular value spectrum tells you the *effective* rank of your data. A sharp cliff means genuine low-dimensional structure; a slow decay means the data really does fill the space.'),
-
-    quiz('Your loss surface has Hessian eigenvalues 100 and 0.1. What should you expect from plain gradient descent?',
-      ['Severe zig-zagging: the stable learning rate is capped by λ_max=100 while progress along the λ=0.1 direction is 1000× slower',
-       'Fast convergence, since one direction has strong curvature',
-       'Divergence regardless of learning rate',
-       'Nothing in particular — eigenvalues do not affect gradient descent'],
+    quiz('You plot the singular values of your 1000×1000 data matrix and they decay slowly and smoothly, with no cliff. What should you conclude?',
+      ['Low-rank compression will cost you real information here — the data genuinely varies in many directions',
+       'The matrix is rank 1',
+       'PCA will work especially well on this data',
+       'The matrix is not invertible'],
       0,
-      'The condition number is $\\kappa = 1000$. Stability requires $\\eta < 2/\\lambda_{\\max} = 0.02$, but with that $\\eta$ the flat direction moves at rate $\\eta\\lambda_{\\min} = 0.002$ per step. Convergence takes $O(\\kappa)$ iterations. This is precisely what momentum, Adam, and normalization layers exist to mitigate — try it yourself in the [gradient descent figure](#/l/math-optimization).'),
+      'A cliff in the spectrum means the matrix is nearly a sum of a few outer products, so truncating is cheap. A smooth decay means every direction is carrying a comparable share, and each one you drop costs you something. Eckart–Young still guarantees the truncated SVD is the *best* rank-$k$ approximation — but "best available" is not the same as "good enough", and the spectrum is what tells you which situation you are in.'),
 
-    recap(`- State the eigenvector equation $A\\mathbf{v} = \\lambda\\mathbf{v}$ and say in words why it is
-  remarkable (a whole matrix collapsing to one number, along one direction).
-- Explain vanishing/exploding gradients as a statement about $\\lambda^t$.
+    quiz('A loss surface has Hessian eigenvalues 100 and 0.1. What should you expect from plain gradient descent?',
+      ['Slow, zig-zagging progress: the surface is a long narrow valley with a condition number of 1000',
+       'Fast convergence, since one direction has strong curvature',
+       'Divergence no matter what step size you pick',
+       'Nothing in particular — curvature does not affect gradient descent'],
+      0,
+      'The condition number here is $100/0.1 = 1000$, so the bowl is a thousand times longer in one direction than the other. The step size has to stay small enough not to overshoot the steep direction, and that same small step then makes almost no progress along the flat one, so descent bounces across the valley instead of running down it. This is exactly the problem momentum and Adam were designed for — you can watch it happen in the [optimization lesson](#/l/math-optimization).'),
+
+    recap(`- State the eigenvector equation $A\\mathbf{v} = \\lambda\\mathbf{v}$ and explain what is remarkable about
+  it: a whole matrix collapsing to one number along one direction.
+- Find the eigenvalues of a 2×2 matrix by solving $\\det(A - \\lambda I) = 0$, and say why that condition is the
+  right one.
+- Explain vanishing and exploding gradients as a statement about $\\lambda^t$.
 - Recite the SVD as "rotate, stretch, rotate", and say why it exists for every matrix when eigendecomposition
   does not.
-- Read a singular value spectrum and decide whether low-rank compression will work for your data.
-- Say what Eckart–Young guarantees, and why "provably optimal" saves you from searching for a better method.
+- Explain why only $\\Sigma$ can flatten a dimension, and connect that to rank.
+- Read a singular value spectrum and decide whether low-rank compression will work on your data.
+- Say what Eckart–Young guarantees and what it does *not* guarantee.
 - Explain what a large condition number does to gradient descent.`),
   ],
   refs: [
     paper('The approximation of one matrix by another of lower rank', 'Eckart & Young', 1936, 'https://doi.org/10.1007/BF02288367', 'The original optimality theorem for truncated SVD.'),
-    video('Eigenvectors and eigenvalues', '3Blue1Brown', 2016, 'https://www.youtube.com/watch?v=PFDu9oVAE-g', ''),
-    blog('The Extraordinary Power of the SVD', 'Gilbert Strang / MIT', 2019, 'https://ocw.mit.edu/courses/18-065-matrix-methods-in-data-analysis-signal-processing-and-machine-learning-spring-2018/', 'MIT 18.065 is built around exactly this material for ML.'),
+    video('Eigenvectors and eigenvalues', '3Blue1Brown', 2016, 'https://www.youtube.com/watch?v=PFDu9oVAE-g', 'The geometric picture, in ten minutes, if the algebra above has not landed yet.'),
+    blog('MIT 18.065 — Matrix Methods in Data Analysis', 'Gilbert Strang', 2018, 'https://ocw.mit.edu/courses/18-065-matrix-methods-in-data-analysis-signal-processing-and-machine-learning-spring-2018/', 'An entire course built around the SVD and its uses in ML. Free lectures.'),
     paper('Finding Structure with Randomness', 'Halko, Martinsson & Tropp', 2011, 'https://arxiv.org/abs/0909.4061', 'Randomized SVD — how you actually compute this on matrices too big to fit in memory.'),
-    book('Numerical Linear Algebra', 'Trefethen & Bau', 1997, 'https://people.maths.ox.ac.uk/trefethen/text.html', 'Beautifully written. Lectures 4–5 on SVD are worth the price alone.'),
+    book('Numerical Linear Algebra', 'Trefethen & Bau', 1997, 'https://people.maths.ox.ac.uk/trefethen/text.html', 'Beautifully written. Lectures 4–5 on the SVD are worth the price alone.'),
   ],
 },
 

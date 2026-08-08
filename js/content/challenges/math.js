@@ -171,66 +171,96 @@ for r in [1, 8, 64]:
 },
 
 'math-eigen-svd': {
-  title: 'Compress an image with truncated SVD',
-  prompt: `Build a synthetic "image", take its SVD, and reconstruct it from the top $k$ singular values. Plot
-reconstruction error against $k$ and against the storage cost. Where is the knee?`,
-  hint: 'The rank-$k$ reconstruction is `U[:, :k] @ diag(S[:k]) @ Vt[:k]`. Storage is $k(m+n)$ versus $mn$.',
+  title: 'Truncate an SVD, find the cliff, and test Eckart–Young',
+  prompt: `You have a matrix that is secretly simple, hidden under noise. Recover that fact from its spectrum.
+
+1. \`rank_k(k)\` — rebuild the matrix from only its first $k$ singular values. This is the truncation from the
+   lesson, written out.
+2. Read the printed spectrum and the error table. **Before scrolling to the errors, pick the $k$ you would
+   keep** from the singular values alone, then see whether the error table agrees.
+3. The last block tests Eckart–Young by hand: it builds many random rank-3 matrices and checks that none of
+   them beats the truncated SVD. Nothing you write is needed there — just read the result.`,
+  hint: 'Keeping the first $k$ terms of $\\sum_i \\sigma_i \\mathbf{u}_i\\mathbf{v}_i^{\\mathsf T}$ is exactly `U[:, :k] @ np.diag(S[:k]) @ Vt[:k]` — take the first $k$ columns of $U$, the first $k$ singular values, and the first $k$ rows of $Vt$.',
   starter: `import numpy as np
-import matplotlib.pyplot as plt
-
 rng = np.random.default_rng(0)
-m, n = 80, 60
-x = np.linspace(0, 1, n); y = np.linspace(0, 1, m)
-img = (np.sin(6*x)[None, :] * np.cos(4*y)[:, None]
-       + 0.5*np.sin(11*x)[None, :] + 0.05*rng.normal(size=(m, n)))
 
-U, S, Vt = np.linalg.svd(img, full_matrices=False)
+# A 60x40 matrix built from only 3 directions, then buried in noise.
+m, n, true_rank = 60, 40, 3
+A = rng.normal(size=(m, true_rank)) @ rng.normal(size=(true_rank, n))
+A = A + 0.4 * rng.normal(size=(m, n))
+
+U, S, Vt = np.linalg.svd(A, full_matrices=False)
 
 def rank_k(k):
-    # TODO: reconstruct img from the top k singular values
-    return np.zeros_like(img)
+    # TODO: rebuild A from its first k singular values only
+    return np.zeros_like(A)
 
-errs, costs = [], []
-for k in range(1, 31):
-    approx = rank_k(k)
-    errs.append(np.linalg.norm(img - approx) / np.linalg.norm(img))
-    costs.append(k*(m+n) / (m*n))
+# --- checks ---
+assert np.allclose(rank_k(len(S)), A), "keeping every term must give back A exactly"
+assert np.linalg.matrix_rank(rank_k(2)) == 2, "rank_k(2) must have rank 2"
+print("PASS\\n")
 
-fig, ax = plt.subplots(1, 2, figsize=(8, 3))
-ax[0].semilogy(S[:30], "o-"); ax[0].set_title("singular values"); ax[0].set_xlabel("index")
-ax[1].plot(costs, errs, "o-"); ax[1].set_xlabel("storage fraction"); ax[1].set_ylabel("relative error")
-ax[1].set_title("error vs storage")
-plt.tight_layout()`,
+# --- the spectrum: where is the cliff? ---
+print("singular values (bar length is proportional to size):")
+for i, s in enumerate(S[:10]):
+    print(f"  sigma_{i+1:<2d} {s:7.3f}  " + "#" * int(40 * s / S[0]))
+
+# --- error and storage as you keep more ---
+print("\\n  k   relative error   storage")
+for k in [1, 2, 3, 4, 6, 10, 20]:
+    err = np.linalg.norm(A - rank_k(k)) / np.linalg.norm(A)
+    print(f"  {k:2d}      {err:.4f}        {k*(m+n)/(m*n):6.1%}")
+
+# --- Eckart-Young, tested rather than trusted ---
+best = np.linalg.norm(A - rank_k(3))
+best_random = min(
+    np.linalg.norm(A - Q @ (Q.T @ A))                  # best rank-3 fit inside a random subspace
+    for Q in (np.linalg.qr(rng.normal(size=(m, 3)))[0] for _ in range(200))
+)
+print(f"\\ntruncated SVD, rank 3:        {best:.4f}")
+print(f"best of 200 random rank-3:    {best_random:.4f}")
+print("The SVD wins. Eckart-Young says nothing can beat it." if best <= best_random
+      else "Something is wrong with rank_k.")`,
   solution: `import numpy as np
-import matplotlib.pyplot as plt
-
 rng = np.random.default_rng(0)
-m, n = 80, 60
-x = np.linspace(0, 1, n); y = np.linspace(0, 1, m)
-img = (np.sin(6*x)[None, :] * np.cos(4*y)[:, None]
-       + 0.5*np.sin(11*x)[None, :] + 0.05*rng.normal(size=(m, n)))
 
-U, S, Vt = np.linalg.svd(img, full_matrices=False)
+m, n, true_rank = 60, 40, 3
+A = rng.normal(size=(m, true_rank)) @ rng.normal(size=(true_rank, n))
+A = A + 0.4 * rng.normal(size=(m, n))
+
+U, S, Vt = np.linalg.svd(A, full_matrices=False)
 
 def rank_k(k):
     return U[:, :k] @ np.diag(S[:k]) @ Vt[:k]
 
-errs, costs = [], []
-for k in range(1, 31):
-    errs.append(np.linalg.norm(img - rank_k(k)) / np.linalg.norm(img))
-    costs.append(k*(m+n) / (m*n))
-    if k in (1, 3, 5, 10, 20):
-        print(f"k={k:3d}  error {errs[-1]:.4f}  storage {costs[-1]:.1%}")
+assert np.allclose(rank_k(len(S)), A)
+assert np.linalg.matrix_rank(rank_k(2)) == 2
+print("PASS\\n")
 
-fig, ax = plt.subplots(1, 3, figsize=(10, 3))
-ax[0].semilogy(S[:30], "o-"); ax[0].set_title("singular values")
-ax[1].plot(costs, errs, "o-"); ax[1].set_xlabel("storage fraction")
-ax[1].set_ylabel("relative error"); ax[1].set_title("error vs storage")
-ax[2].imshow(rank_k(5), cmap="viridis"); ax[2].set_title("rank-5 reconstruction")
-plt.tight_layout()`,
-  explain: 'The knee sits exactly where the singular value spectrum falls off a cliff. That cliff is the *effective rank* of the data, and it is the same quantity PCA, LoRA, and recommender systems all exploit.',
+print("singular values (bar length is proportional to size):")
+for i, s in enumerate(S[:10]):
+    print(f"  sigma_{i+1:<2d} {s:7.3f}  " + "#" * int(40 * s / S[0]))
+
+print("\\n  k   relative error   storage")
+for k in [1, 2, 3, 4, 6, 10, 20]:
+    err = np.linalg.norm(A - rank_k(k)) / np.linalg.norm(A)
+    print(f"  {k:2d}      {err:.4f}        {k*(m+n)/(m*n):6.1%}")
+
+best = np.linalg.norm(A - rank_k(3))
+best_random = min(
+    np.linalg.norm(A - Q @ (Q.T @ A))
+    for Q in (np.linalg.qr(rng.normal(size=(m, 3)))[0] for _ in range(200))
+)
+print(f"\\ntruncated SVD, rank 3:        {best:.4f}")
+print(f"best of 200 random rank-3:    {best_random:.4f}")
+print("The SVD wins. Eckart-Young says nothing can beat it." if best <= best_random
+      else "Something is wrong with rank_k.")`,
+  explain: `The bars show the cliff: three tall ones, then a long flat tail of noise. The error table confirms
+it — going from $k=3$ to $k=20$ costs seven times the storage and buys very little, because everything past the
+third direction was noise to begin with. The last block is Eckart–Young made concrete: 200 honest attempts to
+find a better rank-3 approximation, all of them worse than simply truncating the SVD. That is what the
+"provably best" in the lesson buys you — permission to stop searching.`,
 },
-
 'math-derivatives': {
   title: 'Gradient checking with central differences',
   prompt: `Write \`numeric_grad(f, x)\` using central differences, then use it to verify an analytic gradient. Sweep
