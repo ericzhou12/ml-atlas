@@ -1163,75 +1163,140 @@ at exactly 1 by construction.`,
 },
 
 'nn-embeddings': {
-  title: 'Train skip-gram embeddings with negative sampling',
-  prompt: `Implement the negative-sampling update and check that words appearing in similar contexts end up with
-high cosine similarity.`,
-  hint: 'For each (center, context) pair, push the true context up and $k$ random words down: gradient is $(\\sigma(u\\cdot v) - \\text{label})$.',
+  title: 'Train skip-gram embeddings, then find the word that has no good vector',
+  prompt: `1. **One-hot has no geometry.** The first block measures every pairwise distance between one-hot vectors.
+   Check what it reports before writing any code — that number is the reason embeddings exist.
+2. **Implement the update.** For each (centre, context) pair, push the true context up and $k$ random words
+   down. Then look at the nearest neighbours: nobody told the model that a cat and a dog are related.
+3. **The static-embedding failure.** The corpus deliberately uses "bank" in two unrelated senses. Compare its
+   vector against the money words and against the river words. **Predict what you will find before running.**`,
+  hint: 'The gradient for a (centre, target) pair is $(\\sigma(\\mathbf{u}\\cdot\\mathbf{v}) - \\text{label})$. That single number scales $\\mathbf{u}$ to update the centre vector, and scales $\\mathbf{v}$ to update each target vector. Use a learning rate of 0.02.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
+# ---------- 1. what one-hot vectors look like to a network ----------
+onehot = np.eye(6)
+d = [np.linalg.norm(onehot[i]-onehot[j]) for i in range(6) for j in range(i+1, 6)]
+print(f"distances between one-hot vectors: min {min(d):.4f}  max {max(d):.4f}")
+print("every symbol is exactly as far from every other. No word is 'closer' to any word.\\n")
+
+# ---------- 2. skip-gram with negative sampling ----------
 corpus = ("the cat sat on the mat . the dog sat on the rug . "
           "the cat chased the mouse . the dog chased the cat . "
-          "a mouse ate the cheese . the cat ate the mouse .").split()
-vocab = sorted(set(corpus)); w2i = {w:i for i,w in enumerate(vocab)}
-V, D, WIN = len(vocab), 12, 2
+          "a mouse ate the cheese . the cat ate the mouse . "
+          "i put money in the bank . she withdrew cash from the bank . "
+          "the money and the cash are safe . he kept money as cash . "
+          "we sat by the river bank . the boat left the river bank . "
+          "the river and the boat are calm . the boat crossed the river .").split()
+vocab = sorted(set(corpus)); w2i = {w: i for i, w in enumerate(vocab)}
+V, D, WIN = len(vocab), 16, 2
 
 pairs = [(w2i[corpus[i]], w2i[corpus[j]])
          for i in range(len(corpus))
-         for j in range(max(0,i-WIN), min(len(corpus), i+WIN+1)) if i != j]
+         for j in range(max(0, i-WIN), min(len(corpus), i+WIN+1)) if i != j]
 
 Ein  = rng.normal(0, 0.1, (V, D))
 Eout = rng.normal(0, 0.1, (V, D))
 sigmoid = lambda z: 1/(1+np.exp(-np.clip(z, -30, 30)))
 
-for epoch in range(400):
+for epoch in range(60):
     for c, o in rng.permutation(pairs):
-        negs = rng.integers(0, V, 5)
-        targets = np.r_[o, negs]
-        labels  = np.r_[1.0, np.zeros(5)]
+        targets = np.r_[o, rng.integers(0, V, 10)]
+        labels  = np.r_[1.0, np.zeros(10)]
         v, U = Ein[c], Eout[targets]
-        # TODO: p = sigmoid(U @ v); update Ein[c] and Eout[targets] with lr=0.05
+        # TODO: p = sigmoid(U @ v); g = p - labels;
+        #       then update Ein[c] and Eout[targets] with lr = 0.02
         pass
 
 E = Ein / (np.linalg.norm(Ein, axis=1, keepdims=True) + 1e-9)
-for w in ["cat", "sat", "the"]:
-    sims = E @ E[w2i[w]]
-    top = np.argsort(-sims)[1:4]
-    print(f"{w:8s} -> {[(vocab[i], round(float(sims[i]),3)) for i in top]}")`,
+def sim(a, b): return float(E[w2i[a]] @ E[w2i[b]])
+
+for w in ["cat", "money", "river"]:
+    s = E @ E[w2i[w]]
+    top = np.argsort(-s)[1:4]
+    print(f"{w:8s} nearest: {[(vocab[i], round(float(s[i]), 2)) for i in top]}")
+
+assert sim("cat", "dog") > sim("cat", "cheese"), "cat and dog share contexts; they should be closer"
+print("\\nPASS\\n")
+
+# ---------- 3. the word with two meanings ----------
+money_words = ["money", "cash"]
+river_words = ["river", "boat"]
+print(f"within the money group:   {sim('money','cash'):.3f}")
+print(f"within the river group:   {sim('river','boat'):.3f}")
+print(f"'bank' to the money group: {np.mean([sim('bank', w) for w in money_words]):.3f}")
+print(f"'bank' to the river group: {np.mean([sim('bank', w) for w in river_words]):.3f}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
+onehot = np.eye(6)
+d = [np.linalg.norm(onehot[i]-onehot[j]) for i in range(6) for j in range(i+1, 6)]
+print(f"distances between one-hot vectors: min {min(d):.4f}  max {max(d):.4f}")
+print("every symbol is exactly as far from every other. No word is 'closer' to any word.\\n")
+
 corpus = ("the cat sat on the mat . the dog sat on the rug . "
           "the cat chased the mouse . the dog chased the cat . "
-          "a mouse ate the cheese . the cat ate the mouse .").split()
-vocab = sorted(set(corpus)); w2i = {w:i for i,w in enumerate(vocab)}
-V, D, WIN = len(vocab), 12, 2
+          "a mouse ate the cheese . the cat ate the mouse . "
+          "i put money in the bank . she withdrew cash from the bank . "
+          "the money and the cash are safe . he kept money as cash . "
+          "we sat by the river bank . the boat left the river bank . "
+          "the river and the boat are calm . the boat crossed the river .").split()
+vocab = sorted(set(corpus)); w2i = {w: i for i, w in enumerate(vocab)}
+V, D, WIN = len(vocab), 16, 2
 
 pairs = [(w2i[corpus[i]], w2i[corpus[j]])
          for i in range(len(corpus))
-         for j in range(max(0,i-WIN), min(len(corpus), i+WIN+1)) if i != j]
+         for j in range(max(0, i-WIN), min(len(corpus), i+WIN+1)) if i != j]
 
 Ein  = rng.normal(0, 0.1, (V, D))
 Eout = rng.normal(0, 0.1, (V, D))
 sigmoid = lambda z: 1/(1+np.exp(-np.clip(z, -30, 30)))
 
-for epoch in range(400):
+for epoch in range(60):
     for c, o in rng.permutation(pairs):
-        negs = rng.integers(0, V, 5)
-        targets = np.r_[o, negs]
-        labels  = np.r_[1.0, np.zeros(5)]
+        targets = np.r_[o, rng.integers(0, V, 10)]
+        labels  = np.r_[1.0, np.zeros(10)]
         v, U = Ein[c], Eout[targets]
         p = sigmoid(U @ v)
         g = p - labels
-        Ein[c]       -= 0.05 * (g @ U)
-        Eout[targets] -= 0.05 * np.outer(g, v)
+        Ein[c]        = Ein[c]        - 0.02 * (g @ U)
+        Eout[targets] = Eout[targets] - 0.02 * np.outer(g, v)
 
 E = Ein / (np.linalg.norm(Ein, axis=1, keepdims=True) + 1e-9)
-for w in ["cat", "sat", "the"]:
-    sims = E @ E[w2i[w]]
-    top = np.argsort(-sims)[1:4]
-    print(f"{w:8s} -> {[(vocab[i], round(float(sims[i]),3)) for i in top]}")`,
-  explain: 'Negative sampling turns an expensive $V$-way softmax into $k+1$ binary classifications, which is what made word2vec trainable on billions of words. On this tiny corpus expect noisy results — but "cat"/"dog" and "sat"/"ate" should pull together.',
+def sim(a, b): return float(E[w2i[a]] @ E[w2i[b]])
+
+for w in ["cat", "money", "river"]:
+    s = E @ E[w2i[w]]
+    top = np.argsort(-s)[1:4]
+    print(f"{w:8s} nearest: {[(vocab[i], round(float(s[i]), 2)) for i in top]}")
+
+assert sim("cat", "dog") > sim("cat", "cheese")
+print("\\nPASS\\n")
+
+money_words = ["money", "cash"]
+river_words = ["river", "boat"]
+print(f"within the money group:   {sim('money','cash'):.3f}")
+print(f"within the river group:   {sim('river','boat'):.3f}")
+print(f"'bank' to the money group: {np.mean([sim('bank', w) for w in money_words]):.3f}")
+print(f"'bank' to the river group: {np.mean([sim('bank', w) for w in river_words]):.3f}")`,
+  explain: `Part 1 is the argument for embeddings in one number: every pair of one-hot vectors is exactly
+$\\sqrt2$ apart, so before any learning begins the representation asserts that "cat" is precisely as related to
+"dog" as it is to "bureaucracy". Whatever structure the language has, one-hot has thrown all of it away.
+
+Part 2: after training, words that shared contexts have pulled together. The corpus contains no definitions and
+no supervision — only which words sit near which other words — and the geometry came out of that alone. That is
+the distributional hypothesis earning its keep.
+
+Part 3 is the limitation that ended this era. "bank" appears in two unrelated senses, and it gets **one**
+vector. Read the four numbers together: the river words are bound tightly to each other (about 0.84), the money
+words less so but still clearly (about 0.53) — and "bank" sits at roughly **0.43 to both**, below either group's
+internal similarity and almost exactly equidistant between them. It has been placed *between* two meanings and
+belongs to neither.
+
+There is no setting of the training that fixes this, because the model has one row per word type and the word
+genuinely has two meanings. The only fix is to let the vector depend on the surrounding sentence, which is what
+contextual embeddings do and why BERT was a phase change rather than an improvement. (With a corpus this small
+the numbers are noisy — the point is the *pattern*, not the third decimal.)`,
 },
 
 };

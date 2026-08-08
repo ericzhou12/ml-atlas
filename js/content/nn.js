@@ -2031,7 +2031,8 @@ Here is the limitation that ended the word2vec era. It gives **one vector per wo
 single vector that has to average together river banks and financial institutions, plus "banking on it" and
 "bank shot". The resulting point is a blurry compromise sitting between meanings, resembling none of them.
 
-Any word with multiple senses has this problem, and in English that is most common words.
+Any word with more than one sense has this problem — the technical term is **polysemy** — and in English that
+describes most common words.
 
 **ELMo** (2018) and then **BERT** (2018) produce **contextual** embeddings: the vector for "bank" depends on the
 sentence it appears in. This was a genuine phase change in NLP, and it is what modern transformer embeddings are.
@@ -2092,7 +2093,8 @@ def near(w, k=4):
 for w in ["cat", "sat", "the"]:
     print(f"{w:8s} -> {near(w)}")
 print("\\nA tiny corpus gives noisy results, but 'cat'/'dog' and 'sat'/'ate'")
-print("should already be pulling together — they appear in similar contexts.")`),
+print("should already be pulling together — they appear in similar contexts.")`,
+      'Notice what the training signal never contains: no dictionary, no definitions, nobody told the model that a cat and a dog are both animals. It saw only which words appear near which other words, and the geometry fell out of that. That is the distributional hypothesis paying off. Notice also the shape of the update — only the rows for the words in this pair and the five negatives are touched, which is what makes it affordable over a vocabulary of 50,000.'),
 
     quiz('Why did contextual embeddings (BERT) represent such a large improvement over word2vec?',
       ['A word gets a different vector in each context, resolving polysemy that a single static vector cannot',
