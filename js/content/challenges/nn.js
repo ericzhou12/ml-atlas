@@ -297,60 +297,148 @@ framework's test suite is full of the exact comparison you just ran.`,
 },
 
 'nn-activations': {
-  title: 'Measure saturation, and kill some ReLUs',
-  prompt: `Compute what fraction of inputs give each activation a near-zero gradient. Then deliberately induce dead
-ReLUs with an aggressive learning rate and count them.`,
-  hint: 'A ReLU is dead when its pre-activation is negative for *every* input in the dataset.',
+  title: 'Send a gradient back through 30 layers and see which activations survive',
+  prompt: `The lesson's claim was that you should judge an activation by its derivative, because backprop
+multiplies by that derivative once per layer. Measure it.
+
+1. Fill in \`backward_through\`, which pushes a gradient backwards through a stack of layers using
+   [equation (2)](#/l/nn-backprop): at each layer, multiply by $W^{\\mathsf T}$ and then elementwise by
+   $\\phi'(\\mathbf{z})$. Report the size of the gradient arriving at layer 0.
+2. Run it for sigmoid, tanh, and ReLU at 30 layers deep. **Predict the ordering, and roughly how many orders of
+   magnitude separate them, before running.**
+3. The last block manufactures dead ReLUs with an over-large step and counts them.`,
+  hint: 'Work backwards through the list of layers. The incoming gradient `g` becomes `(g @ W.T) * dphi(z)` for the layer below, where `z` is that layer\'s cached pre-activation.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
-def relu(x):    return np.maximum(0, x)
-def gelu(x):    return 0.5*x*(1+np.tanh(np.sqrt(2/np.pi)*(x+0.044715*x**3)))
-def sigmoid(x): return 1/(1+np.exp(-x))
+def sigmoid(x): return 1/(1+np.exp(-np.clip(x, -500, 500)))
+ACT = {
+    "sigmoid": (sigmoid,          lambda z: sigmoid(z)*(1-sigmoid(z))),
+    "tanh":    (np.tanh,          lambda z: 1 - np.tanh(z)**2),
+    "relu":    (lambda z: np.maximum(0, z), lambda z: (z > 0).astype(float)),
+}
 
-def deriv(f, x, h=1e-5):
-    return (f(x+h) - f(x-h)) / (2*h)
+def forward(name, L, width=128, gain=1.0):
+    """Run a random input through L layers, caching each pre-activation."""
+    f, _ = ACT[name]
+    r = np.random.default_rng(1)
+    Ws = [r.normal(0, gain/np.sqrt(width), (width, width)) for _ in range(L)]
+    h, zs = r.normal(size=(64, width)), []
+    for W in Ws:
+        z = h @ W
+        zs.append(z)
+        h = f(z)
+    return Ws, zs
 
-x = np.linspace(-6, 6, 2001)
-print(f"{'activation':12s} {'max deriv':>10s} {'% |deriv| < 0.01':>18s}")
-for name, f in [("sigmoid", sigmoid), ("tanh", np.tanh), ("relu", relu), ("gelu", gelu)]:
-    d = deriv(f, x)
-    # TODO: print the max derivative and the saturated fraction
-    pass
+def backward_through(name, Ws, zs):
+    """Push a gradient of ones from the top back to layer 0.
+       Return the average magnitude of the gradient arriving at layer 0."""
+    _, df = ACT[name]
+    g = np.ones_like(zs[-1])
+    # TODO: walk the layers from last to first, applying equation (2)
+    return np.abs(g).mean()
 
-# --- dead ReLUs ---
-W = rng.normal(0, 0.5, (256, 256)); b = np.zeros(256)
+print("size of the gradient arriving at layer 0:")
+print(f"{'depth':>6} {'sigmoid':>12} {'tanh':>12} {'relu':>12}")
+for L in [1, 5, 10, 20, 30]:
+    row = []
+    for name in ("sigmoid", "tanh", "relu"):
+        Ws, zs = forward(name, L)
+        row.append(backward_through(name, Ws, zs))
+    print(f"{L:6d} {row[0]:12.3e} {row[1]:12.3e} {row[2]:12.3e}")
+
+Ws, zs = forward("sigmoid", 30); g_sig = backward_through("sigmoid", Ws, zs)
+Ws, zs = forward("relu", 30);    g_rel = backward_through("relu", Ws, zs)
+assert g_rel > 1e5 * g_sig, "at 30 layers ReLU should deliver a vastly larger gradient than sigmoid"
+print(f"\\nat 30 layers, relu delivers {g_rel/g_sig:.3e} times more gradient than sigmoid")
+print("PASS\\n")
+
+# ---------- dead ReLUs: one oversized step ----------
+W = rng.normal(0, 0.5, (256, 256))
 h = rng.normal(0, 1, (512, 256))
-for step in range(50):
-    z = h @ W + b
-    g = (z > 0).astype(float) * rng.normal(0, 1, z.shape)
-    b -= 0.5 * g.mean(0)                  # deliberately too large
-dead = (relu(h @ W + b).max(0) == 0).mean()
-print(f"\\nfraction of permanently dead ReLU units: {dead:.1%}")`,
+z0 = h @ W
+print(f"before any update:  sparsity {(z0 <= 0).mean():.1%}   never-firing units {(z0.max(0) <= 0).mean():.1%}")
+print("\\nafter a single bias update of the given size:")
+for size in [1, 2, 4, 8, 16, 32]:
+    b = -size * rng.normal(1.0, 0.6, 256)
+    z = z0 + b
+    print(f"  step {size:3d}:  sparsity {(z <= 0).mean():.1%}   permanently dead {(z.max(0) <= 0).mean():.1%}")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
-def relu(x):    return np.maximum(0, x)
-def gelu(x):    return 0.5*x*(1+np.tanh(np.sqrt(2/np.pi)*(x+0.044715*x**3)))
-def sigmoid(x): return 1/(1+np.exp(-x))
-def deriv(f, x, h=1e-5): return (f(x+h) - f(x-h)) / (2*h)
+def sigmoid(x): return 1/(1+np.exp(-np.clip(x, -500, 500)))
+ACT = {
+    "sigmoid": (sigmoid,          lambda z: sigmoid(z)*(1-sigmoid(z))),
+    "tanh":    (np.tanh,          lambda z: 1 - np.tanh(z)**2),
+    "relu":    (lambda z: np.maximum(0, z), lambda z: (z > 0).astype(float)),
+}
 
-x = np.linspace(-6, 6, 2001)
-print(f"{'activation':12s} {'max deriv':>10s} {'% |deriv| < 0.01':>18s}")
-for name, f in [("sigmoid", sigmoid), ("tanh", np.tanh), ("relu", relu), ("gelu", gelu)]:
-    d = deriv(f, x)
-    print(f"{name:12s} {np.abs(d).max():10.4f} {np.mean(np.abs(d)<0.01)*100:17.1f}%")
+def forward(name, L, width=128, gain=1.0):
+    f, _ = ACT[name]
+    r = np.random.default_rng(1)
+    Ws = [r.normal(0, gain/np.sqrt(width), (width, width)) for _ in range(L)]
+    h, zs = r.normal(size=(64, width)), []
+    for W in Ws:
+        z = h @ W
+        zs.append(z)
+        h = f(z)
+    return Ws, zs
 
-W = rng.normal(0, 0.5, (256, 256)); b = np.zeros(256)
+def backward_through(name, Ws, zs):
+    _, df = ACT[name]
+    g = np.ones_like(zs[-1])
+    for i in reversed(range(len(Ws))):
+        g = g * df(zs[i])
+        g = g @ Ws[i].T
+    return np.abs(g).mean()
+
+print("size of the gradient arriving at layer 0:")
+print(f"{'depth':>6} {'sigmoid':>12} {'tanh':>12} {'relu':>12}")
+for L in [1, 5, 10, 20, 30]:
+    row = []
+    for name in ("sigmoid", "tanh", "relu"):
+        Ws, zs = forward(name, L)
+        row.append(backward_through(name, Ws, zs))
+    print(f"{L:6d} {row[0]:12.3e} {row[1]:12.3e} {row[2]:12.3e}")
+
+Ws, zs = forward("sigmoid", 30); g_sig = backward_through("sigmoid", Ws, zs)
+Ws, zs = forward("relu", 30);    g_rel = backward_through("relu", Ws, zs)
+assert g_rel > 1e5 * g_sig
+print(f"\\nat 30 layers, relu delivers {g_rel/g_sig:.3e} times more gradient than sigmoid")
+print("PASS\\n")
+
+# ---------- dead ReLUs: one oversized step ----------
+W = rng.normal(0, 0.5, (256, 256))
 h = rng.normal(0, 1, (512, 256))
-for step in range(50):
-    z = h @ W + b
-    g = (z > 0).astype(float) * rng.normal(0, 1, z.shape)
-    b -= 0.5 * g.mean(0)
-dead = (relu(h @ W + b).max(0) == 0).mean()
-print(f"\\nfraction of permanently dead ReLU units: {dead:.1%}")`,
-},
+z0 = h @ W
+print(f"before any update:  sparsity {(z0 <= 0).mean():.1%}   never-firing units {(z0.max(0) <= 0).mean():.1%}")
+print("\\nafter a single bias update of the given size:")
+for size in [1, 2, 4, 8, 16, 32]:
+    b = -size * rng.normal(1.0, 0.6, 256)
+    z = z0 + b
+    print(f"  step {size:3d}:  sparsity {(z <= 0).mean():.1%}   permanently dead {(z.max(0) <= 0).mean():.1%}")`,
+  explain: `Part 1 is the whole lesson in one table. Every row multiplies by one more copy of $\\phi'$, and the
+columns diverge at exactly the rate their derivatives predict. Sigmoid's derivative peaks at 0.25 and is
+typically well below that, so thirty layers of it multiply the gradient by something like $0.2^{30}$ — the
+number arriving at layer 0 is astronomically small, and that layer is frozen at its initial random values no
+matter how long you train. ReLU's derivative is exactly 1 wherever the unit is active, so it contributes nothing
+to the decay at all. tanh sits in between, which is why it was the standard for a decade: better than sigmoid,
+still not enough.
 
+This is not a subtle effect you would have to squint at a loss curve to notice. It is the difference between a
+network that trains and one that does not, and it was the state of the art blocker for roughly twenty years.
+
+Part 2 shows dying ReLU as a threshold effect. At rest the layer is about 50% sparse, which is healthy and is
+what ReLU is supposed to do. A modest bias update raises the sparsity without killing anything. But past a
+certain step size units start going silent for *every* input in the batch — 25% of the layer at step 16, and
+two thirds at step 32 — and those units now receive exactly zero gradient forever. No future step can
+revive them.
+
+Note the shape of that curve. It is not gradual damage that you could notice and back away from; almost nothing
+happens and then a large fraction of the layer is gone at once. This is why a single learning-rate spike can
+quietly cost a network much of its capacity, and why the fix is prevention — warmup, gradient clipping, or an
+activation like GELU that keeps a gradient path open on the negative side.`,
+},
 'nn-initialization': {
   title: 'Derive the He factor empirically',
   prompt: `Propagate a signal through 25 layers at several initialization scales and find, by search, the standard

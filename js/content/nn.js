@@ -552,9 +552,11 @@ Three properties, in order of importance:
 
 1. **Does it saturate?** If $\\phi' \\to 0$ for large inputs, then any unit that drifts into that region stops
    receiving gradient — and stops learning, possibly permanently. This is the property that killed sigmoid.
-2. **Is it zero-centred?** If a layer's outputs are always positive, then by equation (3) every weight gradient
-   in the next layer shares the same sign. The update can only move all weights up together or all down
-   together, so it zig-zags toward the optimum instead of going straight there.
+2. **Is it zero-centred?** Here is why this matters, from [equation (3)](#/l/nn-backprop): the gradient for
+   weight $W_{ij}$ is $\\delta_i a_j$, where $a_j$ is the incoming activation. If every $a_j$ is positive, then
+   the sign of every gradient in row $i$ is decided entirely by $\\delta_i$ — so all the weights feeding unit
+   $i$ must move up together or down together, and there is no update that raises one while lowering another.
+   The optimizer has to zig-zag to get anywhere it could have reached directly.
 3. **Is it cheap?** This sounds trivial and is not. The activation runs on every unit of every layer of every
    example of every step. \`max(0, x)\` is one comparison; an exponential is roughly twenty times more
    expensive.`),
@@ -586,9 +588,12 @@ you find a layer where a third of the units never fire, this is what happened.
 **Leaky ReLU / PReLU** $\\max(\\alpha x, x)$. Small negative slope so nothing fully dies. Helps sometimes; not
 universally adopted.
 
-**GELU** $x\\Phi(x)$. Smooth, and non-monotonic near zero. Used by BERT, GPT, and most transformers. The stated intuition
-is a stochastic regularizer (multiply by a Bernoulli gate whose probability is $\\Phi(x)$), but honestly it is used
-because it consistently works slightly better.
+**GELU** $x\\Phi(x)$, where $\\Phi$ is the bell curve's cumulative distribution — the probability that a standard
+normal draw comes out below $x$, so it runs smoothly from 0 up to 1. GELU therefore multiplies each input by a
+number between 0 and 1 that grows with the input: a soft version of ReLU's hard on/off decision. It is smooth
+everywhere, and dips slightly below zero just left of the origin. Used by BERT, GPT, and most transformers. The
+stated motivation is that it behaves like randomly keeping each unit with probability $\\Phi(x)$ and then taking
+the average, but honestly it is used because it consistently works slightly better.
 
 **SiLU / Swish** $x\\sigma(x)$. Nearly identical to GELU in shape and performance, cheaper to compute.
 
@@ -638,17 +643,17 @@ for name, f in [("sigmoid", sigmoid), ("tanh", np.tanh), ("relu", relu),
     print(f"{name:12s} {np.abs(d).max():10.4f} {np.mean(np.abs(d)<0.01)*100:15.1f}% "
           f"{str(abs(f(x).mean()) < 0.05):>14s}")
 
-# how many units die under an aggressive learning rate?
+# how many units does one oversized update kill?
 rng = np.random.default_rng(0)
-W = rng.normal(0, 0.5, (256, 256)); b = np.zeros(256)
+W = rng.normal(0, 0.5, (256, 256))
 h = rng.normal(0, 1, (512, 256))
-for step in range(50):
-    z = h @ W + b
-    a = relu(z)
-    g = (a > 0).astype(float) * rng.normal(0, 1, a.shape)
-    b -= 0.5 * g.mean(0)                     # a deliberately too-large step
-dead = (relu(h @ W + b).max(0) == 0).mean()
-print(f"\\nfraction of permanently dead ReLU units: {dead:.1%}")`),
+z0 = h @ W
+print(f"\\nat rest:  sparsity {(z0 <= 0).mean():.1%}   permanently dead {(z0.max(0) <= 0).mean():.1%}")
+for size in [1, 4, 16, 32]:
+    z = z0 - size * rng.normal(1.0, 0.6, 256)
+    print(f"  after a bias step of {size:3d}:  sparsity {(z <= 0).mean():.1%}   "
+          f"permanently dead {(z.max(0) <= 0).mean():.1%}")`,
+      'The table is the lesson in numbers. Sigmoid\'s derivative never exceeds 0.25 and is below 0.01 across most of its range, so a unit that wanders out there receives essentially nothing; ReLU\'s is exactly 1 wherever it is not 0. The last block is dying ReLU as a threshold effect. Small updates just raise the sparsity, which is harmless. Past a certain step size, units start outputting zero for *every* input in the batch — and a unit that never fires receives no gradient, so it can never come back. Notice how little warning there is between "fine" and "a third of the layer is gone".'),
 
     quiz('You log activation statistics and find 97% of a layer\'s ReLU outputs are exactly zero. What is happening?',
       ['Most of the layer is dead — likely too-high a learning rate or bad init; those units will never recover',
