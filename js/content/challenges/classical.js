@@ -1229,72 +1229,195 @@ This is the most common leak in practice, and it applies to anything fitted befo
 imputers, PCA, feature selection, target encoding. The rule that covers all of them: **the split comes first,
 and everything that learns from data happens after it.**`,
 },
+
 'ml-generative-discriminative': {
-  title: 'Find the crossover between naive Bayes and logistic regression',
-  prompt: `Train both on the same data at increasing sample sizes and find the $n$ at which the discriminative model
-overtakes the generative one. Ng & Jordan predicted this crossover exists — locate it.`,
-  hint: 'Generative wins at small $n$ (strong assumptions act as a prior); discriminative wins as $n$ grows.',
+  title: 'Make the assumption fail, then ask each model to do something it was not built for',
+  prompt: `1. **What the assumption costs.** Implement \`naive_bayes\` — fit a mean and standard deviation per
+   feature per class, then score a new point by which class's Gaussians find it less surprising. The script runs
+   it twice: once on data whose features are correlated, and once on data whose features really are independent.
+   **Predict which table will show naive Bayes falling behind, and why.**
+2. **What the generative model got for free.** The same fitted naive Bayes is then asked to do two jobs nobody
+   trained it for: **invent** new examples of a class, and **fill in a missing measurement** given the rest of
+   an input. Write those two functions. Then note what the logistic regression can contribute to either — the
+   answer is nothing, and the reason is worth stating out loud.`,
+  hint: 'The Gaussian log-density of $x$ under mean $m$ and spread $s$, dropping constants, is $-\\frac{(x-m)^2}{2s^2} - \\log s$. To generate, run that backwards: pick a class, then draw each feature from its own Gaussian. To impute, the best guess for a missing feature is simply that class\'s mean for it.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
-d = 30
-mu0, mu1 = rng.normal(0, 1, d), rng.normal(0.8, 1, d)
-
-def make(n):
+d = 60
+delta = rng.normal(0, 1, d); delta = 2.2 * delta / np.linalg.norm(delta)
+MIX = rng.normal(size=(d, d))/np.sqrt(d) + 0.5*np.eye(d)   # correlates the features,
+                                                           # so NB's assumption is false
+def make(n, mix=MIX):
     y = rng.integers(0, 2, n)
-    return rng.normal(np.where(y[:,None], mu1, mu0), 1.0), y
+    return (rng.normal(size=(n, d)) + y[:, None]*delta) @ mix, y
+
+def fit_nb(Xtr, ytr):
+    """Return the per-class means and standard deviations."""
+    return dict(m0=Xtr[ytr==0].mean(0), s0=Xtr[ytr==0].std(0) + 1e-6,
+                m1=Xtr[ytr==1].mean(0), s1=Xtr[ytr==1].std(0) + 1e-6)
 
 def naive_bayes(Xtr, ytr, Xte):
-    # TODO: fit per-class means and stds, score with the Gaussian log-likelihood
+    p = fit_nb(Xtr, ytr)
+    # TODO: total Gaussian log-density of each test point under each class,
+    #       summed over features; predict whichever class scores higher
     return np.zeros(len(Xte), dtype=int)
 
 def logistic(Xtr, ytr, Xte, steps=3000):
     Xb = np.c_[np.ones(len(Xtr)), Xtr]; w = np.zeros(d+1)
     for _ in range(steps):
         p = 1/(1+np.exp(-np.clip(Xb @ w, -500, 500)))
-        w -= 0.5 * (Xb.T @ (p - ytr)/len(ytr) + 0.01*np.r_[0, w[1:]])
+        w = w - 0.5 * (Xb.T @ (p - ytr)/len(ytr) + 0.01*np.r_[0, w[1:]])
     return (np.c_[np.ones(len(Xte)), Xte] @ w > 0).astype(int)
 
 Xte, yte = make(4000)
-print(f"{'n':>6} {'naive Bayes':>13} {'logistic':>10}")
-for n in [20, 50, 100, 300, 1000, 3000]:
+print("features correlated, so naive Bayes's independence assumption is FALSE:")
+print(f"{'n':>7} {'naive Bayes':>13} {'logistic':>10}")
+for n in [30, 120, 1000, 3000, 10000]:
     Xtr, ytr = make(n)
     nb = (naive_bayes(Xtr, ytr, Xte) == yte).mean()
     lr = (logistic(Xtr, ytr, Xte) == yte).mean()
-    flag = "  <- crossover" if lr > nb else ""
-    print(f"{n:6d} {nb:13.3f} {lr:10.3f}{flag}")`,
+    print(f"{n:7d} {nb:13.3f} {lr:10.3f}")
+
+print("\\nthe control: same code, but with genuinely independent features")
+Xte_i, yte_i = make(4000, np.eye(d))
+print(f"{'n':>7} {'naive Bayes':>13} {'logistic':>10}")
+for n in [30, 120, 1000, 3000, 10000]:
+    Xtr, ytr = make(n, np.eye(d))
+    nb = (naive_bayes(Xtr, ytr, Xte_i) == yte_i).mean()
+    lr = (logistic(Xtr, ytr, Xte_i) == yte_i).mean()
+    print(f"{n:7d} {nb:13.3f} {lr:10.3f}")
+
+Xtr, ytr = make(4000)
+assert (naive_bayes(Xtr, ytr, Xte) == yte).mean() > 0.7, "naive Bayes should classify well here"
+print("PASS\\n")
+
+# ---------- 2. two jobs the classifier cannot even attempt ----------
+p = fit_nb(Xtr, ytr)
+
+def generate(cls, k, r):
+    """Invent k brand-new examples of class cls."""
+    # TODO: draw each feature from that class's own Gaussian
+    return np.zeros((k, d))
+
+def impute(x_partial, missing_j, cls):
+    """Feature missing_j was not recorded. Best guess, given the class?"""
+    # TODO
+    return 0.0
+
+fake = generate(1, 200, np.random.default_rng(7))
+real = Xte[yte == 1]
+print("invented examples of class 1 vs real ones:")
+print(f"  mean of first 5 features, invented: {np.round(fake.mean(0)[:5], 2)}")
+print(f"  mean of first 5 features, real    : {np.round(real.mean(0)[:5], 2)}")
+print(f"  a classifier trained on real data calls {100*(naive_bayes(Xtr, ytr, fake) == 1).mean():.0f}%"
+      " of the invented ones class 1")
+
+j = int(np.argmax(np.abs(p["m1"] - p["m0"])))     # a feature the classes disagree about
+overall = float(Xtr[:, j].mean())
+errs  = [abs(impute(Xte[i], j, yte[i]) - Xte[i, j]) for i in range(500)]
+blind = [abs(overall               - Xte[i, j]) for i in range(500)]
+print(f"\\nfeature {j} has gone missing. Average error when guessing it:")
+print(f"  from the generative model, knowing the class: {np.mean(errs):.3f}")
+print(f"  from the overall average, ignoring the class: {np.mean(blind):.3f}")
+print("The logistic regression has no opinion about either question. It only knows the boundary.")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
 
-d = 30
-mu0, mu1 = rng.normal(0, 1, d), rng.normal(0.8, 1, d)
-
-def make(n):
+d = 60
+delta = rng.normal(0, 1, d); delta = 2.2 * delta / np.linalg.norm(delta)
+MIX = rng.normal(size=(d, d))/np.sqrt(d) + 0.5*np.eye(d)   # correlates the features,
+                                                           # so NB's assumption is false
+def make(n, mix=MIX):
     y = rng.integers(0, 2, n)
-    return rng.normal(np.where(y[:,None], mu1, mu0), 1.0), y
+    return (rng.normal(size=(n, d)) + y[:, None]*delta) @ mix, y
+
+def fit_nb(Xtr, ytr):
+    return dict(m0=Xtr[ytr==0].mean(0), s0=Xtr[ytr==0].std(0) + 1e-6,
+                m1=Xtr[ytr==1].mean(0), s1=Xtr[ytr==1].std(0) + 1e-6)
 
 def naive_bayes(Xtr, ytr, Xte):
-    m0, m1 = Xtr[ytr==0].mean(0), Xtr[ytr==1].mean(0)
-    s0 = Xtr[ytr==0].std(0) + 1e-6
-    s1 = Xtr[ytr==1].std(0) + 1e-6
-    ll0 = -(((Xte-m0)**2)/(2*s0**2) + np.log(s0)).sum(1)
-    ll1 = -(((Xte-m1)**2)/(2*s1**2) + np.log(s1)).sum(1)
+    p = fit_nb(Xtr, ytr)
+    ll0 = -(((Xte-p["m0"])**2)/(2*p["s0"]**2) + np.log(p["s0"])).sum(1)
+    ll1 = -(((Xte-p["m1"])**2)/(2*p["s1"]**2) + np.log(p["s1"])).sum(1)
     return (ll1 > ll0).astype(int)
 
 def logistic(Xtr, ytr, Xte, steps=3000):
     Xb = np.c_[np.ones(len(Xtr)), Xtr]; w = np.zeros(d+1)
     for _ in range(steps):
         p = 1/(1+np.exp(-np.clip(Xb @ w, -500, 500)))
-        w -= 0.5 * (Xb.T @ (p - ytr)/len(ytr) + 0.01*np.r_[0, w[1:]])
+        w = w - 0.5 * (Xb.T @ (p - ytr)/len(ytr) + 0.01*np.r_[0, w[1:]])
     return (np.c_[np.ones(len(Xte)), Xte] @ w > 0).astype(int)
 
 Xte, yte = make(4000)
-print(f"{'n':>6} {'naive Bayes':>13} {'logistic':>10}")
-for n in [20, 50, 100, 300, 1000, 3000]:
+print("features correlated, so naive Bayes's independence assumption is FALSE:")
+print(f"{'n':>7} {'naive Bayes':>13} {'logistic':>10}")
+for n in [30, 120, 1000, 3000, 10000]:
     Xtr, ytr = make(n)
     nb = (naive_bayes(Xtr, ytr, Xte) == yte).mean()
     lr = (logistic(Xtr, ytr, Xte) == yte).mean()
-    print(f"{n:6d} {nb:13.3f} {lr:10.3f}{'  <- crossover' if lr > nb else ''}")`,
+    print(f"{n:7d} {nb:13.3f} {lr:10.3f}")
+
+print("\\nthe control: same code, but with genuinely independent features")
+Xte_i, yte_i = make(4000, np.eye(d))
+print(f"{'n':>7} {'naive Bayes':>13} {'logistic':>10}")
+for n in [30, 120, 1000, 3000, 10000]:
+    Xtr, ytr = make(n, np.eye(d))
+    nb = (naive_bayes(Xtr, ytr, Xte_i) == yte_i).mean()
+    lr = (logistic(Xtr, ytr, Xte_i) == yte_i).mean()
+    print(f"{n:7d} {nb:13.3f} {lr:10.3f}")
+
+Xtr, ytr = make(4000)
+assert (naive_bayes(Xtr, ytr, Xte) == yte).mean() > 0.7
+print("PASS\\n")
+
+p = fit_nb(Xtr, ytr)
+
+def generate(cls, k, r):
+    m, s = (p["m1"], p["s1"]) if cls == 1 else (p["m0"], p["s0"])
+    return r.normal(m, s, size=(k, d))
+
+def impute(x_partial, missing_j, cls):
+    return (p["m1"] if cls == 1 else p["m0"])[missing_j]
+
+fake = generate(1, 200, np.random.default_rng(7))
+real = Xte[yte == 1]
+print("invented examples of class 1 vs real ones:")
+print(f"  mean of first 5 features, invented: {np.round(fake.mean(0)[:5], 2)}")
+print(f"  mean of first 5 features, real    : {np.round(real.mean(0)[:5], 2)}")
+print(f"  a classifier trained on real data calls {100*(naive_bayes(Xtr, ytr, fake) == 1).mean():.0f}%"
+      " of the invented ones class 1")
+
+j = int(np.argmax(np.abs(p["m1"] - p["m0"])))     # a feature the classes disagree about
+overall = float(Xtr[:, j].mean())
+errs  = [abs(impute(Xte[i], j, yte[i]) - Xte[i, j]) for i in range(500)]
+blind = [abs(overall               - Xte[i, j]) for i in range(500)]
+print(f"\\nfeature {j} has gone missing. Average error when guessing it:")
+print(f"  from the generative model, knowing the class: {np.mean(errs):.3f}")
+print(f"  from the overall average, ignoring the class: {np.mean(blind):.3f}")
+print("The logistic regression has no opinion about either question. It only knows the boundary.")`,
+  explain: `Part 1: compare the two tables, which differ only in whether the features were mixed together. In
+the control, where the features genuinely are independent, naive Bayes keeps pace with logistic regression the
+whole way and even leads in the middle — its assumption is *true* there, so believing it costs nothing. In the
+correlated table, naive Bayes flattens out around 0.80 by $n=3000$ and never improves again, while logistic
+regression carries on past 0.86.
+
+That plateau is what "higher asymptotic error" means. More data cannot help a model whose form is wrong; it
+simply estimates the wrong model more precisely. The other half of the classical tradeoff — that the generative
+model reaches its ceiling with far less data — is real but needs many more features than examples to show
+clearly, which is why naive Bayes made its name on text, where a vocabulary of tens of thousands meets a few
+hundred documents.
+
+Part 2 is the modern point, and it is the reason this lesson exists. The same fitted model — no retraining, no
+new objective — invents new class-1 examples that a classifier accepts as class 1, and fills in a measurement
+that was never provided. It can do these things because it learned *what class 1 looks like*, and that knowledge
+was never specific to the question "class 0 or class 1?".
+
+The logistic regression cannot attempt either task, and not because it is weaker. It genuinely does not contain
+the information: it learned a boundary, which says where classes differ and nothing about what either one is.
+Scale that same distinction up — replace "Gaussian per feature" with a transformer over text — and you get the
+reason a language model can be asked to classify, summarise, translate, or rank without ever having been trained
+to, while a sentiment classifier can only ever do sentiment.`,
 },
 
 };

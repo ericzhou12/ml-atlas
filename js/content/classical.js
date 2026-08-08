@@ -2355,7 +2355,8 @@ and the class frequencies $p(y)$, then apply Bayes' rule:
 
 $$p(y\\mid\\mathbf{x}) \\propto p(\\mathbf{x}\\mid y)\\,p(y)$$
 
-Naive Bayes, LDA, and Gaussian mixture classifiers are the classical examples. VAEs, diffusion models, and
+Naive Bayes, linear discriminant analysis (which fits one Gaussian per class and shares a single covariance
+between them), and Gaussian mixture classifiers are the classical examples. VAEs, diffusion models, and
 language models are the modern ones.
 
 The generative approach is doing strictly more work — it learns enough to *generate* new cats, which
@@ -2368,12 +2369,18 @@ this lesson is about.`),
 
 Ng & Jordan's 2001 analysis made the comparison precise for the naive Bayes / logistic regression pair:
 
-- **Generative models have higher asymptotic error** (their modeling assumptions are usually wrong) but **converge
-  faster** — they reach their ceiling with $O(\\log d)$ samples versus $O(d)$ for the discriminative model.
-- So generative wins on small data, discriminative wins as $n$ grows, and the curves cross.
+- **The generative model has a worse ceiling.** Its assumptions about how the data was produced are usually
+  wrong, so even with unlimited data it converges to a higher error rate than the discriminative model does.
+- **But it reaches that ceiling far sooner.** Roughly, naive Bayes needs a number of examples growing like
+  $\\log d$ in the number of features, while logistic regression needs a number growing like $d$ itself. With
+  1000 features that is the difference between dozens of examples and thousands.
 
-The intuition: modeling $p(\\mathbf{x}\\mid y)$ is a harder problem than you need to solve, and solving a harder problem
-costs you accuracy — but the strong assumptions act as a powerful prior when data is scarce.`),
+So the two accuracy curves cross: generative wins on small data, discriminative wins once data is plentiful.
+
+The reason is the same [inductive bias](#/l/ml-framing) tradeoff as before, in a new costume. Modelling
+$p(\\mathbf{x}\\mid y)$ means committing to strong assumptions about what each class looks like. Those assumptions
+are wrong, which caps your accuracy — and they are also *information you did not have to learn from data*, which
+is exactly what you need when there is barely any data to learn from.`),
 
     t(`## Naive Bayes
 
@@ -2407,41 +2414,46 @@ it has largely been borne out. A model that can *generate* plausible text must h
 knowledge, and reasoning patterns as a byproduct. A model trained only to discriminate learns just enough to separate
 the classes in front of it, and nothing more.`),
 
-    code('Naive Bayes vs logistic regression as n grows', `import numpy as np
+    code('What naive Bayes\'s assumption actually costs', `import numpy as np
 rng = np.random.default_rng(0)
 
-d = 30
-mu0, mu1 = rng.normal(0, 1, d), rng.normal(0.8, 1, d)
+d = 60
+delta = rng.normal(0, 1, d); delta = 2.2 * delta / np.linalg.norm(delta)
 
-def make(n):
+# two worlds: one where the independence assumption is TRUE, one where it is not
+independent = np.eye(d)
+correlated  = rng.normal(size=(d, d))/np.sqrt(d) + 0.5*np.eye(d)   # mixes the features
+
+def make(n, mix):
     y = rng.integers(0, 2, n)
-    X = rng.normal(np.where(y[:, None], mu1, mu0), 1.0)
-    return X, y
+    return (rng.normal(size=(n, d)) + y[:, None]*delta) @ mix, y
 
 def naive_bayes(Xtr, ytr, Xte):
-    m0, m1 = Xtr[ytr == 0].mean(0), Xtr[ytr == 1].mean(0)
-    s0 = Xtr[ytr == 0].std(0) + 1e-6
-    s1 = Xtr[ytr == 1].std(0) + 1e-6
-    ll0 = -((Xte - m0)**2 / (2*s0**2) + np.log(s0)).sum(1)
-    ll1 = -((Xte - m1)**2 / (2*s1**2) + np.log(s1)).sum(1)
+    m0, s0 = Xtr[ytr==0].mean(0), Xtr[ytr==0].std(0) + 1e-6
+    m1, s1 = Xtr[ytr==1].mean(0), Xtr[ytr==1].std(0) + 1e-6
+    ll0 = -(((Xte-m0)**2)/(2*s0**2) + np.log(s0)).sum(1)     # treats features as independent
+    ll1 = -(((Xte-m1)**2)/(2*s1**2) + np.log(s1)).sum(1)
     return (ll1 > ll0).astype(int)
 
-def logistic(Xtr, ytr, Xte, steps=3000):
-    Xb = np.c_[np.ones(len(Xtr)), Xtr]
-    w = np.zeros(d + 1)
+def logistic(Xtr, ytr, Xte, steps=4000):
+    Xb = np.c_[np.ones(len(Xtr)), Xtr]; w = np.zeros(d + 1)
     for _ in range(steps):
         p = 1/(1+np.exp(-np.clip(Xb @ w, -500, 500)))
-        w -= 0.5 * (Xb.T @ (p - ytr) / len(ytr) + 0.01*np.r_[0, w[1:]])
+        w = w - 0.5 * (Xb.T @ (p - ytr)/len(ytr) + 0.01*np.r_[0, w[1:]])
     return (np.c_[np.ones(len(Xte)), Xte] @ w > 0).astype(int)
 
-Xte, yte = make(4000)
-print("   n     naive Bayes   logistic")
-for n in [20, 50, 100, 300, 1000, 5000]:
-    Xtr, ytr = make(n)
-    nb = (naive_bayes(Xtr, ytr, Xte) == yte).mean()
-    lr = (logistic(Xtr, ytr, Xte) == yte).mean()
-    print(f"{n:5d}      {nb:.3f}       {lr:.3f}  {'<- NB ahead' if nb > lr else ''}")`,
-      'Naive Bayes leads at small $n$ and logistic regression overtakes it. The crossover point is exactly what Ng & Jordan characterized.'),
+for label, mix in [("features really ARE independent", independent),
+                   ("features are correlated (assumption false)", correlated)]:
+    Xte, yte = make(4000, mix)
+    print(label)
+    print(f"{'n':>7} {'naive Bayes':>13} {'logistic':>10}")
+    for n in [30, 120, 1000, 3000, 10000]:
+        Xtr, ytr = make(n, mix)
+        nb = (naive_bayes(Xtr, ytr, Xte) == yte).mean()
+        lr = (logistic(Xtr, ytr, Xte) == yte).mean()
+        print(f"{n:7d} {nb:13.3f} {lr:10.3f}")
+    print()`,
+      'The two tables are the lesson. In the first, where the independence assumption happens to be true, naive Bayes matches logistic regression all the way out and even leads in the middle — the generative model is the *correct* model there, so it loses nothing. In the second, the only change is that the features have been mixed together, and naive Bayes flattens out around 0.80 while logistic regression keeps climbing past 0.86. Nothing about the method changed; only whether its assumption held. That is what "higher asymptotic error" means concretely: not a weaker algorithm, but a commitment made in advance that the data did not honour.'),
 
     quiz('Why can a language model perform sentiment classification it was never trained on?',
       ['It models the joint distribution over text, so it can be conditioned into any task expressible in text',
