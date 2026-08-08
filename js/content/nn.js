@@ -1335,6 +1335,22 @@ determines whether your predictions mean anything.
 If you want the whole distribution rather than one summary, use **quantile loss** at several quantiles and get a
 prediction interval instead of a point.`),
 
+    deriv('Why squared error gives the mean and absolute error gives the median', `Strip the model away and ask the simplest version of the question: if you must summarise a set of numbers $y_1, \\ldots, y_n$ with a **single** value $c$, which $c$ is best? The answer depends entirely on how you are scored, and both cases take one line.
+
+**Squared error.** Minimise $f(c) = \\sum_i (y_i - c)^2$. Differentiate with respect to $c$ and set to zero:
+
+$$f'(c) = \\sum_i -2(y_i - c) = 0 \\quad\\Longrightarrow\\quad \\sum_i y_i = nc \\quad\\Longrightarrow\\quad c = \\frac{1}{n}\\sum_i y_i$$
+
+The **mean**, and nothing else can beat it.
+
+**Absolute error.** Minimise $g(c) = \\sum_i |y_i - c|$. Each term has derivative $-1$ if $c$ is below $y_i$ and $+1$ if above, so
+
+$$g'(c) = (\\text{how many } y_i \\text{ are below } c) - (\\text{how many are above } c)$$
+
+That is zero exactly when the two counts are equal — when $c$ has half the data on each side. The **median**. Notice that the *sizes* of the $y_i$ never entered the calculation, only which side of $c$ they fell on. That is the same fact as "absolute error is robust to outliers", seen from the other direction: a point at 10 and a point at 10,000 pull on the answer with identical force.
+
+A model trained with one of these losses is doing exactly this, separately for every input $\\mathbf{x}$: among the training examples that look like $\\mathbf{x}$, it reports the mean or it reports the median. Which one is decided by the loss, and by nothing else.`),
+
     viz('loss-functions'),
 
     t(`## Robustness

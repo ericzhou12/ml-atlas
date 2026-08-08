@@ -770,26 +770,48 @@ non-deterministic for no apparent reason.`,
 },
 
 'nn-losses-training': {
-  title: 'Check the initial loss, then overfit one batch',
-  prompt: `Two diagnostics that catch most bugs. Confirm a $K$-class model starts at $\\log K$, then drive the loss on
-8 examples to near zero. If the second fails, you have a bug rather than a tuning problem.`,
-  hint: 'A randomly initialized softmax head should be uniform over classes, giving $-\\log(1/K)$.',
+  title: 'Watch the loss choose the answer, then run the two diagnostics',
+  prompt: `1. **The loss decides what you predict.** On deliberately skewed data — most customers spend nothing, a
+   few spend a lot — find the single number that minimises squared error and the single number that minimises
+   absolute error, by brute-force search. Compare each against the mean and the median. **Predict which is
+   which before running.**
+2. **Check the initial loss.** A $K$-class model that has learned nothing should start at $\\log K$. Anything
+   else means the head or the labels are wrong.
+3. **Overfit one batch.** Train on 8 examples until the loss is essentially zero. If it will not go to zero,
+   you have a bug, not a tuning problem — this catches more errors than any other single check.`,
+  hint: 'For part 1 you are not fitting a model, just searching over candidate constants $c$ and scoring each by $\\sum_i (y_i-c)^2$ or $\\sum_i |y_i-c|$. For part 3, the gradients are already written for you — just loop.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
+# ---------- 1. what does each loss actually report? ----------
+spend = np.where(rng.random(4000) < 0.75, 0.0, rng.exponential(160, 4000))
+grid = np.linspace(0, 200, 20001)
+
+def best_constant(y, kind):
+    """Search the grid for the single number minimising this loss."""
+    # TODO: score every candidate in \`grid\` and return the best one
+    return 0.0
+
+c_sq  = best_constant(spend, "squared")
+c_abs = best_constant(spend, "absolute")
+print(f"customers who spend nothing: {(spend == 0).mean():.0%}")
+print(f"  minimiser of squared error : {c_sq:8.2f}    the mean is   {spend.mean():8.2f}")
+print(f"  minimiser of absolute error: {c_abs:8.2f}    the median is {np.median(spend):8.2f}")
+assert abs(c_sq - spend.mean()) < 0.5,      "squared error should land on the mean"
+assert abs(c_abs - np.median(spend)) < 0.5, "absolute error should land on the median"
+print("PASS\\n")
+
+# ---------- 2 and 3: the two diagnostics ----------
 K, D = 10, 20
 X = rng.normal(size=(512, D)); y = rng.integers(0, K, 512)
 X[np.arange(512), y % D] += 2.0                        # make it learnable
 
 W1 = rng.normal(0, np.sqrt(2/D), (D, 32)); b1 = np.zeros(32)
-W2 = rng.normal(0, np.sqrt(2/32), (32, K)); b2 = np.zeros(K)
-
-def forward(X):
-    h = np.maximum(0, X @ W1 + b1)
-    return h @ W2 + b2, h
+W2 = rng.normal(0, np.sqrt(2/32), (32, K)); b2 = np.zeros(K)   # a normally-scaled head
 
 def loss_and_grads(X, y):
-    logits, h = forward(X)
+    h = np.maximum(0, X @ W1 + b1)
+    logits = h @ W2 + b2
     z = logits - logits.max(1, keepdims=True)
     p = np.exp(z); p /= p.sum(1, keepdims=True)
     loss = -np.log(p[np.arange(len(y)), y] + 1e-12).mean()
@@ -797,29 +819,50 @@ def loss_and_grads(X, y):
     dh = (d @ W2.T) * (h > 0)
     return loss, (X.T @ dh, dh.sum(0), h.T @ d, d.sum(0))
 
-# CHECK 1
 l0, _ = loss_and_grads(X, y)
-print(f"initial loss {l0:.4f}   expected log({K}) = {np.log(K):.4f}   "
-      f"{'PASS' if abs(l0-np.log(K)) < 0.15 else 'FAIL'}")
+print(f"CHECK 1  initial loss with a He-scaled head: {l0:.4f}")
+print(f"         but log({K}) = {np.log(K):.4f} -- the model starts out opinionated")
 
-# CHECK 2: TODO -- train on X[:8], y[:8] for 800 steps at lr=0.3 and print the loss
-print("\\noverfit-one-batch: implement the loop")`,
+W2 = rng.normal(0, 0.01, (32, K))               # shrink the output layer instead
+l1, _ = loss_and_grads(X, y)
+print(f"         initial loss with a small head:    {l1:.4f}   "
+      f"{'PASS' if abs(l1-np.log(K)) < 0.05 else 'FAIL'}")
+assert abs(l1 - np.log(K)) < 0.05, "with a small head the initial loss must be log K"
+
+# CHECK 2: TODO -- train on X[:8], y[:8] for 800 steps at lr=0.3, then print the loss
+print("\\nCHECK 2  overfit-one-batch: implement the loop")`,
   solution: `import numpy as np
 rng = np.random.default_rng(0)
+
+spend = np.where(rng.random(4000) < 0.75, 0.0, rng.exponential(160, 4000))
+grid = np.linspace(0, 200, 20001)
+
+def best_constant(y, kind):
+    if kind == "squared":
+        scores = ((y[None, :] - grid[:, None])**2).mean(1)
+    else:
+        scores = np.abs(y[None, :] - grid[:, None]).mean(1)
+    return float(grid[scores.argmin()])
+
+c_sq  = best_constant(spend, "squared")
+c_abs = best_constant(spend, "absolute")
+print(f"customers who spend nothing: {(spend == 0).mean():.0%}")
+print(f"  minimiser of squared error : {c_sq:8.2f}    the mean is   {spend.mean():8.2f}")
+print(f"  minimiser of absolute error: {c_abs:8.2f}    the median is {np.median(spend):8.2f}")
+assert abs(c_sq - spend.mean()) < 0.5
+assert abs(c_abs - np.median(spend)) < 0.5
+print("PASS\\n")
 
 K, D = 10, 20
 X = rng.normal(size=(512, D)); y = rng.integers(0, K, 512)
 X[np.arange(512), y % D] += 2.0
 
 W1 = rng.normal(0, np.sqrt(2/D), (D, 32)); b1 = np.zeros(32)
-W2 = rng.normal(0, np.sqrt(2/32), (32, K)); b2 = np.zeros(K)
-
-def forward(X):
-    h = np.maximum(0, X @ W1 + b1)
-    return h @ W2 + b2, h
+W2 = rng.normal(0, np.sqrt(2/32), (32, K)); b2 = np.zeros(K)   # a normally-scaled head
 
 def loss_and_grads(X, y):
-    logits, h = forward(X)
+    h = np.maximum(0, X @ W1 + b1)
+    logits = h @ W2 + b2
     z = logits - logits.max(1, keepdims=True)
     p = np.exp(z); p /= p.sum(1, keepdims=True)
     loss = -np.log(p[np.arange(len(y)), y] + 1e-12).mean()
@@ -828,15 +871,42 @@ def loss_and_grads(X, y):
     return loss, (X.T @ dh, dh.sum(0), h.T @ d, d.sum(0))
 
 l0, _ = loss_and_grads(X, y)
-print(f"CHECK 1  initial loss {l0:.4f}  expected {np.log(K):.4f}  "
-      f"{'PASS' if abs(l0-np.log(K)) < 0.15 else 'FAIL'}")
+print(f"CHECK 1  initial loss with a He-scaled head: {l0:.4f}")
+print(f"         but log({K}) = {np.log(K):.4f} -- the model starts out opinionated")
+
+W2 = rng.normal(0, 0.01, (32, K))               # shrink the output layer instead
+l1, _ = loss_and_grads(X, y)
+print(f"         initial loss with a small head:    {l1:.4f}   "
+      f"{'PASS' if abs(l1-np.log(K)) < 0.05 else 'FAIL'}")
+assert abs(l1 - np.log(K)) < 0.05, "with a small head the initial loss must be log K"
 
 Xs, ys = X[:8], y[:8]
 for t in range(800):
     l, (g1, gb1, g2, gb2) = loss_and_grads(Xs, ys)
     W1 -= 0.3*g1; b1 -= 0.3*gb1; W2 -= 0.3*g2; b2 -= 0.3*gb2
-print(f"CHECK 2  loss on 8 examples after 800 steps: {l:.6f}  "
+print(f"\\nCHECK 2  loss on 8 examples after 800 steps: {l:.6f}   "
       f"{'PASS' if l < 0.01 else 'FAIL - you have a bug'}")`,
+  explain: `Part 1: 75% of these customers spend nothing, so the median spend is **0** and the mean is around 40.
+The brute-force search confirms that squared error is minimised at the mean and absolute error at the median,
+exactly as the derivation said — and note that no model was involved, only a choice of scoring rule.
+
+Now read the two numbers as business answers. A model trained with squared error predicts about £40 for
+everyone, a figure almost no individual customer resembles, but one that multiplies up correctly for revenue
+forecasting. A model trained with absolute error predicts £0, which describes a typical customer accurately and
+forecasts zero total revenue. Neither is broken. You chose which question to answer when you chose the loss, and
+on skewed data — most real business data — the two answers are not close.
+
+Part 2 is more interesting than it first looks. With a normally scaled output layer the initial loss is about
+**3.20**, not $\\log 10 = 2.30$ — and a loss *above* $\\log K$ means the model starts out confidently wrong. It has
+opinions, drawn from random numbers, and the first thing training has to do is beat them out of it. Shrink the
+output layer's initialization and the loss lands exactly on $\\log K$: no opinion at all, which is what an
+untrained model should have. This is why the last layer of a classifier is often initialized small, and why "is
+my initial loss $\\log K$?" is a real diagnostic and not just a sanity formula. A value far *below* $\\log K$ would
+be worse news still — it would mean label information is leaking into the input.
+
+Part 3 is the check that catches the most bugs. Driving the loss on eight examples to essentially zero proves
+the forward pass, the backward pass, and the update are all connected and pointing the same way. If that fails,
+you have a bug, and every hour spent tuning the learning rate is wasted.`,
 },
 
 'nn-cnn': {
