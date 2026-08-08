@@ -1602,245 +1602,285 @@ print(f"  VJP:               {d:,} floats  = {d*4/1e3:.0f} KB")`,
   tags: ['probability', 'statistics', 'Bayes'],
   sections: [
     tldr(`Every model in this atlas outputs a **distribution**, not an answer. A classifier does not say "cat",
-it says "83% cat". A language model does not pick the next word, it scores every possible word. Probability is
-the language for that, and once you see it you cannot unsee it: loss functions, regularization, and evaluation
-metrics all turn out to be probabilistic statements wearing different clothes.
+it says "83% cat, 12% dog, 5% other". A language model does not pick the next word, it scores every word in its
+vocabulary. Probability is the language for that.
 
-Three objects carry the whole lesson — **distributions** (what could happen and how often), **expectations**
-(the average of something random), and **conditioning** (updating what you believe when new information
-arrives). Bayes' rule is just conditioning written down carefully.`),
+Three ideas carry the lesson: **distributions** (what could happen and how often), **expectations** (the average
+of something random), and **conditioning** (how your beliefs should change when new information arrives). Bayes'
+rule is just conditioning written down carefully, and it is three lines of algebra rather than a deep principle.
+
+The payoff at the end is a fact that reorganises a lot of what comes later: **every loss function is a
+statement about what kind of noise you believe in.** Squared error is not an arbitrary choice; it is what you
+get if you assume the noise is Gaussian. Change the assumption and the loss changes with it.`),
 
     jargon([
-      ['random variable', 'A quantity whose value depends on chance. Written with a capital letter, $X$, while a specific value it took is lowercase, $x$.'],
-      ['distribution', 'The full description of what values a random variable can take and how likely each is. Not a single number.'],
-      ['$p(x)$', 'The probability (or density) of the value $x$. Shorthand that gets overloaded constantly — context tells you which variable it is about.'],
-      ['$p(y \\mid x)$', 'Read: "the probability of $y$ **given** $x$". The vertical bar means "conditional on", i.e. assuming $x$ already happened. This is what a classifier outputs.'],
-      ['joint $p(x, y)$', 'The probability of $x$ **and** $y$ both happening.'],
-      ['marginal', 'A joint distribution with some variables summed away. "Marginalising out $y$" means "I no longer care about $y$, average over it".'],
-      ['expectation $\\mathbb{E}[X]$', 'The long-run average value of $X$, weighted by how likely each outcome is. Not necessarily a value $X$ can actually take.'],
-      ['variance', 'How spread out a distribution is. Big variance = unpredictable.'],
-      ['i.i.d.', '"Independent and identically distributed" — each data point drawn from the same distribution, none influencing the others. The standard (often false) assumption behind nearly every method.'],
-      ['likelihood', '$p(\\text{data} \\mid \\text{parameters})$, read as a function of the *parameters*. "How well does this setting explain what I saw?"'],
-      ['prior / posterior', 'What you believed before seeing the data / after seeing it. Bayes\' rule converts one into the other.'],
-      ['MLE / MAP', 'Maximum Likelihood Estimate (pick the parameters that best explain the data) / Maximum A Posteriori (same, but also weighted by your prior).'],
-      ['conjugate prior', 'A prior chosen so the posterior comes out in the same family, making the update pure arithmetic instead of an integral.'],
+      ['random variable', 'A quantity whose value depends on chance. Written with a capital letter, $X$; a specific value it took is lowercase, $x$.'],
+      ['distribution', 'The full description of which values a random variable can take and how likely each is. A distribution is not a number.'],
+      ['$p(x)$', 'The probability (or density) of the value $x$. This shorthand gets overloaded constantly — context tells you which variable it is about.'],
+      ['$p(y \\mid x)$', 'Read aloud: "the probability of $y$ **given** $x$". The vertical bar means "assuming $x$ already happened". This is what a classifier outputs.'],
+      ['joint $p(x, y)$', 'The probability that $x$ **and** $y$ both happen.'],
+      ['marginal', 'A joint distribution with some variables summed away. "Marginalising out $y$" means "I no longer care about $y$, so average over every value it could take".'],
+      ['independent', '$X$ and $Y$ are independent when learning one tells you nothing about the other, which makes $p(x, y) = p(x)p(y)$.'],
+      ['expectation $\\mathbb{E}[X]$', 'The long-run average value of $X$, weighting each outcome by how likely it is. It need not be a value $X$ can actually take — the expected roll of a die is 3.5.'],
+      ['variance', 'How spread out a distribution is: the average squared distance from the mean. Big variance means unpredictable.'],
+      ['i.i.d.', 'Independent and identically distributed — every data point drawn from the same distribution, none influencing the others. It is the standard assumption behind nearly every method, and it is often false.'],
+      ['likelihood', '$p(\\text{data} \\mid \\text{parameters})$, read as a function of the *parameters*: "how well does this setting explain what I actually saw?"'],
+      ['prior / posterior', 'What you believed before seeing the data, and what you believe after. Bayes\' rule turns one into the other.'],
+      ['MLE / MAP', 'Maximum Likelihood Estimate — pick the parameters that best explain the data. Maximum A Posteriori — same, but weighted by your prior as well.'],
     ]),
 
     t(`## Why probability
 
 Every ML model is a claim about a distribution, even when it does not look like one:
 
-- A classifier outputs $p(y \\mid \\mathbf{x})$ — a probability for each class given the input.
-- A language model outputs $p(\\text{next token} \\mid \\text{context})$ — a score over the full vocabulary.
-- A diffusion model *is* a sampler for $p(\\text{image})$ — it draws from the distribution of plausible images.
-- Even plain linear regression is a distributional claim in disguise. Saying $y = f(\\mathbf{x}) + \\epsilon$
-  with Gaussian noise $\\epsilon$ *is* a statement about a distribution, and it is the reason least squares is
-  the right loss rather than an arbitrary one.
+- A classifier outputs $p(y \\mid \\mathbf{x})$ — a probability for each class, given the input.
+- A language model outputs $p(\\text{next token} \\mid \\text{everything so far})$ — a score for every word in
+  the vocabulary.
+- A diffusion model *is* a sampler for $p(\\text{image})$ — a machine for drawing from the distribution of
+  plausible images.
+- Even plain linear regression is a distributional claim in disguise. Writing $y = f(\\mathbf{x}) + \\epsilon$
+  with random noise $\\epsilon$ *is* a statement about a distribution, and it is why least squares is the right
+  loss rather than one someone happened to pick.
 
-That last point generalises into one of the most clarifying facts in the subject, and we will derive it below:
-**every loss function is a distributional assumption**. If you know what noise you believe in, the loss is
-determined; you do not get to pick it separately.`),
+That last point is the one this lesson builds toward.`),
 
     t(`## Random variables and distributions
 
-A **random variable** is a quantity whose value depends on chance — a die roll, tomorrow's temperature, the
-next token. The convention is capital $X$ for the variable and lowercase $x$ for a value it took.
+A **random variable** is a quantity whose value depends on chance — a die roll, tomorrow's temperature, the next
+token a model emits. How you describe its distribution depends on whether you can list the possible values:
 
-How you describe its distribution depends on whether the values are countable:
+- **Discrete** variables (die rolls, class labels, tokens) have a **probability mass function** $p(x)$, which is
+  literally the probability of that value. The values are countable and the probabilities add to 1.
+- **Continuous** variables (heights, pixel intensities) have a **density** $p(x)$, where probability comes from
+  *area*: $P(a\\le X\\le b)=\\int_a^b p(x)\\,dx$. The integral sign is a sum over a continuum, and the total area
+  must be 1.`),
 
-- **Discrete** variables (die rolls, classes, tokens) have a **probability mass function** $p(x) = P(X = x)$.
-  Each value gets an actual probability, and they sum to 1.
-- **Continuous** variables (heights, weights, pixel intensities) have a **density** $p(x)$, where probability
-  comes from *area*: $P(a\\le X\\le b)=\\int_a^b p(x)\\,dx$. The $\\int$ is a sum over a continuum.`),
+    warn(`**A density is not a probability.** For a continuous variable, $p(x)$ can be far greater than 1 — a
+narrow bell curve with standard deviation $0.01$ has a peak density around 40. Nothing is broken: the curve is
+tall precisely because it is narrow, so the *area* still comes to 1.
 
-    warn(`A density is not a probability. For a continuous variable, $p(x)$ can be greater than 1 — a narrow
-Gaussian with $\\sigma = 0.01$ has a peak density around 40. Nothing is broken. The probability of landing
-*exactly* on any single real number is zero; only the **area** under the curve is a probability, and only that
-area must integrate to 1.
+The reason it cannot be a probability is that the chance of landing on exactly one particular real number is
+zero. Only areas are probabilities.
 
-This trips people up when reading log-density values from a model and finding them positive. Positive
-log-density is fine. Positive log-*probability* would not be.`),
+Where this bites: you read a log-density out of a model and find it positive, and think something has gone
+wrong. Positive log-density is fine. Positive log-*probability* would not be.`),
 
     viz('distributions'),
 
-    t(`### The ones you must recognize
+    t(`### The ones worth recognising on sight
 
-- **Bernoulli / Binomial** — binary outcomes and their counts. Binary classification lives here.
-- **Categorical** — one of $K$ outcomes. Every softmax output is a categorical distribution.
-- **Gaussian** — the default for continuous noise. Justified by the CLT, and it is the maximum-entropy distribution
-  given a fixed mean and variance (i.e. the least-committed choice when that's all you know).
-- **Laplace** — heavier tails and a sharp peak. Its log-density is $-|x|$, which is why a Laplace prior gives L1
-  regularization and sparse solutions.
-- **Exponential / Poisson** — waiting times and counts of rare events.
-- **Beta / Dirichlet** — distributions *over* probabilities. The conjugate priors for Bernoulli/categorical.`),
+| Distribution | Models | Where it shows up in ML |
+|---|---|---|
+| Bernoulli | one yes/no outcome | binary classification |
+| Binomial | how many yeses out of $n$ tries | counts, A/B tests |
+| Categorical | one of $K$ outcomes | every softmax output is one of these |
+| Gaussian (normal) | continuous values clustered around a mean | the default assumption for noise |
+| Laplace | like a Gaussian but with a sharp peak and fatter tails | its log-density is $-|x|$, which is where L1 regularization comes from |
+| Poisson | counts of rare events in a fixed window | arrival rates, event counts |
+| Beta | a probability that is itself uncertain | priors over Bernoulli parameters |
+
+The Gaussian earns its default status two ways. First, the **central limit theorem**: add up many small
+independent random effects and the total is approximately Gaussian, regardless of what the individual effects
+looked like. Measurement noise usually *is* a pile of small independent effects, so the assumption is often
+close to true. Second, among all distributions with a given mean and variance, the Gaussian is the one that
+assumes the least beyond those two numbers — a claim made precise in [the next lesson](#/l/math-information).`),
 
     t(`## Expectation and variance
 
 The **expectation** $\\mathbb{E}[X]$ is the average value of $X$ you would see over infinitely many draws,
 weighting each outcome by how likely it is:
 
-$$\\mathbb{E}[X] = \\sum_x x\\,p(x) \\quad\\text{or, for continuous } X,\\quad \\int x\\,p(x)\\,dx$$
+$$\\mathbb{E}[X] = \\sum_x x\\,p(x) \\quad\\text{or, for a continuous } X,\\quad \\int x\\,p(x)\\,dx$$
 
 The **variance** measures spread — the average squared distance from the mean:
 
-$$\\text{Var}(X) = \\mathbb{E}[(X-\\mathbb{E}[X])^2] = \\mathbb{E}[X^2]-\\mathbb{E}[X]^2$$
+$$\\text{Var}(X) = \\mathbb{E}\\big[(X-\\mathbb{E}[X])^2\\big] = \\mathbb{E}[X^2]-\\mathbb{E}[X]^2$$
 
-(The second form is the one you compute with; it follows from expanding the square.)
+The second form follows from expanding the square, and it is the one you compute with.
 
-Two properties do almost all the work in ML, and the difference between them matters enormously:`),
+Two rules about combining random quantities do most of the work in ML. They look similar and one of them has a
+condition attached, which is exactly where mistakes happen.`),
 
-    key(`**Linearity of expectation** holds *always*:
-$\\mathbb{E}[aX+bY] = a\\mathbb{E}[X]+b\\mathbb{E}[Y]$ — even if $X$ and $Y$ are wildly dependent. No conditions,
-no fine print.
+    key(`**Expectations always add.** $\\mathbb{E}[aX+bY] = a\\mathbb{E}[X]+b\\mathbb{E}[Y]$, with no conditions
+whatsoever — $X$ and $Y$ may be as dependent as you like.
 
-*Why you care:* a minibatch gradient is an average of per-example gradients, so its expectation equals the full
-gradient. Minibatch SGD is therefore **unbiased** — it takes the right step on average, no matter how small the
-batch. That is the licence to train on batches of 32 instead of 50 million.
+*Why you care:* a minibatch gradient is an average of per-example gradients, so its expectation is exactly the
+full-dataset gradient. Minibatch SGD is therefore **unbiased**: it takes the right step on average, no matter how
+small the batch. That is the licence to train on batches of 32 instead of 50 million.
 
-**Variance of a sum** does *not* hold always:
-$\\text{Var}(X+Y) = \\text{Var}(X)+\\text{Var}(Y)$ only when $X$ and $Y$ are **uncorrelated**.
+**Variances only add when the parts are independent.** $\\text{Var}(X+Y) = \\text{Var}(X)+\\text{Var}(Y)$ requires
+$X$ and $Y$ to be uncorrelated.
 
-*Why you care:* when it does hold, averaging $B$ independent samples divides variance by $B$, so gradient noise
-shrinks like $1/\\sqrt{B}$. Quadrupling the batch size only halves the noise — which is why batch size has
-sharply diminishing returns, and why correlated samples (a batch of near-duplicate examples) buy you far less
-than the count suggests.`),
+*Why you care:* when it does hold, averaging $B$ independent samples divides the variance by $B$, so the
+*standard deviation* of the gradient noise shrinks like $1/\\sqrt{B}$ — the same "variances add" argument as
+in [the first lesson](#/l/math-vectors). Quadrupling the batch size only halves the noise, which is why batch
+size has such sharply diminishing returns. And if your batch is full of near-duplicate examples, they are not
+independent, so you get even less than that.`),
 
     viz('clt'),
 
     t(`## Conditioning and Bayes' rule
 
-**Conditioning** is what happens to a distribution when you learn something. Before you know anything, the
-chance of rain is whatever it is; once you know the sky is dark, it changes. Written $p(\\text{rain} \\mid
-\\text{dark sky})$.
+**Conditioning** is what happens to a distribution when you learn something. The chance of rain is whatever it
+is; once you know the sky is dark, it is different. That second one is written
+$p(\\text{rain} \\mid \\text{dark sky})$.
 
-Joint, marginal, and conditional distributions are tied together by one relation and one operation:
+Joint, marginal, and conditional distributions are tied together by one identity and one operation:
 
 $$\\underbrace{p(x,y) = p(x\\mid y)\\,p(y)}_{\\text{the chain rule of probability}}, \\qquad \\underbrace{p(x) = \\sum_y p(x,y)}_{\\text{marginalising } y \\text{ away}}$$
 
-The first says a joint probability factors into "the chance of $y$" times "the chance of $x$ once you know
-$y$". Since $p(x,y) = p(y,x)$, you can factor it the other way too — and setting those two factorizations equal
-and rearranging gives **Bayes' rule**:
+The first says a joint probability splits into "the chance of $y$" times "the chance of $x$ once you know $y$".
+Since $p(x,y)$ and $p(y,x)$ are the same thing, you can split it the other way too:
+
+$$p(x \\mid y)\\,p(y) = p(y \\mid x)\\,p(x)$$
+
+Divide both sides by $p(y)$ and you have **Bayes' rule**. Written with parameters $\\theta$ and data
+$\\mathcal{D}$ in the slots ML cares about:
 
 $$\\underbrace{p(\\theta\\mid \\mathcal{D})}_{\\text{posterior}} = \\frac{\\overbrace{p(\\mathcal{D}\\mid\\theta)}^{\\text{likelihood}}\\ \\overbrace{p(\\theta)}^{\\text{prior}}}{\\underbrace{p(\\mathcal{D})}_{\\text{evidence}}}$$
 
-That is the entire derivation — Bayes' rule is algebra, not a deep principle. What is deep is how you read it.`),
+That is the entire derivation: two ways of splitting the same joint probability, then one division. What is
+worth thinking about is not where it comes from but how to read it.`),
 
     steps("Reading Bayes' rule as a procedure", [
-      { h: 'Start with a belief — the prior $p(\\theta)$', md: `Before seeing any data, what do you think the parameters are? "This coin is probably fair-ish." Choosing a prior is a modelling decision, and pretending you have not made one is itself a choice (a flat prior).` },
-      { h: 'Ask how well each hypothesis explains the data — the likelihood $p(\\mathcal{D} \\mid \\theta)$', md: `For each candidate $\\theta$: if the world really worked that way, how likely was the data I actually observed? A $\\theta$ that makes your observations look like a miracle scores badly.` },
-      { h: 'Multiply', md: `$p(\\mathcal{D}\\mid\\theta)\\,p(\\theta)$. A hypothesis needs *both* to be plausible beforehand *and* to explain the data. Failing either kills it.` },
-      { h: 'Normalise — divide by the evidence $p(\\mathcal{D})$', md: `This denominator does not depend on $\\theta$ at all; it just makes everything sum to 1. Which is why you constantly see the rule written with a $\\propto$ ("proportional to") and the denominator dropped: $p(\\theta\\mid\\mathcal D) \\propto p(\\mathcal D\\mid\\theta)p(\\theta)$.` },
-      { h: 'The result is your new belief — the posterior', md: `And it becomes the prior for the next batch of data. Belief updating is a loop, not a one-shot calculation.` },
+      { h: 'Start with a belief — the prior $p(\\theta)$', md: `Before seeing any data, what do you think the parameters are? "This coin is probably roughly fair." Choosing a prior is a modelling decision, and declining to choose one is also a choice — it means assuming every value is equally plausible.` },
+      { h: 'Ask how well each hypothesis explains the data — the likelihood $p(\\mathcal{D} \\mid \\theta)$', md: `For each candidate $\\theta$: if the world really worked that way, how likely was the data I actually observed? A $\\theta$ under which your observations would be a miracle scores badly.` },
+      { h: 'Multiply', md: `$p(\\mathcal{D}\\mid\\theta)\\,p(\\theta)$. A hypothesis has to be *both* plausible beforehand *and* good at explaining the data. Failing either one kills it.` },
+      { h: 'Normalise — divide by the evidence $p(\\mathcal{D})$', md: `The denominator does not involve $\\theta$ at all; it is the same number for every hypothesis, and its only job is to make the results add to 1. That is why you constantly see the rule written $p(\\theta\\mid\\mathcal D) \\propto p(\\mathcal D\\mid\\theta)p(\\theta)$, with $\\propto$ meaning "proportional to" and the denominator simply dropped.` },
+      { h: 'The result is your new belief — the posterior', md: `And it becomes the prior for the next batch of data. Belief updating is a loop, not a one-shot calculation. In the figure below, drag in more flips and watch the same curve get narrower.` },
     ]),
 
     viz('bayes-coin'),
 
-    warn(`**The base rate trap.** A test is 99% accurate for a disease affecting 1 in 10,000. You test positive. The
-probability you are sick is about **1%**, not 99%.
+    warn(`**The base rate trap.** A test is 99% accurate for a disease that affects 1 person in 10,000. You test
+positive. The chance you are actually sick is about **1%**, not 99%.
+
+Count it out over 10,000 people rather than reaching for the formula. One person is sick, and the test catches
+them. Of the 9,999 healthy people, 1% — about 100 of them — test positive anyway. So roughly 101 people get a
+positive result and only 1 is sick: about 1%.
 
 $$P(\\text{sick}\\mid+) = \\frac{0.99 \\times 0.0001}{0.99\\times 0.0001 + 0.01\\times 0.9999} \\approx 0.0098$$
 
-Among 10,000 people, 1 is sick (and tests positive), while ~100 healthy people also test positive. The prior dominates.
-This is the same arithmetic that makes precision collapse for rare-class classifiers — see the
-[ROC and prevalence figure](#/l/ml-evaluation).`),
+The lesson generalises: when one outcome is rare, the prior can swamp even very strong evidence. This is the
+same arithmetic that makes a rare-class classifier look useless despite high accuracy — see
+[evaluation](#/l/ml-evaluation).`),
 
     t(`## Maximum likelihood — where loss functions come from
 
-Suppose you have data $\\mathcal{D}=\\{x_1,\\ldots,x_n\\}$ and a family of models indexed by parameters $\\theta$.
-Which $\\theta$ should you pick? Maximum likelihood says: **the one that makes the data you actually saw as
-unsurprising as possible.**
+You have data $\\mathcal{D}=\\{x_1,\\ldots,x_n\\}$ and a family of models indexed by parameters $\\theta$. Which
+$\\theta$ should you pick? **Maximum likelihood** says: the one that makes the data you actually saw as
+unsurprising as possible.
 
-If the data points are i.i.d., the probability of the whole dataset is the product of the individual
-probabilities, $\\prod_i p(x_i\\mid\\theta)$. In practice we maximise its logarithm instead:
+If the data points are independent, the probability of the whole dataset is the product of the individual
+probabilities, $\\prod_i p(x_i\\mid\\theta)$. In practice we maximise the logarithm of that instead:
 
 $$\\hat\\theta_{\\text{MLE}} = \\arg\\max_\\theta \\sum_{i=1}^n \\log p(x_i\\mid\\theta)$$
 
-Two reasons for the log, both mundane and both important. First, $\\log$ turns products into sums, and sums are
-far easier to differentiate. Second, a product of ten thousand numbers each below 1 underflows to exactly \`0.0\`
-in float32 — the log keeps everything in a sane range. Since $\\log$ is increasing, whatever maximises the sum
-also maximises the product, so nothing is lost.
+($\\arg\\max$ means "the $\\theta$ that makes this biggest", as opposed to $\\max$, which would be the value
+itself.)
 
-**MAP** (maximum a posteriori) is the same thing with the prior kept:
+Two reasons for the logarithm, both practical. It turns the product into a sum, and sums are far easier to
+differentiate. And a product of ten thousand numbers each below 1 underflows to exactly \`0.0\` in floating
+point, while its log stays a perfectly ordinary negative number. Since $\\log$ is an increasing function,
+whatever maximises the sum also maximises the product, so nothing is lost by the swap.
+
+**MAP** is the same calculation with the prior kept in. Take the log of Bayes' rule and drop the denominator,
+which does not depend on $\\theta$:
 
 $$\\hat\\theta_{\\text{MAP}} = \\arg\\max_\\theta \\Big[\\underbrace{\\textstyle\\sum_i \\log p(x_i\\mid\\theta)}_{\\text{fit the data}} + \\underbrace{\\log p(\\theta)}_{\\text{stay plausible}}\\Big]$$
 
-And that second term is *exactly* regularization. Put a zero-mean Gaussian prior on the weights and $\\log
-p(\\theta)$ works out to $-\\lambda\\|\\theta\\|^2$ — L2 / weight decay. Use a Laplace prior instead and you get
-$-\\lambda\\|\\theta\\|_1$ — L1 and sparsity. Regularization was never a hack bolted onto the loss; it is what a
-prior looks like after you take logs.`),
+And that second term is **exactly regularization**. Put a Gaussian prior centred at zero on the weights, take
+its log, and you get $-\\lambda\\|\\theta\\|^2$ — which is L2 regularization, also known as weight decay. Use a
+Laplace prior instead and its log gives $-\\lambda\\|\\theta\\|_1$ — L1, and sparsity. Regularization was never a
+hack bolted onto the loss. It is what a prior looks like once you take logarithms.`),
 
     viz('mle-fit'),
 
-    deriv('Gaussian MLE ⇒ least squares', `Assume $y_i = f(x_i;\\theta) + \\epsilon_i$ with $\\epsilon_i \\sim \\mathcal{N}(0,\\sigma^2)$. Then
+    deriv('Gaussian noise ⇒ least squares', `Assume the data comes from $y_i = f(x_i;\\theta) + \\epsilon_i$, where each $\\epsilon_i$ is Gaussian noise with mean 0 and variance $\\sigma^2$. Then the density of observing $y_i$ is the Gaussian density evaluated at the gap between prediction and truth:
 
 $$p(y_i \\mid x_i,\\theta) = \\frac{1}{\\sqrt{2\\pi\\sigma^2}}\\exp\\!\\left(-\\frac{(y_i-f(x_i;\\theta))^2}{2\\sigma^2}\\right)$$
 
-Take logs and sum:
+Take the log — which cancels the exponential, the whole reason logs are convenient here — and add over the dataset:
 
-$$\\log p(\\mathcal{D}\\mid\\theta) = -\\frac{1}{2\\sigma^2}\\sum_i (y_i - f(x_i;\\theta))^2 - \\frac{n}{2}\\log(2\\pi\\sigma^2)$$
+$$\\log p(\\mathcal{D}\\mid\\theta) = -\\frac{1}{2\\sigma^2}\\sum_i (y_i - f(x_i;\\theta))^2 \\;-\\; \\frac{n}{2}\\log(2\\pi\\sigma^2)$$
 
-The second term does not involve $\\theta$. Maximizing the first is identical to **minimizing the sum of squared
-errors**. ∎
+The second term contains no $\\theta$, so it cannot affect which $\\theta$ wins. The first term is a negative constant times the sum of squared errors. Maximising a negative multiple of something is the same as minimising the something, so:
 
-So least squares is not an arbitrary choice of loss — it is maximum likelihood under Gaussian noise. Change the noise
-model and the loss changes with it: Laplace noise gives absolute error (L1), and a categorical model gives
-cross-entropy. **Every loss function is a distributional assumption.** That is one of the most clarifying facts in ML.`),
+$$\\arg\\max_\\theta \\log p(\\mathcal{D}\\mid\\theta) = \\arg\\min_\\theta \\sum_i (y_i - f(x_i;\\theta))^2 \\qquad \\blacksquare$$
 
-    code('Bayes, MLE, and conjugacy in NumPy', `import numpy as np
+Least squares is not an arbitrary choice of loss. It is maximum likelihood under Gaussian noise. Change the noise model and the loss changes with it: Laplace noise gives absolute error, and a categorical model gives cross-entropy. **Every loss function is a distributional assumption**, whether or not whoever wrote it knew that.`),
 
-# --- the base rate trap, computed ---
+    intuition(`This explains a practical rule you may have been told without a reason: squared error is sensitive
+to outliers, absolute error is not.
+
+Squared error assumes Gaussian noise, and a Gaussian's tails fall off extremely fast, so under that assumption a
+point 10 standard deviations away is essentially impossible. When one shows up anyway, the only way the model
+can account for it is to move — a lot. Absolute error assumes Laplace noise, whose tails are much fatter, so a
+far-away point is unusual but not shocking, and the fit barely shifts.
+
+The robustness difference is not a property of the formulas. It is a property of the two beliefs about noise
+that the formulas encode.`),
+
+    code('Bayes and maximum likelihood in NumPy', `import numpy as np
+
+# --- the base rate trap, computed rather than argued ---
 prior, sens, spec = 1/10_000, 0.99, 0.99
 p_pos = sens*prior + (1-spec)*(1-prior)
 print(f"P(sick | positive) = {sens*prior/p_pos:.4f}   <- not 0.99\\n")
 
-# --- MLE for a Gaussian, closed form vs numerical ---
+# --- maximum likelihood for a Gaussian ---
 rng = np.random.default_rng(3)
 data = rng.normal(loc=2.0, scale=1.5, size=200)
+print("true mu = 2.0, true sigma = 1.5")
 print("MLE mu    =", data.mean().round(4))
-print("MLE sigma =", data.std(ddof=0).round(4), " (biased: divides by n)")
-print("unbiased  =", data.std(ddof=1).round(4), " (divides by n-1)\\n")
+print("MLE sigma =", data.std(ddof=0).round(4), "\\n")
 
-# --- Beta-Bernoulli conjugacy: updating is just counting ---
-a, b = 2.0, 2.0                      # prior Beta(2,2)
-flips = rng.binomial(1, 0.7, size=50)
-for i, f in enumerate(flips):
-    a, b = a + f, b + (1 - f)
-    if i in (0, 4, 19, 49):
-        mean = a/(a+b)
-        sd = np.sqrt(a*b/((a+b)**2*(a+b+1)))
-        print(f"after {i+1:3d} flips: Beta({a:.0f},{b:.0f})  "
-              f"mean={mean:.4f}  sd={sd:.4f}  MLE={flips[:i+1].mean():.4f}")`),
+# --- least squares IS Gaussian maximum likelihood ---
+x = rng.normal(size=60)
+y = 2.5*x + 0.7 + rng.normal(0, 0.4, 60)
+X = np.column_stack([np.ones_like(x), x])
 
-    quiz('You add L2 weight decay to your loss. In Bayesian terms, what have you done?',
-      ['Placed a zero-mean Gaussian prior on the weights and switched from MLE to MAP estimation',
-       'Placed a Laplace prior on the weights',
-       'Changed the likelihood from Gaussian to Laplace',
-       'Nothing Bayesian — weight decay is purely an optimization trick'],
+w_ls = np.linalg.solve(X.T @ X, X.T @ y)             # minimise squared error
+
+def neg_log_lik(w, sigma=0.4):                        # -log p(data | w), Gaussian noise
+    resid = y - X @ w
+    return np.sum(resid**2) / (2*sigma**2) + len(y)*np.log(sigma*np.sqrt(2*np.pi))
+
+best = min(neg_log_lik(w_ls + 0.05*rng.normal(size=2)) for _ in range(500))
+print("least-squares weights:      ", w_ls.round(4))
+print("its negative log-likelihood:", round(neg_log_lik(w_ls), 4))
+print("best of 500 nearby weights: ", round(best, 4), " <- never lower")`,
+      'The last block checks the derivation numerically. Five hundred perturbations of the least-squares answer, and not one of them achieves a higher Gaussian likelihood — because minimising squared error and maximising Gaussian likelihood are literally the same optimisation problem written two ways.'),
+
+    quiz('You add L2 weight decay to your loss. In the language of this lesson, what have you done?',
+      ['Put a zero-mean Gaussian prior on the weights, turning maximum likelihood into MAP',
+       'Put a Laplace prior on the weights',
+       'Changed the noise assumption from Gaussian to Laplace',
+       'Nothing probabilistic — weight decay is purely an optimization trick'],
       0,
-      'MAP maximizes $\\log p(\\mathcal D\\mid\\theta)+\\log p(\\theta)$. With $\\theta\\sim\\mathcal N(0,\\tau^2 I)$, the log-prior is $-\\|\\theta\\|^2/(2\\tau^2)+\\text{const}$ — precisely an L2 penalty with $\\lambda = 1/(2\\tau^2)$. A Laplace prior would give L1 instead. (Careful: with Adam, decoupled weight decay as in AdamW is *not* the same as adding L2 to the loss — see the optimizers lesson.)'),
+      'MAP maximises $\\log p(\\mathcal D\\mid\\theta)+\\log p(\\theta)$. If the prior on the weights is a zero-mean Gaussian, its log is $-\\|\\theta\\|^2/(2\\tau^2)$ plus a constant, which is precisely an L2 penalty with $\\lambda = 1/(2\\tau^2)$. A narrower prior — small $\\tau$ — means a larger $\\lambda$, which matches the intuition that a stronger prior belief that weights should be small produces stronger shrinkage. A Laplace prior would give L1 instead.'),
 
     recap(`- Say what $p(y \\mid \\mathbf{x})$ means out loud, and name what a classifier, a language model, and a
-  diffusion model each put on the left of that bar.
+  diffusion model each put on the left of the bar.
 - Explain why a density can exceed 1 while a probability cannot.
-- Use linearity of expectation to justify minibatch SGD, and the variance rule to predict what doubling the
-  batch size buys you.
-- Walk through Bayes' rule as prior → likelihood → multiply → normalise, and explain why the denominator is
-  usually dropped.
-- Work the base rate trap and say why a 99%-accurate test for a rare disease is mostly wrong when positive.
-- Derive least squares from Gaussian noise, and state the general principle: **every loss is a distributional
-  assumption**.
-- Translate weight decay into Bayesian language and back.`),
+- Use "expectations always add" to justify minibatch SGD, and "variances add only when independent" to predict
+  what quadrupling the batch size buys.
+- Walk through Bayes' rule as prior → likelihood → multiply → normalise, and explain why the denominator gets
+  dropped.
+- Work the base rate trap by counting people, not by quoting the formula.
+- Derive least squares from Gaussian noise, and state the general principle: every loss is a distributional
+  assumption.
+- Explain why squared error is more sensitive to outliers than absolute error, in terms of tails.
+- Translate weight decay into a prior and back.`),
   ],
   refs: [
     book('Pattern Recognition and Machine Learning, Ch. 1–2', 'Christopher Bishop', 2006, 'https://www.microsoft.com/en-us/research/publication/pattern-recognition-machine-learning/', 'The canonical Bayesian treatment. Free PDF from Microsoft Research.'),
     book('Probabilistic Machine Learning: An Introduction', 'Kevin Murphy', 2022, 'https://probml.github.io/pml-book/book1.html', 'Free, modern, comprehensive. The best single ML textbook currently available.'),
     book('Information Theory, Inference, and Learning Algorithms', 'David MacKay', 2003, 'https://www.inference.org.uk/mackay/itila/', 'Free, idiosyncratic, brilliant. The Bayesian perspective delivered with real force.'),
-    video('Seeing Theory', 'Kunin et al.', 2018, 'https://seeing-theory.brown.edu/', 'Interactive visual probability. Excellent companion to this lesson.'),
+    demo('Seeing Theory', 'Kunin et al.', 2018, 'https://seeing-theory.brown.edu/', 'Interactive visual probability. An excellent companion to this lesson if the definitions have not settled yet.'),
     course('Statistics 110', 'Joe Blitzstein (Harvard)', 2013, 'https://projects.iq.harvard.edu/stat110', 'Free lectures. The best probability course on the internet.'),
   ],
 },
-
-/* ---------------------------------------------------------- */
 {
   id: 'math-information',
   title: 'Entropy, Cross-Entropy, and KL Divergence',

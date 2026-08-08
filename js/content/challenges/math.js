@@ -498,61 +498,111 @@ The numeric check needs one forward pass per weight — 54 of them here, and it 
 model. That asymmetry *is* the forward-versus-reverse-mode argument, felt rather than argued.`,
 },
 'math-probability': {
-  title: 'The base rate trap, and how fast the prior loses',
-  prompt: `Compute $P(\\text{sick}\\mid+)$ for a 99%-accurate test at various disease prevalences. Then simulate
-Beta-Bernoulli updating and find how many coin flips it takes for the data to overwhelm a strong wrong prior.`,
-  hint: 'Bayes: $P(s\\mid+) = \\frac{P(+\\mid s)P(s)}{P(+\\mid s)P(s) + P(+\\mid \\neg s)P(\\neg s)}$.',
+  title: 'The base rate trap, and proving that least squares is Gaussian MLE',
+  prompt: `Two parts, both testing claims the lesson made rather than accepting them.
+
+1. \`posterior_sick(prevalence)\` — Bayes' rule for a 99%-accurate test. Fill it in, then read the table and
+   find the prevalence at which a positive result stops being more likely right than wrong.
+2. \`neg_log_lik(w)\` — the negative log-likelihood of the data under Gaussian noise, from the derivation in the
+   lesson. Then the script minimises it by brute-force search and compares the winner against the closed-form
+   least-squares solution. **They should agree**, because they are the same problem.`,
+  hint: 'For part 1, a positive test comes from two sources: a sick person testing positive (rate `sensitivity`) and a healthy person testing positive (rate `1 - specificity`). For part 2, drop every term that does not contain `w` — you are ranking values of `w`, so shared constants change nothing.',
   starter: `import numpy as np
 
+# ---------- part 1: the base rate trap ----------
 def posterior_sick(prevalence, sensitivity=0.99, specificity=0.99):
     # TODO: return P(sick | positive test)
     return 0.0
 
-print("P(sick | positive test), 99% accurate test:")
-for prev in [0.5, 0.1, 0.01, 0.001, 0.0001]:
-    print(f"  prevalence {prev:8.4f} -> {posterior_sick(prev):.4f}")
+assert abs(posterior_sick(0.5) - 0.99) < 1e-9, "at 50% prevalence a 99% test gives 0.99"
+assert abs(posterior_sick(0.0) - 0.0) < 1e-9,  "nobody sick means a positive test is always a false alarm"
 
-assert abs(posterior_sick(0.5) - 0.99) < 1e-6, "at 50% prevalence it should be 0.99"
-print("\\nPASS\\n")
+print("P(sick | positive), for a 99% accurate test:")
+for prev in [0.5, 0.1, 0.02, 0.01, 0.001, 0.0001]:
+    p = posterior_sick(prev)
+    flag = "  <- coin flip" if abs(p - 0.5) < 0.02 else ""
+    print(f"  prevalence {prev:8.4f}  ->  {p:.4f}{flag}")
 
-# --- a strong prior that is wrong ---
+# ---------- part 2: least squares is Gaussian MLE ----------
 rng = np.random.default_rng(0)
-true_p = 0.75
-a, b = 30.0, 30.0          # prior says "fair coin", confidently
-for n in range(1, 601):
-    a += rng.random() < true_p
-    b += 0 if a != a else 0
-print("now extend this loop yourself: track the posterior mean and find")
-print("the n at which it first comes within 0.02 of the true 0.75.")`,
+x = rng.normal(size=80)
+y = 2.5*x + 0.7 + rng.normal(0, 0.4, size=80)
+X = np.column_stack([np.ones_like(x), x])
+SIGMA = 0.4
+
+def neg_log_lik(w):
+    """-log p(y | X, w) under y = Xw + Gaussian(0, SIGMA^2) noise."""
+    # TODO: from the derivation. Constants that do not involve w may be dropped.
+    return 0.0
+
+w_ls = np.linalg.solve(X.T @ X, X.T @ y)        # the closed-form least-squares answer
+
+# search a grid around it and see what maximises the likelihood
+grid = np.linspace(-0.6, 0.6, 121)
+best_w, best_v = None, np.inf
+for da in grid:
+    for db in grid:
+        w = w_ls + np.array([da, db])
+        v = neg_log_lik(w)
+        if v < best_v:
+            best_v, best_w = v, w
+
+print("\\nleast squares         :", w_ls.round(4))
+print("max likelihood (search):", best_w.round(4))
+gap = np.abs(best_w - w_ls).max()
+print(f"largest disagreement   : {gap:.4f}")
+print("PASS -- same answer, two derivations" if gap < 0.011 else "FAIL")`,
   solution: `import numpy as np
 
 def posterior_sick(prevalence, sensitivity=0.99, specificity=0.99):
-    p_pos = sensitivity*prevalence + (1-specificity)*(1-prevalence)
-    return sensitivity*prevalence / p_pos
+    p_pos = sensitivity*prevalence + (1 - specificity)*(1 - prevalence)
+    return sensitivity*prevalence / p_pos if p_pos > 0 else 0.0
 
-print("P(sick | positive test), 99% accurate test:")
-for prev in [0.5, 0.1, 0.01, 0.001, 0.0001]:
-    print(f"  prevalence {prev:8.4f} -> {posterior_sick(prev):.4f}")
-assert abs(posterior_sick(0.5) - 0.99) < 1e-6
-print("\\nPASS\\n")
+assert abs(posterior_sick(0.5) - 0.99) < 1e-9
+assert abs(posterior_sick(0.0) - 0.0) < 1e-9
+
+print("P(sick | positive), for a 99% accurate test:")
+for prev in [0.5, 0.1, 0.02, 0.01, 0.001, 0.0001]:
+    p = posterior_sick(prev)
+    flag = "  <- coin flip" if abs(p - 0.5) < 0.02 else ""
+    print(f"  prevalence {prev:8.4f}  ->  {p:.4f}{flag}")
 
 rng = np.random.default_rng(0)
-true_p = 0.75
-a, b = 30.0, 30.0
-hit = None
-for n in range(1, 2001):
-    flip = rng.random() < true_p
-    a += flip; b += (not flip)
-    mean = a / (a + b)
-    if hit is None and abs(mean - true_p) < 0.02:
-        hit = n
-    if n in (10, 50, 200, 1000, 2000):
-        sd = np.sqrt(a*b/((a+b)**2*(a+b+1)))
-        print(f"  n={n:5d}  posterior mean {mean:.4f}  sd {sd:.4f}")
-print(f"\\nfirst within 0.02 of the truth at n = {hit}")`,
-  explain: 'At 1-in-10,000 prevalence a positive result on a 99% test means about a 1% chance of being sick. The prior dominates until the data is overwhelming — which is the same arithmetic that destroys precision for rare-class classifiers.',
-},
+x = rng.normal(size=80)
+y = 2.5*x + 0.7 + rng.normal(0, 0.4, size=80)
+X = np.column_stack([np.ones_like(x), x])
+SIGMA = 0.4
 
+def neg_log_lik(w):
+    resid = y - X @ w
+    return np.sum(resid**2) / (2 * SIGMA**2)
+
+w_ls = np.linalg.solve(X.T @ X, X.T @ y)
+
+grid = np.linspace(-0.6, 0.6, 121)
+best_w, best_v = None, np.inf
+for da in grid:
+    for db in grid:
+        w = w_ls + np.array([da, db])
+        v = neg_log_lik(w)
+        if v < best_v:
+            best_v, best_w = v, w
+
+print("\\nleast squares         :", w_ls.round(4))
+print("max likelihood (search):", best_w.round(4))
+gap = np.abs(best_w - w_ls).max()
+print(f"largest disagreement   : {gap:.4f}")
+print("PASS -- same answer, two derivations" if gap < 0.011 else "FAIL")`,
+  explain: `Part 1: at 1-in-10,000 prevalence a positive result on a 99%-accurate test means roughly a 1% chance
+of being sick, and the table shows the crossover — a positive test only becomes more likely right than wrong
+once about 1% of the population has the disease. Nothing about the test changed; only the prior did.
+
+Part 2: the grid search never finds anything the closed-form least-squares solution did not already give,
+because minimising $\\sum (y_i - \\mathbf{w}\\cdot\\mathbf{x}_i)^2$ and maximising the Gaussian likelihood are the
+same optimisation with different constants in front. Notice also what dropping the constants proved: $\\sigma$
+never appears in the answer. Your noise assumption picks the *shape* of the loss; how noisy you think it is does
+not move the optimum at all.`,
+},
 'math-information': {
   title: 'Cross-entropy, KL, and why softmax needs the max-shift',
   prompt: `Implement entropy, cross-entropy and KL in bits. Verify $\\mathrm{KL}(p\\|q) = H(p,q) - H(p) \\ge 0$ and
