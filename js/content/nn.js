@@ -366,7 +366,7 @@ activation derivative. Do that thirty times and the gradient reaching layer 0 ha
 factors.
 
 If those factors average below 1, the product **vanishes** exponentially — early layers receive nothing and stop
-learning. If they average above 1, it **explodes** into \\\`NaN\\\`. There is no third option, and "roughly 1" is not
+learning. If they average above 1, it **explodes** into \`NaN\`. There is no third option, and "roughly 1" is not
 somewhere a randomly initialized network lands by accident. **You have to engineer the factors**, and that is
 exactly what initialization schemes, normalization layers, and residual connections are for.`),
 
@@ -409,7 +409,7 @@ until the backward pass consumes it, so peak memory scales with depth × batch s
 large transformer, activations routinely exceed the weights themselves.
 
 Symptom: your model fits in memory and the forward pass runs fine, then you get an out-of-memory error during
-\\\`.backward()\\\`. That is not a leak — it is the design.
+\`.backward()\`. That is not a leak — it is the design.
 
 **Gradient checkpointing** is the standard escape: store only every $k$-th layer's activations and recompute the
 rest on the way back. Roughly $\\sqrt{L}$ memory instead of $L$, for about 30% more compute. It is one flag in
@@ -515,7 +515,7 @@ used more than once, and a sum over the wrong axis for the bias.`),
   prereq: ['nn-backprop'],
   tags: ['activations', 'ReLU'],
   sections: [
-    tldr(`The activation function is a one-line choice — \\\`nn.ReLU()\\\` — that decides whether a deep network
+    tldr(`The activation function is a one-line choice — \`nn.ReLU()\` — that decides whether a deep network
 trains at all.
 
 The rule for reasoning about it is short: **judge an activation by its derivative, not by its shape.** Backprop
@@ -553,7 +553,7 @@ Three properties, in order of importance:
    in the next layer shares the same sign. The update can only move all weights up together or all down
    together, so it zig-zags toward the optimum instead of going straight there.
 3. **Is it cheap?** This sounds trivial and is not. The activation runs on every unit of every layer of every
-   example of every step. \\\`max(0, x)\\\` is one comparison; an exponential is roughly twenty times more
+   example of every step. \`max(0, x)\` is one comparison; an exponential is roughly twenty times more
    expensive.`),
 
     viz('activations'),
@@ -939,7 +939,7 @@ baggage — all three problems below trace directly to the fact that it mixes in
   noisy estimate of anything.
 - **Train and inference differ.** At inference you often have one example, so there is no batch to average
   over. BatchNorm keeps running averages from training and uses those instead — which means the layer computes
-  a *different function* in \\\`train()\\\` and \\\`eval()\\\` mode. Forgetting to switch modes is a classic and
+  a *different function* in \`train()\` and \`eval()\` mode. Forgetting to switch modes is a classic and
   maddening bug.
 - **It couples examples together.** One example's prediction depends on which others happened to share its
   batch. That is wrong for sequences, awkward for distributed training (the batch is split across GPUs), and
@@ -1777,7 +1777,7 @@ times an activation derivative. So it scales like $\\lambda^{T-t}$ where $\\lamb
 
 - $\\lambda < 1$: gradients **vanish**. Information from early tokens cannot influence the loss, so the model
   cannot learn long-range dependencies at all.
-- $\\lambda > 1$: gradients **explode**. \\\`NaN\\\`.
+- $\\lambda > 1$: gradients **explode**. \`NaN\`.
 
 There is no good value, and this is worse than it is in a feedforward network. There, each layer has its own
 weight matrix, so the factors are at least independent and can partially cancel. Here it is the *same* matrix
@@ -1969,7 +1969,7 @@ typically 100 to 4096 — vastly smaller than 50,000, and with every dimension c
 50,000 dimensions carrying one bit between them.
 
 The implementation is deliberately boring: a matrix of shape (vocabulary, $d$), and you index into it by token
-id. That is genuinely all \\\`nn.Embedding\\\` does.
+id. That is genuinely all \`nn.Embedding\` does.
 
 Mathematically, though, indexing a row *is* multiplying the matrix by a one-hot vector — which is worth knowing
 because it explains the backward pass. A one-hot input means every gradient lands on exactly one row, so only the
@@ -2075,7 +2075,7 @@ print("should already be pulling together — they appear in similar contexts.")
       'word2vec assigns one vector per word *type*, so "bank" must simultaneously mean riverbank and financial institution — the vector lands somewhere unhelpful in between. A transformer produces a vector per *token occurrence*, conditioned on the sentence, so the two senses separate cleanly. Scale and data helped, but this structural change is the core of it.'),
 
     recap(`- Say what is geometrically wrong with one-hot vectors, in terms of distances and angles.
-- Describe what \\\`nn.Embedding\\\` actually is, and explain why only a few rows receive gradient per batch.
+- Describe what \`nn.Embedding\` actually is, and explain why only a few rows receive gradient per batch.
 - State the distributional hypothesis and say how word2vec turns it into a training signal.
 - Explain why negative sampling was necessary to make word2vec practical.
 - Give the difference between static and contextual embeddings, with a word whose senses require the

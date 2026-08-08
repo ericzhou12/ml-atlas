@@ -17,7 +17,7 @@ export default [
   tags: ['tokenization', 'BPE'],
   sections: [
     tldr(`A language model cannot read text. It reads integers. **Tokenization** is the step that turns
-\\\`"hello world"\\\` into \\\`[15339, 1917]\\\` — and it happens before the model exists, using a fixed table built
+\`"hello world"\` into \`[15339, 1917]\` — and it happens before the model exists, using a fixed table built
 by counting character frequencies in a corpus.
 
 It sounds like plumbing and it is not. A startling number of LLM quirks — inability to count letters, patchy
@@ -60,8 +60,8 @@ steps.`),
 
     steps('How BPE builds a vocabulary', [
       { h: 'Start from the smallest possible units', md: `Split all your training text into individual bytes. Your vocabulary is now 256 entries and can represent literally anything, but every word is many tokens long.` },
-      { h: 'Count every adjacent pair', md: `Across the whole corpus, count how often each pair of adjacent symbols occurs. In English text, \\\`t\\\` followed by \\\`h\\\` will be near the top.` },
-      { h: 'Merge the most frequent pair', md: `Add \\\`th\\\` to the vocabulary as a new single symbol, and rewrite the corpus using it. Record the merge rule — the ordered list of merges *is* the tokenizer.` },
+      { h: 'Count every adjacent pair', md: `Across the whole corpus, count how often each pair of adjacent symbols occurs. In English text, \`t\` followed by \`h\` will be near the top.` },
+      { h: 'Merge the most frequent pair', md: `Add \`th\` to the vocabulary as a new single symbol, and rewrite the corpus using it. Record the merge rule — the ordered list of merges *is* the tokenizer.` },
       { h: 'Repeat 50,000 times', md: `Each merge adds one vocabulary entry and shortens the corpus a little. Frequent sequences get absorbed into single tokens; rare ones never do and stay as fragments. Nobody decided that " the" should be one token — frequency decided.` },
     ]),
 
@@ -1163,7 +1163,7 @@ vocabulary**, and something else has to pick one. That picking is *decoding*, it
 it changes the output enormously.
 
 This is genuinely under-appreciated: the difference between a model that seems creative and one that seems
-robotic is often not the model at all, but the \\\`temperature\\\` and \\\`top_p\\\` values in the API call.
+robotic is often not the model at all, but the \`temperature\` and \`top_p\` values in the API call.
 
 One tension runs through the whole lesson. Sampling from the low-probability tail is where creativity comes
 from, and it is also where hallucination comes from. They are the *same mechanism*, and no decoding setting
