@@ -1498,10 +1498,15 @@ why it is a training-and-serving-cost win and never a memory win.`,
 },
 
 'llm-evaluation': {
-  title: 'Measure position and length bias in an LLM judge',
-  prompt: `Simulate a pairwise judge with known biases. Show that comparing two *identical* models gives a win rate
-well above 50% due to position bias, and that randomizing order fixes it.`,
-  hint: 'Also check: how many comparisons do you need to detect a true 55% win rate?',
+  title: 'Measure position and length bias in an LLM judge, then size the sample you need',
+  prompt: `A judge model is scored on preferences, so its biases become your leaderboard. Measure three of them.
+
+1. **Position bias.** Ask the judge to compare a model against *itself*. Any deviation from 50% is pure artefact.
+2. **The fix, and its limit.** Randomise which answer is shown first and re-measure.
+3. **Length bias.** Give the judge a *worse* answer that happens to be twice as long, and see who wins.
+4. Then read the sample-size table: how many comparisons before a genuine 55% win rate is distinguishable from
+   a tie?`,
+  hint: 'For randomised order, flip a coin: half the time ask the judge about (A, B) and count a win for A, the other half ask about (B, A) and count a win for A when the judge prefers the *second* one.',
   starter: `import numpy as np
 rng = np.random.default_rng(0)
 
@@ -1555,6 +1560,20 @@ for n in [30, 100, 300, 1000]:
     se = np.sqrt(0.55*0.45/n)
     sig = "significant" if 0.55 - 1.96*se > 0.5 else "NOT significant"
     print(f"  n={n:5d}: 95% CI [{0.55-1.96*se:.3f}, {0.55+1.96*se:.3f}]  {sig}")`,
+  explain: `Line 1 is the one to be alarmed by. Two *identical* models were compared, so the honest answer is 50%
+by construction — and the judge reports **64%** for whichever answer it happened to see first. Any leaderboard
+built on fixed-order comparisons is measuring presentation order and reporting it as quality.
+
+Randomising the order removes it almost exactly, which is why every serious judge-based evaluation does this. But
+note what randomisation does *not* fix: line 3 shows a genuinely worse answer winning **82%** of the time purely
+by being longer. Order bias is symmetric and averages out; length bias is not, and no amount of shuffling touches
+it. That is why judge scores are routinely reported alongside answer length, and why "the new model is preferred"
+so often means "the new model is more verbose".
+
+The last table is the other half of the problem. To distinguish a real 55% win rate from a coin flip you need
+around a thousand comparisons — and papers routinely claim wins from a couple of hundred. Combine that with a
+bias worth fourteen points and you can see how a leaderboard becomes hard to trust: the noise is large, the
+biases are larger, and both push in whichever direction the presentation happens to favour.`,
 },
 
 };
