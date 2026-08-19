@@ -7,6 +7,8 @@ No build step, no server, no network. KaTeX and CPython+NumPy (via Pyodide) are 
 
 ## Run it
 
+clone and then do
+
 ```bash
 python3 -m http.server 8000
 open http://localhost:8000
